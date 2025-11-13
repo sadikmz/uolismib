@@ -1,5 +1,5 @@
 # downlaod data
-"$APPSDIR"/datasets download genome accession "$genotype" --include protein,gff3,cds,rna,genome
+# "$APPSDIR"/datasets download genome accession "$genotype" --include protein,gff3,cds,rna,genome
 
 # Set variables
 cwd=$(pwd)
@@ -18,16 +18,13 @@ APPSDIR=/home/sadikm/hc-storage/apps
 # list of 
 
 # Run liftoff process liftover files 
+echo "$genotype"_liftover.gff3_polished > input_gff
 
-liftoff \
-"$target_genome" \
-"$ref_genome" \
--g "$ref_gff" \
--o "$genotype"_liftover.gff3 \
--u "$genotype"_liftover_unmapped_features.txt \
--exclude_partial \
--dir intermiate_dir \
--copies \
--polish \
--cds \
--f feature_type_list.txt
+# Run gffcompare
+
+gffcompare \
+-i input_gff \
+-o foc47_vs_"$genotype"_gffcomp \
+-r "$ref_gff" \
+-p foc47_vs_"$genotype"_TCONS
+
