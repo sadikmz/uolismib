@@ -10,5 +10,9 @@
 #SBATCH --mail-user=sadikm@liverpool.ac.uk
 #SBATCH --mail-type=END,FAIL
 
-module load liftoff/1.6.3
+# module load liftoff/1.6.3
 
+# $SLURM_JOB_ID
+# $SLURM_JOBID
+
+echo job.${SLURM_JOB_ID}.${SLURMD_NODENAME}.text. text 

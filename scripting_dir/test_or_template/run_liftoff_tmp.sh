@@ -43,7 +43,9 @@ cat "$genotype"_liftover.gff3_polished | grep -E 'CDS' | cut -f9  | sed 's/ID=//
 
 # Extract transcript IDs of reference annotation
 ref_gff_basename=$(basename "$ref_gff" .gff) 
-grep '>' "$ref_prot" | sed 's/>//g' > "$ref_gff_basename"_transcript_ID_list.txt
+# grep '>' "$ref_prot" | sed 's/>//g' > "$ref_gff_basename"_transcript_ID_list.txt
+
+grep '>' "$ref_prot" | sed 's/|.*//g' | sed 's/^[[:space:]]*//g' | sed 's/>//g' > "$ref_gff_basename"_transcript_ID_list.txt
 
 # subset liftover annotation transcript IDs list from reference annoation 
 grep -f "$genotype"_liftover.gff3_polished_transcript_ids.txt "$genotype"_v5.6_annotation_transcript_ID_list.txt > "$genotype"_liftover.gff3_polished_ids.txt.02.txt
