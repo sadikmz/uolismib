@@ -1,1 +1,1 @@
-# uolismib
+# UoLISMIB project
