@@ -1,1 +1,1 @@
-# UoLISMIB project
+# UoL ISMIB project
