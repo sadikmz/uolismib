@@ -180,7 +180,7 @@ class CompareProt:
         self.threads = threads
         self.prefix = prefix
         self.tmpdir = tempfile.TemporaryDirectory()
-
+ 
     def _write_fasta(self, seqs: dict, path: str):
         with open(path, 'w') as f:
             for h, s in seqs.items():
@@ -222,25 +222,29 @@ class CompareProt:
 
     def enrich(self, full_dict: dict, ref_faa_dict: dict, qry_faa_dict: dict):
         
-                # mkdir tmp/output in in the current working directory
+        # mkdir tmp/output in in the current working directory
         dir_out = os.path.join(os.getcwd(), r'compareprot_out')
         tmp_seq_dir = os.path.join(os.getcwd(), r'compareprot_out', r'seq')
         if not os.path.exists(dir_out):
             os.makedirs(dir_out)
             os.makedirs(tmp_seq_dir)
-            
-        ref_faa = os.path.join(tmp_seq_dir, "ref.faa")
+        
+        # write ref.faa to tmp in current working directory
+        ref_faa = os.path.join(os.getcwd(), tmp_seq_dir, "ref.faa")
         self._write_fasta(ref_faa_dict, ref_faa)
+        
+        # make DIAMOND DB
         subprocess.run([self.diamond, "makedb", "--in", ref_faa, "--db", ref_faa],
                        check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
+        
         for ref_gene, entries in full_dict.items():
             qry_seqs = {e["query_transcript"]: qry_faa_dict.get(e["query_transcript"], "")
                         for e in entries if e["query_transcript"] in qry_faa_dict}
             if not qry_seqs:
                 continue
 
-            qry_faa = os.path.join(tmp_seq_dir, f"qry_{ref_gene}.faa")
+            qry_faa = os.path.join(os.getcwd(), tmp_seq_dir,  f"qry_{ref_gene}.faa")
             self._write_fasta(qry_seqs, qry_faa)
 
             diamond_out = self._run_diamond(ref_faa, qry_faa, ref_gene)
