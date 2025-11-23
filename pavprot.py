@@ -51,7 +51,7 @@ class PAVprot:
                 yield current_header, ''.join(current_seq)
 
     @staticmethod
-    def load_feature_table(gff_path: str):
+    def load_gff(gff_path: str):
         rna_to_protein = {}
         locus_to_gene = {}
 
@@ -85,7 +85,7 @@ class PAVprot:
     def parse_tracking(cls, filepath: str, feature_table: str = None, filter_codes: set = None):
         rna_to_protein, locus_to_gene = {}, {}
         if feature_table:
-            rna_to_protein, locus_to_gene = cls.load_feature_table(feature_table)
+            rna_to_protein, locus_to_gene = cls.load_gff(feature_table)
 
         full_dict = defaultdict(list)
         filtered_dict = defaultdict(list)
