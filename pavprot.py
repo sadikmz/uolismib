@@ -141,6 +141,59 @@ class PAVprot:
         return dict(full_dict), dict(filtered_dict)
 
 
+    @classmethod
+    def filter_multi_transcripts(cls, full_dict: dict):
+        
+        """
+        Assign class_type (for visualization purpose):
+            0 → only em,c,k
+            1 → only em,c,k,j
+            2 → anything else
+            3 → single-transcript query genes (no multi-transcript)
+        """
+        
+        # Step 1: Group entries by query_gene
+        query_gene_to_entries = defaultdict(list)
+        for entries in full_dict.values():
+            for entry in entries:
+                query_gene_to_entries[entry['query_gene']].append(entry)
+        
+        # Step 2: Analyze each query_gene for multiple transcripts
+        
+        query_gene_info = {}
+        
+        for qgene, qentries in query_gene_to_entries.items():
+            if len(qentries) <=1:
+                # Only one transcript - no multi-transcript case
+                class_codes = {qentries[0]['class_code']}
+            else:
+                # Multiple transcripts
+                class_codes = {e['class_code'] for e in qentries}
+            
+            code_str = ';'.join(sorted(class_codes))
+            
+            # Assign class_type
+            if class_codes <= {'em','c','k'}:
+                ctype = '0'
+            elif class_codes <= {'em','c','k','j'}:
+                ctype = '1'
+            else:
+                ctype = '2'
+            
+            query_gene_info[qgene] = {'class_code_multi': code_str, 'class_type': ctype}
+            
+        # Step 3: Attach info back to entries
+        for entries in full_dict.values():
+            for entry in entries:
+                qgene = entry['query_gene']
+                # if qgene in query_gene_info:
+                    # entry.update(query_gene_info[qgene])
+                info = query_gene_info.get(qgene, {'class_code_multi': entry['class_code'], 'class_type': '3'})
+                entry['class_code_multi'] = info['class_code_multi']
+                entry['class_type'] = info['class_type']
+                
+        return full_dict 
+    
 class DiamondRunner:
     def __init__(self, threads: int = 40, output_prefix: str = "gffcompare"):
         self.threads = threads
@@ -271,7 +324,11 @@ def main():
         diamond = DiamondRunner(threads=args.diamond_threads, output_prefix=args.output_prefix)
         diamond_tsv_gz = diamond.diamond_blastp(ref_faa_path, qry_faa_path)
         data = diamond.enrich_blastp(data, diamond_tsv_gz)
+        
 
+    # Apply multi-transcript classification
+    data = PAVprot.filter_multi_transcripts(data)
+    
     # Output
     pavprot_out = os.path.join(os.getcwd(), 'pavprot_out')
     os.makedirs(pavprot_out, exist_ok=True)
