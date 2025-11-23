@@ -1,0 +1,12 @@
+##gff-version 3
+# Sample GFF3 file for testing
+NC_000001.11	RefSeq	gene	1000	2000	.	+	.	ID=gene-LOC100;locus_tag=LOC100
+NC_000001.11	RefSeq	mRNA	1000	2000	.	+	.	ID=rna-XM_001234;Parent=gene-LOC100
+NC_000001.11	RefSeq	CDS	1100	1900	.	+	0	ID=cds-XP_001234;Parent=rna-XM_001234;GenBank=XP_001234.1;protein_id=XP_001234.1;locus_tag=LOC100
+NC_000001.11	RefSeq	gene	3000	4000	.	+	.	ID=gene-LOC200;locus_tag=LOC200
+NC_000001.11	RefSeq	mRNA	3000	4000	.	+	.	ID=rna-XM_005678;Parent=gene-LOC200
+NC_000001.11	RefSeq	CDS	3100	3900	.	+	0	ID=cds-XP_005678;Parent=rna-XM_005678;protein_id=XP_005678.2;locus_tag=LOC200
+NC_000001.11	RefSeq	gene	5000	6000	.	+	.	ID=gene-LOC300;locus_tag=LOC300
+NC_000001.11	RefSeq	mRNA	5000	6000	.	+	.	ID=rna-XM_009999;Parent=gene-LOC300
+NC_000001.11	RefSeq	CDS	5100	5900	.	+	0	ID=cds-XP_009999;Parent=rna-XM_009999;locus_tag=LOC300
+NC_000001.11	RefSeq	exon	1100	1900	.	+	.	ID=exon1;Parent=rna-XM_001234
