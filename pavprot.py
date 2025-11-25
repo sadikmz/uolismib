@@ -341,7 +341,7 @@ def main():
         suffix = "_diamond_blastp.tsv" if args.run_diamond else ".tsv"
         output_file = os.path.join(pavprot_out, f"{args.output_prefix}{suffix}")
 
-    header = "ref_gene\tref_transcript\tquery_gene\tquery_transcript\tclass_code\texons"
+    header = "ref_gene\tref_transcript\tquery_gene\tquery_transcript\tclass_code\texons\tclass_code_multi\tclass_type"
     if args.run_diamond:
         header += "\tidentical_aa\tmismatched_aa\tindels_aa\taligned_aa"
 
@@ -350,7 +350,7 @@ def main():
         for entries in data.values():
             for e in entries:
                 exons = e.get('exons') if e.get('exons') is not None else '-'
-                base = f"{e['ref_gene']}\t{e['ref_transcript']}\t{e['query_gene']}\t{e['query_transcript']}\t{e['class_code']}\t{exons}"
+                base = f"{e['ref_gene']}\t{e['ref_transcript']}\t{e['query_gene']}\t{e['query_transcript']}\t{e['class_code']}\t{exons}\t{e['class_code_multi']}\t{e['class_type']}"
                 if args.run_diamond:
                     f.write(f"{base}\t{e.get('identical_aa', 0)}\t{e.get('mismatched_aa', 0)}\t"
                             f"{e.get('indels_aa', 0)}\t{e.get('aligned_aa', 0)}\n")
