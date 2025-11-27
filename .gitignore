@@ -209,4 +209,6 @@ __marimo__/
 # Temporary ignore of recently edited files
 tmp/
 local/
+.DS_Store
 # .vscode/
+uolocal/
