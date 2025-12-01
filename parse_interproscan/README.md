@@ -74,29 +74,41 @@ python parse_interproscan.py --parse results.json
 
 ### Mode 2: Run InterProScan and Parse
 
-Run InterProScan and parse the output:
+Run InterProScan and parse the output (uses input file basename by default):
 
 ```bash
 python parse_interproscan.py \
     --run \
     --input proteins.fasta \
-    --output results.tsv \
     --format TSV \
-    --cpu 8 \
-    --output-parsed parsed_results.json
+    --cpu 8
+# Creates: proteins.tsv (InterProScan output)
+# InterProScan runs with --iprlookup and --goterms enabled by default
 ```
 
-Run with GO terms and pathways (optional):
+Run with custom output basename:
 
 ```bash
 python parse_interproscan.py \
     --run \
     --input proteins.fasta \
-    --output results.tsv \
+    --output-base myanalysis \
+    --format TSV \
+    --cpu 8
+# Creates: myanalysis.tsv (InterProScan output)
+```
+
+Run with pathways (--iprlookup and --goterms are always included):
+
+```bash
+python parse_interproscan.py \
+    --run \
+    --input proteins.fasta \
+    --output-base results \
     --format TSV \
     --cpu 8 \
-    --goterms \
     --pathways
+# InterProScan runs with --iprlookup, --goterms, and --pathways
 ```
 
 Run with specific databases:
@@ -105,7 +117,7 @@ Run with specific databases:
 python parse_interproscan.py \
     --run \
     --input proteins.fasta \
-    --output results.tsv \
+    --output-base results \
     --databases Pfam,PRINTS,Gene3D \
     --cpu 4
 ```
@@ -175,31 +187,34 @@ python parse_interproscan.py \
 ### InterProScan Run Options (used with `--run`)
 
 - `-i, --input FILE`: Input protein FASTA file (required)
-- `-o, --output FILE`: Output file name (required)
+- `-b, --output-base NAME`: Output file basename (optional, default: basename of input file)
+  - InterProScan will append the format extension (e.g., `.tsv`, `.gff3`)
+  - Example: `-b myanalysis` with `-f TSV` creates `myanalysis.tsv`
 - `-f, --format {TSV,XML,JSON,GFF3}`: Output format (default: TSV)
 - `--cpu N`: Number of CPUs to use (default: 4)
 - `--databases DB`: Databases to search (default: all, or comma-separated list)
-- `--goterms`: Include GO term annotations (optional)
 - `--pathways`: Include pathway annotations (optional)
 
-**Note**: When `--goterms` and `--pathways` are used, InterProScan outputs 15-column TSV format (columns 14-15 contain GO terms and pathways)
+**Note**: `--iprlookup` and `--goterms` are **always included by default** when running InterProScan. This ensures GO term annotations and InterPro mappings are always available in the output.
 
 ### Analysis Options
 
 - `--longest-domain`: Select only the longest domain for each protein
 - `--domain-stats FILE`: Output file for domain length distribution (JSON)
-  - Default (with `--longest-domain`): `<input>_domain_distribution.json`
+  - Default (with `--longest-domain`): `<basename>_domain_distribution.json`
 - `--domain-stats-tsv FILE`: Output file for domain length distribution (TSV)
-  - Default (with `--longest-domain`): `<input>_domain_distribution.tsv`
+  - Default (with `--longest-domain`): `<basename>_domain_distribution.tsv`
 - `--output-parsed FILE`: Output file for parsed results (JSON, optional)
 - `--output-parsed-tsv FILE`: Output file for parsed results (TSV)
-  - Default (without `--longest-domain`): `<input>_parsed.tsv`
-  - Default (with `--longest-domain`): `<input>_longest_domains.tsv`
+  - Default (without `--longest-domain`): `<basename>_parsed.tsv`
+  - Default (with `--longest-domain`): `<basename>_longest_domains.tsv`
 
 **Note**:
+- `<basename>` refers to the InterProScan output file's basename (determined by `-b` option or input file)
 - Default output format is **TSV** (matches InterProScan format)
 - When `--longest-domain` is used without any output arguments, all output files are automatically generated with descriptive names
 - Use `--output-parsed` to also generate JSON output if needed
+- **All output files use the same basename** for consistent file organization
 
 ## TSV Format
 
@@ -331,24 +346,33 @@ This is useful for downstream analysis where you want a single representative do
 ### Complete Workflow
 
 ```bash
-# Step 1: Run InterProScan with GO terms and pathways (optional)
+# Step 1: Run InterProScan with custom basename
+# Note: --iprlookup and --goterms are included by default
 python parse_interproscan.py \
     --run \
     --input my_proteins.fasta \
-    --output interpro_results.tsv \
+    --output-base my_analysis \
     --format TSV \
     --cpu 8 \
-    --goterms \
     --pathways
+# Creates: my_analysis.tsv
 
 # Step 2: Parse and analyze (export to both JSON and TSV)
 python parse_interproscan.py \
-    --parse interpro_results.tsv \
+    --parse my_analysis.tsv \
     --longest-domain \
     --domain-stats domain_stats.json \
     --domain-stats-tsv domain_stats.tsv \
     --output-parsed final_results.json \
     --output-parsed-tsv final_results.tsv
+
+# Or use default basename (simpler):
+python parse_interproscan.py \
+    --run \
+    --input my_proteins.fasta \
+    --cpu 8 \
+    --pathways
+# Creates: my_proteins.tsv (automatically uses input basename)
 ```
 
 ### Parse Multiple Format Types
@@ -391,18 +415,47 @@ The script automatically detects input file format based on file extension:
 
 The detected format is displayed when parsing begins.
 
+### Basename Chaining
+
+**All output files use a consistent basename** determined by:
+1. **`--run` mode**: Uses `-b/--output-base` if provided, otherwise uses input file's basename
+2. **`--parse` mode**: Uses the parsed file's basename
+
+**Example 1: Run mode with default basename**
+```bash
+python parse_interproscan.py --run -i proteins.fasta --longest-domain
+```
+- Input basename: `proteins` (from `proteins.fasta`)
+- InterProScan output: `proteins.tsv`
+- All derivative outputs: `proteins_*.{json,tsv}`
+
+**Example 2: Run mode with custom basename**
+```bash
+python parse_interproscan.py --run -i proteins.fasta -b experiment_v1 --longest-domain
+```
+- Custom basename: `experiment_v1`
+- InterProScan output: `experiment_v1.tsv`
+- All derivative outputs: `experiment_v1_*.{json,tsv}`
+
+**Example 3: Parse mode**
+```bash
+python parse_interproscan.py --parse analysis.tsv --longest-domain
+```
+- Parse file basename: `analysis`
+- All outputs: `analysis_*.{json,tsv}`
+
 ### Automatic Filename Generation
 
-When output filenames are not explicitly provided, the script automatically generates descriptive filenames based on the input file:
+When output filenames are not explicitly provided, the script automatically generates descriptive filenames based on the basename:
 
 | Scenario | Output Files Generated |
 |----------|------------------------|
-| Simple parsing | `<input>_parsed.tsv` (default: TSV format) |
-| With `--longest-domain` | **Overall longest** (any database):<br>`<input>_longest_domains.json`<br>`<input>_longest_domains.tsv`<br>`<input>_domain_distribution.json`<br>`<input>_domain_distribution.tsv`<br>**InterPro-annotated** (IPR only):<br>`<input>_longest_domains_NotintAnn.json`<br>`<input>_longest_domains_NotintAnn.tsv`<br>`<input>_domain_distribution_NotintAnn.json`<br>`<input>_domain_distribution_NotintAnn.tsv` |
+| Simple parsing | `<basename>_parsed.tsv` (default: TSV format) |
+| With `--longest-domain` | **Overall longest** (any database):<br>`<basename>_longest_domains.json`<br>`<basename>_longest_domains.tsv`<br>`<basename>_domain_distribution.json`<br>`<basename>_domain_distribution.tsv`<br>**InterPro-annotated** (IPR only):<br>`<basename>_longest_domains_NotintAnn.json`<br>`<basename>_longest_domains_NotintAnn.tsv`<br>`<basename>_domain_distribution_NotintAnn.json`<br>`<basename>_domain_distribution_NotintAnn.tsv` |
 
 **Examples**:
-- Input: `results.tsv` → Output: `results_parsed.tsv` (TSV is default)
-- Input: `proteins.fasta` with `--longest-domain` → Outputs (8 files total):
+- Basename: `results` → Output: `results_parsed.tsv` (TSV is default)
+- Basename: `proteins` with `--longest-domain` → Outputs (8 files total):
   - Overall longest: `proteins_longest_domains.{json,tsv}`, `proteins_domain_distribution.{json,tsv}`
   - InterPro only: `proteins_longest_domains_NotintAnn.{json,tsv}`, `proteins_domain_distribution_NotintAnn.{json,tsv}`
 

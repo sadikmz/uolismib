@@ -460,9 +460,8 @@ def generate_default_filename(input_file: str, suffix: str, extension: str) -> s
 def run_interproscan(
     protein_file: str,
     cpu: int,
-    output_file: str,
+    output_base: str,
     output_format: str,
-    goterms: bool = False,
     pathways: bool = False,
     search_term: Optional[str] = None,
     databases: Optional[str] = None
@@ -473,9 +472,8 @@ def run_interproscan(
     Args:
         protein_file: Input FASTA file with protein sequences
         cpu: Number of CPUs to use
-        output_file: Output file name
+        output_base: Output file basename (set via -b option)
         output_format: Output format (TSV, XML, JSON, GFF3)
-        goterms: Include GO term annotations
         pathways: Include pathway annotations
         search_term: Optional search term filter
         databases: Databases to search (Option and default to all if unset, or comma-separated list)
@@ -487,15 +485,14 @@ def run_interproscan(
         'interproscan.sh',
         '-i', protein_file,
         '-cpu', str(cpu),
-        '-o', output_file,
-        '-f', output_format
+        '-b', output_base,
+        '-f', output_format,
+        '--iprlookup',
+        '--goterms'
     ]
 
-    if goterms:
-        cmd.append('-goterms')
-
     if pathways:
-        cmd.append('-pathways')
+        cmd.append('--pathways')
 
     if databases:
         cmd.extend(['-appl', databases])
@@ -540,24 +537,19 @@ def main():
         help='Number of CPUs to use for InterProScan (default: 4)'
     )
     parser.add_argument(
-        '-o', '--output',
-        help='Output file name (required if --run is used)'
+        '-b', '--output-base',
+        help='Output file basename for InterProScan (default: basename of input file). InterProScan will append format extension.'
     )
     parser.add_argument(
         '-f', '--format',
         choices=['TSV', 'XML', 'JSON', 'GFF3', 'tsv', 'xml', 'json', 'gff3'],
         default='TSV',
-        help='Output format (default: TSV)'
-    )
-    parser.add_argument(
-        '--goterms',
-        action='store_true',
-        help='Include GO term annotations'
+        help='Output format for InterProScan (default: TSV)'
     )
     parser.add_argument(
         '--pathways',
         action='store_true',
-        help='Include pathway annotations'
+        help='Include pathway annotations (Note: --iprlookup and --goterms are always included by default)'
     )
     parser.add_argument(
         '--databases',
@@ -579,35 +571,41 @@ def main():
     )
     parser.add_argument(
         '--domain-stats',
-        help='Output file for domain length distribution statistics (JSON). If not specified, defaults to <input>_domain_distribution.json'
+        help='Output file for domain length distribution statistics (JSON). If not specified, defaults to <basename>_domain_distribution.json'
     )
     parser.add_argument(
         '--domain-stats-tsv',
-        help='Output file for domain length distribution statistics (TSV). If not specified, defaults to <input>_domain_distribution.tsv'
+        help='Output file for domain length distribution statistics (TSV). If not specified, defaults to <basename>_domain_distribution.tsv'
     )
     parser.add_argument(
         '--output-parsed',
-        help='Output file for parsed results (JSON). If not specified, defaults to <input>_parsed.json'
+        help='Output file for parsed results (JSON). If not specified, defaults to <basename>_parsed.json'
     )
     parser.add_argument(
         '--output-parsed-tsv',
-        help='Output file for parsed results (TSV). If not specified, defaults to <input>_parsed.tsv'
+        help='Output file for parsed results (TSV). If not specified, defaults to <basename>_parsed.tsv'
     )
 
     args = parser.parse_args()
 
     # Validate arguments
     if args.run:
-        if not args.input or not args.output:
-            parser.error("--run requires --input and --output arguments")
+        if not args.input:
+            parser.error("--run requires --input argument")
+
+        # Determine output basename
+        if args.output_base:
+            output_base = args.output_base
+        else:
+            # Use basename of input file (without extension)
+            output_base = Path(args.input).stem
 
         # Run InterProScan
         success = run_interproscan(
             protein_file=args.input,
             cpu=args.cpu,
-            output_file=args.output,
+            output_base=output_base,
             output_format=args.format,
-            goterms=args.goterms,
             pathways=args.pathways,
             databases=args.databases
         )
@@ -615,8 +613,8 @@ def main():
         if not success:
             sys.exit(1)
 
-        # Set parse file to the output
-        parse_file = args.output
+        # Set parse file to the output (InterProScan appends format extension)
+        parse_file = f"{output_base}.{args.format.lower()}"
         parse_format = args.format.upper()
 
     elif args.parse:
