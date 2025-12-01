@@ -148,7 +148,7 @@ class InterProParser:
         return ipr_results, non_ipr_results, domain_stats
 
 
-def write_parsed_tsv(results: pd.DataFrame, filepath: str):
+def write_parsed_tsv(results: pd.DataFrame, filepath: str, include_header: bool = False):
     """
     Write standard parsed results to TSV file in 15-column format.
 
@@ -160,6 +160,7 @@ def write_parsed_tsv(results: pd.DataFrame, filepath: str):
     Args:
         results: DataFrame with results
         filepath: Output TSV file path
+        include_header: Include column headers in output (default: False)
     """
     # Define column order for standard output
     output_columns = [
@@ -169,17 +170,17 @@ def write_parsed_tsv(results: pd.DataFrame, filepath: str):
         'interpro_description', 'go_annotations', 'pathway_annotations'
     ]
 
-    # Write to TSV without header and index
+    # Write to TSV with optional header
     results[output_columns].to_csv(
         filepath,
         sep='\t',
-        header=False,
+        header=include_header,
         index=False,
         na_rep=''
     )
 
 
-def write_longest_results_tsv(results: pd.DataFrame, filepath: str):
+def write_longest_results_tsv(results: pd.DataFrame, filepath: str, include_header: bool = False):
     """
     Write longest domain results to TSV file in 18-column format.
 
@@ -194,6 +195,7 @@ def write_longest_results_tsv(results: pd.DataFrame, filepath: str):
     Args:
         results: DataFrame with results
         filepath: Output TSV file path
+        include_header: Include column headers in output (default: False)
     """
     # Define column order for output
     output_columns = [
@@ -204,11 +206,11 @@ def write_longest_results_tsv(results: pd.DataFrame, filepath: str):
         'longestDom', 'longestIPRdom', 'IPRorNot'
     ]
 
-    # Write to TSV without header and index
+    # Write to TSV with optional header
     results[output_columns].to_csv(
         filepath,
         sep='\t',
-        header=False,
+        header=include_header,
         index=False,
         na_rep=''
     )
@@ -371,6 +373,11 @@ def main():
         '--output-parsed-tsv',
         help='Output file for parsed results (TSV). If not specified, defaults to <basename>_parsed.tsv'
     )
+    parser.add_argument(
+        '--tsv-header',
+        action='store_true',
+        help='Include column headers in TSV output files (default: False)'
+    )
 
     args = parser.parse_args()
 
@@ -455,12 +462,12 @@ def main():
 
             # Save IPR results (main output)
             if len(ipr_results) > 0:
-                write_longest_results_tsv(ipr_results, output_ipr_tsv)
+                write_longest_results_tsv(ipr_results, output_ipr_tsv, args.tsv_header)
                 print(f"IPR proteins (longest IPR = overall longest) saved to {output_ipr_tsv}")
 
             # Save non-IPR results (separate file)
             if len(non_ipr_results) > 0:
-                write_longest_results_tsv(non_ipr_results, output_non_ipr_tsv)
+                write_longest_results_tsv(non_ipr_results, output_non_ipr_tsv, args.tsv_header)
                 print(f"Non-IPR proteins (longest IPR != overall longest) saved to {output_non_ipr_tsv}")
         else:
             # User specified some outputs explicitly
@@ -472,15 +479,15 @@ def main():
     if args.output_parsed_tsv:
         if args.longest_domain:
             # Write 18-column format with longest domain info
-            write_longest_results_tsv(results, args.output_parsed_tsv)
+            write_longest_results_tsv(results, args.output_parsed_tsv, args.tsv_header)
         else:
             # Write standard 15-column format
-            write_parsed_tsv(results, args.output_parsed_tsv)
+            write_parsed_tsv(results, args.output_parsed_tsv, args.tsv_header)
         print(f"Parsed results saved to {args.output_parsed_tsv}")
     elif not args.longest_domain and not output_any:
         # Auto-generate parsed output (TSV) when no specific output requested and no longest_domain
         output_parsed_tsv = generate_default_filename(parse_file, 'parsed', 'tsv')
-        write_parsed_tsv(results, output_parsed_tsv)
+        write_parsed_tsv(results, output_parsed_tsv, args.tsv_header)
         print(f"Parsed results saved to {output_parsed_tsv}")
 
     # Print summary
