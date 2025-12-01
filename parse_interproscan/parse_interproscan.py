@@ -361,11 +361,6 @@ def main():
 
     # Analysis options
     parser.add_argument(
-        '--longest-domain',
-        action='store_true',
-        help='Select only the longest domain for each protein'
-    )
-    parser.add_argument(
         '--domain-stats-tsv',
         help='Output file for domain length distribution statistics (TSV). If not specified, defaults to <basename>_domain_distribution.tsv'
     )
@@ -410,10 +405,7 @@ def main():
 
         # Set parse file to the output (InterProScan appends format extension)
         parse_file = f"{output_base}.{args.format.lower()}"
-
-        # Automatically enable longest-domain analysis for complete pipeline
-        args.longest_domain = True
-        print(f"\nAutomatically running longest domain analysis...")
+        print(f"\nRunning longest domain analysis...")
 
     elif args.parse:
         parse_file = args.parse
@@ -428,67 +420,52 @@ def main():
 
     print(f"Parsed {len(results)} entries")
 
-    # Apply longest domain filter if requested
-    domain_stats = None
-    non_ipr_results = None
+    # Apply longest domain filter (always enabled)
+    print("Selecting longest domain for each protein...")
+    ipr_results, non_ipr_results, domain_stats = interpro.longest_domain()
 
-    if args.longest_domain:
-        print("Selecting longest domain for each protein...")
-        ipr_results, non_ipr_results, domain_stats = interpro.longest_domain()
+    total_proteins = len(ipr_results) + len(non_ipr_results)
+    print(f"Filtered to {total_proteins} entries (one per protein)")
+    print(f"  - {len(ipr_results)} proteins: longest IPR domain is overall longest (IPRorNot=yes)")
+    print(f"  - {len(non_ipr_results)} proteins: longest IPR domain is NOT overall longest (IPRorNot=no)")
 
-        total_proteins = len(ipr_results) + len(non_ipr_results)
-        print(f"Filtered to {total_proteins} entries (one per protein)")
-        print(f"  - {len(ipr_results)} proteins: longest IPR domain is overall longest (IPRorNot=yes)")
-        print(f"  - {len(non_ipr_results)} proteins: longest IPR domain is NOT overall longest (IPRorNot=no)")
-
-        # Use ipr_results as the main results for backward compatibility
-        results = ipr_results
+    # Use ipr_results as the main results for backward compatibility
+    results = ipr_results
 
     # Determine if any output is needed
     output_any = args.domain_stats_tsv or args.output_parsed_tsv
 
-    # Save domain statistics if requested or if longest_domain was used
-    if domain_stats is not None:
-        # Generate default filenames if not specified
-        if args.longest_domain and not output_any:
-            # Auto-generate all TSV outputs when --longest-domain is used without explicit outputs
-            domain_stats_tsv = generate_default_filename(parse_file, 'domain_distribution', 'tsv')
-            output_ipr_tsv = generate_default_filename(parse_file, 'longest_domains', 'tsv')
-            output_non_ipr_tsv = generate_default_filename(parse_file, 'non_ipr', 'tsv')
+    # Save domain statistics and results
+    if not output_any:
+        # Auto-generate all TSV outputs when no explicit outputs specified
+        domain_stats_tsv = generate_default_filename(parse_file, 'domain_distribution', 'tsv')
+        output_ipr_tsv = generate_default_filename(parse_file, 'longest_domains', 'tsv')
+        output_non_ipr_tsv = generate_default_filename(parse_file, 'non_ipr', 'tsv')
 
-            # Save domain statistics (TSV)
-            write_domain_stats_tsv(domain_stats, domain_stats_tsv)
-            print(f"Domain statistics saved to {domain_stats_tsv}")
+        # Save domain statistics (TSV)
+        write_domain_stats_tsv(domain_stats, domain_stats_tsv)
+        print(f"Domain statistics saved to {domain_stats_tsv}")
 
-            # Save IPR results (main output)
-            if len(ipr_results) > 0:
-                write_longest_results_tsv(ipr_results, output_ipr_tsv, args.tsv_header)
-                print(f"IPR proteins (longest IPR = overall longest) saved to {output_ipr_tsv}")
+        # Save IPR results (main output)
+        if len(ipr_results) > 0:
+            write_longest_results_tsv(ipr_results, output_ipr_tsv, args.tsv_header)
+            print(f"IPR proteins (longest IPR = overall longest) saved to {output_ipr_tsv}")
 
-            # Save non-IPR results (separate file)
-            if len(non_ipr_results) > 0:
-                write_longest_results_tsv(non_ipr_results, output_non_ipr_tsv, args.tsv_header)
-                print(f"Non-IPR proteins (longest IPR != overall longest) saved to {output_non_ipr_tsv}")
-        else:
-            # User specified some outputs explicitly
-            if args.domain_stats_tsv:
-                write_domain_stats_tsv(domain_stats, args.domain_stats_tsv)
-                print(f"Domain statistics saved to {args.domain_stats_tsv}")
+        # Save non-IPR results (separate file)
+        if len(non_ipr_results) > 0:
+            write_longest_results_tsv(non_ipr_results, output_non_ipr_tsv, args.tsv_header)
+            print(f"Non-IPR proteins (longest IPR != overall longest) saved to {output_non_ipr_tsv}")
+    else:
+        # User specified some outputs explicitly
+        if args.domain_stats_tsv:
+            write_domain_stats_tsv(domain_stats, args.domain_stats_tsv)
+            print(f"Domain statistics saved to {args.domain_stats_tsv}")
 
-    # Save parsed results if requested
-    if args.output_parsed_tsv:
-        if args.longest_domain:
-            # Write 18-column format with longest domain info
+        # Save parsed results if requested
+        if args.output_parsed_tsv:
+            # Always write 18-column format with longest domain info
             write_longest_results_tsv(results, args.output_parsed_tsv, args.tsv_header)
-        else:
-            # Write standard 15-column format
-            write_parsed_tsv(results, args.output_parsed_tsv, args.tsv_header)
-        print(f"Parsed results saved to {args.output_parsed_tsv}")
-    elif not args.longest_domain and not output_any:
-        # Auto-generate parsed output (TSV) when no specific output requested and no longest_domain
-        output_parsed_tsv = generate_default_filename(parse_file, 'parsed', 'tsv')
-        write_parsed_tsv(results, output_parsed_tsv, args.tsv_header)
-        print(f"Parsed results saved to {output_parsed_tsv}")
+            print(f"Parsed results saved to {args.output_parsed_tsv}")
 
     # Print summary
     print("\nSummary:")
