@@ -148,6 +148,37 @@ class InterProParser:
         return ipr_results, non_ipr_results, domain_stats
 
 
+def write_parsed_tsv(results: pd.DataFrame, filepath: str):
+    """
+    Write standard parsed results to TSV file in 15-column format.
+
+    Output format is 15 columns (standard InterProScan format):
+    - Columns 1-13: Standard InterProScan fields
+    - Column 14: GO annotations
+    - Column 15: Pathway annotations
+
+    Args:
+        results: DataFrame with results
+        filepath: Output TSV file path
+    """
+    # Define column order for standard output
+    output_columns = [
+        'protein_accession', 'md5_digest', 'sequence_length', 'analysis',
+        'signature_accession', 'signature_description', 'start_location',
+        'stop_location', 'score', 'status', 'date', 'interpro_accession',
+        'interpro_description', 'go_annotations', 'pathway_annotations'
+    ]
+
+    # Write to TSV without header and index
+    results[output_columns].to_csv(
+        filepath,
+        sep='\t',
+        header=False,
+        index=False,
+        na_rep=''
+    )
+
+
 def write_longest_results_tsv(results: pd.DataFrame, filepath: str):
     """
     Write longest domain results to TSV file in 18-column format.
@@ -439,12 +470,17 @@ def main():
 
     # Save parsed results if requested
     if args.output_parsed_tsv:
-        write_longest_results_tsv(results, args.output_parsed_tsv)
+        if args.longest_domain:
+            # Write 18-column format with longest domain info
+            write_longest_results_tsv(results, args.output_parsed_tsv)
+        else:
+            # Write standard 15-column format
+            write_parsed_tsv(results, args.output_parsed_tsv)
         print(f"Parsed results saved to {args.output_parsed_tsv}")
     elif not args.longest_domain and not output_any:
         # Auto-generate parsed output (TSV) when no specific output requested and no longest_domain
         output_parsed_tsv = generate_default_filename(parse_file, 'parsed', 'tsv')
-        write_longest_results_tsv(results, output_parsed_tsv)
+        write_parsed_tsv(results, output_parsed_tsv)
         print(f"Parsed results saved to {output_parsed_tsv}")
 
     # Print summary
