@@ -1,30 +1,26 @@
 #!/usr/bin/env python3
 """
 InterProScan Output Parser
-Parses InterProScan output files (TSV, XML, JSON, GFF3) and optionally runs InterProScan.
+Parses InterProScan TSV output files and optionally runs InterProScan.
 """
 
 import argparse
 import subprocess
 import sys
-import json
-import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Dict, List, Tuple, Optional
-from collections import defaultdict
+from typing import Tuple
+import pandas as pd
 
 
 class InterProParser:
-    """Parser for InterProScan output files"""
+    """Parser for InterProScan TSV output files"""
 
     def __init__(self):
-        self.data = []
-        self.domain_lengths = defaultdict(list)
-        self.pathway_annotations = {}  # Store pathway annotations for future use
+        self.data = None
 
-    def parse_tsv(self, filepath: str) -> List[Dict]:
+    def parse_tsv(self, filepath: str) -> pd.DataFrame:
         """
-        Parse TSV format InterProScan output (15-column format).
+        Parse TSV format InterProScan output (15-column format) using pandas.
 
         Standard InterProScan TSV is always 15 columns:
         - Columns 1-13: Core annotation data
@@ -37,407 +33,168 @@ class InterProParser:
             filepath: Path to TSV file
 
         Returns:
-            List of dictionaries containing parsed data
-
-        Note:
-            - Pathway annotations are stored internally in self.pathway_annotations but excluded from output TSV
-            - GO annotations are included in output TSV if present (non-empty)
+            pandas DataFrame containing parsed data
         """
-        results = []
+        # Define column names for InterProScan TSV format
+        columns = [
+            'protein_accession', 'md5_digest', 'sequence_length', 'analysis',
+            'signature_accession', 'signature_description', 'start_location',
+            'stop_location', 'score', 'status', 'date', 'interpro_accession',
+            'interpro_description', 'go_annotations', 'pathway_annotations'
+        ]
 
-        with open(filepath, 'r') as f:
-            for line in f:
-                if line.startswith('#') or not line.strip():
-                    continue
+        # Read TSV file
+        df = pd.read_csv(
+            filepath,
+            sep='\t',
+            names=columns,
+            comment='#',
+            na_values='-',
+            keep_default_na=False,
+            dtype={
+                'protein_accession': str,
+                'md5_digest': str,
+                'sequence_length': 'Int64',  # Nullable integer
+                'analysis': str,
+                'signature_accession': str,
+                'signature_description': str,
+                'start_location': 'Int64',
+                'stop_location': 'Int64',
+                'score': str,
+                'status': str,
+                'date': str,
+                'interpro_accession': str,
+                'interpro_description': str,
+                'go_annotations': str,
+                'pathway_annotations': str
+            }
+        )
 
-                fields = line.strip().split('\t')
+        # Replace NaN with empty strings
+        df = df.fillna('')
 
-                # InterProScan outputs 15 columns (older versions may have 11-13)
-                if len(fields) < 11:
-                    continue
+        self.data = df
+        return df
 
-                # Helper function to handle dash values
-                def parse_field(field, default=''):
-                    return '' if field == '-' else field
-
-                entry = {
-                    'protein_accession': fields[0],
-                    'md5_digest': parse_field(fields[1]),
-                    'sequence_length': int(fields[2]),
-                    'analysis': fields[3],
-                    'signature_accession': fields[4],
-                    'signature_description': parse_field(fields[5] if len(fields) > 5 else ''),
-                    'start_location': int(fields[6]),
-                    'stop_location': int(fields[7]),
-                    'score': parse_field(fields[8]),
-                    'status': parse_field(fields[9]),
-                    'date': parse_field(fields[10]),
-                    'interpro_accession': parse_field(fields[11] if len(fields) > 11 else ''),
-                    'interpro_description': parse_field(fields[12] if len(fields) > 12 else ''),
-                }
-
-                # Parse GO annotations (column 14) - always present in 15-column format
-                if len(fields) > 13:
-                    go_value = parse_field(fields[13])
-                    if go_value:
-                        entry['go_annotations'] = go_value
-
-                # Parse pathway annotations (column 15) - always present in 15-column format
-                # Store internally only, not included in output TSV
-                if len(fields) > 14:
-                    pathway_value = parse_field(fields[14])
-                    if pathway_value:
-                        protein_acc = entry['protein_accession']
-                        signature_acc = entry['signature_accession']
-
-                        # Store in internal dictionary for future use
-                        key = f"{protein_acc}_{signature_acc}"
-                        if key not in self.pathway_annotations:
-                            self.pathway_annotations[key] = pathway_value
-
-                results.append(entry)
-
-        self.data = results
-        return results
-
-    def parse_gff3(self, filepath: str) -> List[Dict]:
-        """
-        Parse GFF3 format InterProScan output.
-
-        Args:
-            filepath: Path to GFF3 file
-
-        Returns:
-            List of dictionaries containing parsed data
-        """
-        results = []
-
-        with open(filepath, 'r') as f:
-            for line in f:
-                if line.startswith('#') or not line.strip():
-                    continue
-
-                fields = line.strip().split('\t')
-
-                if len(fields) < 9:
-                    continue
-
-                # Parse attributes column
-                attributes = {}
-                for attr in fields[8].split(';'):
-                    if '=' in attr:
-                        key, value = attr.split('=', 1)
-                        attributes[key] = value
-
-                entry = {
-                    'protein_accession': fields[0],
-                    'source': fields[1],
-                    'feature_type': fields[2],
-                    'start_location': int(fields[3]),
-                    'stop_location': int(fields[4]),
-                    'score': fields[5],
-                    'strand': fields[6],
-                    'phase': fields[7],
-                    'attributes': attributes
-                }
-
-                results.append(entry)
-
-        self.data = results
-        return results
-
-    def parse_xml(self, filepath: str) -> List[Dict]:
-        """
-        Parse XML format InterProScan output.
-
-        Args:
-            filepath: Path to XML file
-
-        Returns:
-            List of dictionaries containing parsed data
-        """
-        results = []
-
-        try:
-            tree = ET.parse(filepath)
-            root = tree.getroot()
-
-            # Handle different XML structures
-            # This is a basic implementation - adjust based on actual XML structure
-            for protein in root.findall('.//protein'):
-                protein_acc = protein.get('id', '')
-
-                for match in protein.findall('.//match'):
-                    entry = {
-                        'protein_accession': protein_acc,
-                        'signature_accession': match.get('id', ''),
-                        'signature_description': match.get('name', ''),
-                    }
-
-                    # Extract location information
-                    for location in match.findall('.//location'):
-                        entry['start_location'] = int(location.get('start', 0))
-                        entry['stop_location'] = int(location.get('end', 0))
-                        entry['score'] = location.get('score', '')
-
-                    results.append(entry)
-
-        except ET.ParseError as e:
-            print(f"Error parsing XML file: {e}", file=sys.stderr)
-            return []
-
-        self.data = results
-        return results
-
-    def parse_json(self, filepath: str) -> List[Dict]:
-        """
-        Parse JSON format InterProScan output.
-
-        Args:
-            filepath: Path to JSON file
-
-        Returns:
-            List of dictionaries containing parsed data
-        """
-        results = []
-
-        try:
-            with open(filepath, 'r') as f:
-                data = json.load(f)
-
-            # Handle different JSON structures
-            # Adjust based on actual JSON structure
-            if isinstance(data, dict) and 'results' in data:
-                data = data['results']
-
-            if isinstance(data, list):
-                for entry in data:
-                    if isinstance(entry, dict):
-                        # Extract relevant fields
-                        parsed_entry = {
-                            'protein_accession': entry.get('xref', [{}])[0].get('id', '') if entry.get('xref') else '',
-                            'sequence_length': entry.get('sequence-length', 0),
-                        }
-
-                        # Extract matches
-                        for match in entry.get('matches', []):
-                            match_entry = parsed_entry.copy()
-                            match_entry['signature_accession'] = match.get('signature', {}).get('accession', '')
-                            match_entry['signature_description'] = match.get('signature', {}).get('name', '')
-
-                            # Extract locations
-                            for location in match.get('locations', []):
-                                loc_entry = match_entry.copy()
-                                loc_entry['start_location'] = location.get('start', 0)
-                                loc_entry['stop_location'] = location.get('end', 0)
-                                loc_entry['score'] = location.get('score', '')
-                                results.append(loc_entry)
-
-        except json.JSONDecodeError as e:
-            print(f"Error parsing JSON file: {e}", file=sys.stderr)
-            return []
-
-        self.data = results
-        return results
-
-    def longest_domain(self) -> Tuple[List[Dict], Dict]:
+    def longest_domain(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         Select proteins with longest domain when multiple domains match.
 
         Returns:
             Tuple of (filtered_results, domain_length_distribution)
-            - filtered_results: List with only longest domain per protein
-            - domain_length_distribution: Dict mapping protein to list of domain info
+            - filtered_results: DataFrame with only longest domain per protein
+            - domain_length_distribution: DataFrame with all domains ranked by length
         """
-        # Group by protein accession
-        protein_domains = defaultdict(list)
+        df = self.data.copy()
 
-        for entry in self.data:
-            protein_acc = entry.get('protein_accession', '')
-            if not protein_acc:
-                continue
+        # Calculate domain length
+        df['domain_length'] = df['stop_location'] - df['start_location'] + 1
 
-            # Calculate domain coverage
-            start = entry.get('start_location', 0)
-            stop = entry.get('stop_location', 0)
-            domain_length = stop - start + 1
+        # Get domain name (prefer description, fallback to accession)
+        df['domain_name'] = df['signature_description'].where(
+            df['signature_description'] != '',
+            df['signature_accession']
+        )
 
-            domain_info = {
-                'domain_name': entry.get('signature_description', entry.get('signature_accession', '')),
-                'length': domain_length,
-                'score': entry.get('score', ''),
-                'start': start,
-                'stop': stop,
-                'entry': entry
-            }
+        # Find longest domain for each protein (overall)
+        idx_longest = df.groupby('protein_accession')['domain_length'].idxmax()
+        longest_df = df.loc[idx_longest].copy()
 
-            protein_domains[protein_acc].append(domain_info)
+        # Add longestDom column (overall longest domain)
+        longest_df['longestDom'] = longest_df['domain_name']
 
-        # Select longest domain for each protein
-        longest_results = []
-        domain_length_dist = {}
+        # Find longest IPR domain for each protein
+        ipr_df = df[df['interpro_accession'].str.startswith('IPR', na=False)].copy()
+        if len(ipr_df) > 0:
+            idx_longest_ipr = ipr_df.groupby('protein_accession')['domain_length'].idxmax()
+            longest_ipr_df = ipr_df.loc[idx_longest_ipr][['protein_accession', 'domain_name']].copy()
+            longest_ipr_df.rename(columns={'domain_name': 'longestIPRdom'}, inplace=True)
 
-        for protein_acc, domains in protein_domains.items():
-            # Sort by length (descending)
-            sorted_domains = sorted(domains, key=lambda x: x['length'], reverse=True)
+            # Merge with main results
+            longest_df = longest_df.merge(longest_ipr_df, on='protein_accession', how='left')
+        else:
+            longest_df['longestIPRdom'] = ''
 
-            # Keep the longest domain
-            longest_results.append(sorted_domains[0]['entry'])
+        # Fill NaN in longestIPRdom with empty string (for proteins without IPR domains)
+        longest_df['longestIPRdom'] = longest_df['longestIPRdom'].fillna('')
 
-            # Store all domain lengths for this protein
-            domain_length_dist[protein_acc] = [
-                {
-                    'domain': d['domain_name'],
-                    'length': d['length'],
-                    'score': d['score'],
-                    'start': d['start'],
-                    'stop': d['stop']
-                }
-                for d in sorted_domains
-            ]
+        # Add IPRorNot column (last column)
+        longest_df['IPRorNot'] = longest_df['interpro_accession'].apply(
+            lambda x: 'yes' if str(x).startswith('IPR') else 'no'
+        )
 
-        return longest_results, domain_length_dist
+        # Create domain statistics DataFrame
+        domain_stats = df.sort_values(
+            ['protein_accession', 'domain_length'],
+            ascending=[True, False]
+        ).copy()
 
-    def longest_interpro_domain(self) -> Tuple[List[Dict], Dict]:
-        """
-        Select proteins with longest InterPro-annotated domain (IPR prefix).
-        Only considers domains with interpro_accession starting with 'IPR'.
+        # Add rank within each protein
+        domain_stats['rank'] = domain_stats.groupby('protein_accession').cumcount() + 1
 
-        Returns:
-            Tuple of (filtered_results, domain_length_distribution)
-            - filtered_results: List with only longest InterPro domain per protein
-            - domain_length_distribution: Dict mapping protein to list of InterPro domain info
-        """
-        # Group by protein accession, filter only InterPro annotated domains
-        protein_interpro_domains = defaultdict(list)
+        # Select relevant columns for stats
+        domain_stats = domain_stats[['protein_accession', 'domain_name', 'domain_length',
+            'score', 'start_location', 'stop_location', 'rank']].rename(columns={'start_location': 'start','stop_location': 'stop', 'domain_length': 'length','domain_name': 'domain'})
 
-        for entry in self.data:
-            protein_acc = entry.get('protein_accession', '')
-            interpro_acc = entry.get('interpro_accession', '')
-
-            if not protein_acc:
-                continue
-
-            # Only include entries with InterPro annotation (IPR prefix)
-            if not interpro_acc or not interpro_acc.startswith('IPR'):
-                continue
-
-            # Calculate domain coverage
-            start = entry.get('start_location', 0)
-            stop = entry.get('stop_location', 0)
-            domain_length = stop - start + 1
-
-            domain_info = {
-                'domain_name': entry.get('signature_description', entry.get('signature_accession', '')),
-                'interpro_accession': interpro_acc,
-                'interpro_description': entry.get('interpro_description', ''),
-                'length': domain_length,
-                'score': entry.get('score', ''),
-                'start': start,
-                'stop': stop,
-                'entry': entry
-            }
-
-            protein_interpro_domains[protein_acc].append(domain_info)
-
-        # Select longest InterPro domain for each protein
-        longest_interpro_results = []
-        interpro_domain_length_dist = {}
-
-        for protein_acc, domains in protein_interpro_domains.items():
-            # Sort by length (descending)
-            sorted_domains = sorted(domains, key=lambda x: x['length'], reverse=True)
-
-            # Keep the longest InterPro domain
-            longest_interpro_results.append(sorted_domains[0]['entry'])
-
-            # Store all InterPro domain lengths for this protein
-            interpro_domain_length_dist[protein_acc] = [
-                {
-                    'domain': d['domain_name'],
-                    'interpro_accession': d['interpro_accession'],
-                    'interpro_description': d['interpro_description'],
-                    'length': d['length'],
-                    'score': d['score'],
-                    'start': d['start'],
-                    'stop': d['stop']
-                }
-                for d in sorted_domains
-            ]
-
-        return longest_interpro_results, interpro_domain_length_dist
+        return longest_df, domain_stats
 
 
-def write_longest_results_tsv(results: List[Dict], filepath: str):
+def write_longest_results_tsv(results: pd.DataFrame, filepath: str):
     """
-    Write longest domain results to TSV file in 14-column format.
+    Write longest domain results to TSV file in 18-column format.
 
-    Output format is 13-14 columns:
+    Output format is 18 columns:
     - Columns 1-13: Standard InterProScan fields
-    - Column 14: GO annotations (included if present in data)
-    - Pathway annotations (column 15) are EXCLUDED from output
+    - Column 14: GO annotations
+    - Column 15: Pathway annotations
+    - Column 16: longestDom (name of longest domain overall)
+    - Column 17: longestIPRdom (name of longest IPR domain)
+    - Column 18: IPRorNot (yes/no if domain starts with IPR)
 
     Args:
-        results: List of result dictionaries
+        results: DataFrame with results
         filepath: Output TSV file path
-
-    Note:
-        - Pathway annotations are excluded from TSV output but stored internally
-        - GO annotations are included if present in the entry dictionary
     """
-    with open(filepath, 'w') as f:
-        for entry in results:
-            # Columns 1-13: Standard fields
-            row = [
-                str(entry.get('protein_accession', '')),
-                str(entry.get('md5_digest', '')),
-                str(entry.get('sequence_length', '')),
-                str(entry.get('analysis', '')),
-                str(entry.get('signature_accession', '')),
-                str(entry.get('signature_description', '')),
-                str(entry.get('start_location', '')),
-                str(entry.get('stop_location', '')),
-                str(entry.get('score', '')),
-                str(entry.get('status', '')),
-                str(entry.get('date', '')),
-                str(entry.get('interpro_accession', '')),
-                str(entry.get('interpro_description', '')),
-            ]
+    # Define column order for output
+    output_columns = [
+        'protein_accession', 'md5_digest', 'sequence_length', 'analysis',
+        'signature_accession', 'signature_description', 'start_location',
+        'stop_location', 'score', 'status', 'date', 'interpro_accession',
+        'interpro_description', 'go_annotations', 'pathway_annotations',
+        'longestDom', 'longestIPRdom', 'IPRorNot'
+    ]
 
-            # Column 14: GO annotations (only if present in entry)
-            if 'go_annotations' in entry and entry['go_annotations']:
-                row.append(str(entry['go_annotations']))
-
-            # NOTE: Pathway annotations (column 15) are intentionally excluded from output
-            # They are stored in InterProParser.pathway_annotations for future use
-
-            f.write('\t'.join(row) + '\n')
+    # Write to TSV without header and index
+    results[output_columns].to_csv(
+        filepath,
+        sep='\t',
+        header=False,
+        index=False,
+        na_rep=''
+    )
 
 
-def write_domain_stats_tsv(domain_stats: Dict, filepath: str):
+def write_domain_stats_tsv(domain_stats: pd.DataFrame, filepath: str):
     """
     Write domain length distribution to TSV file.
 
     Args:
-        domain_stats: Dictionary mapping protein to list of domain info
+        domain_stats: DataFrame with domain statistics
         filepath: Output TSV file path
     """
-    with open(filepath, 'w') as f:
-        # Write header
-        f.write('protein_accession\tdomain_name\tdomain_length\tscore\tstart\tstop\trank\n')
+    # Rename columns to match expected output format
+    output_df = domain_stats.rename(columns={
+        'domain': 'domain_name',
+        'length': 'domain_length'
+    })
 
-        for protein_acc, domains in sorted(domain_stats.items()):
-            for rank, domain in enumerate(domains, start=1):
-                row = [
-                    str(protein_acc),
-                    str(domain['domain']),
-                    str(domain['length']),
-                    str(domain['score']),
-                    str(domain['start']),
-                    str(domain['stop']),
-                    str(rank)
-                ]
-                f.write('\t'.join(row) + '\n')
+    # Write to TSV with header
+    output_df.to_csv(
+        filepath,
+        sep='\t',
+        index=False,
+        na_rep=''
+    )
 
 
 def generate_default_filename(input_file: str, suffix: str, extension: str) -> str:
@@ -463,8 +220,7 @@ def run_interproscan(
     output_base: str,
     output_format: str,
     pathways: bool = False,
-    search_term: Optional[str] = None,
-    databases: Optional[str] = None
+    databases: str = None
 ) -> bool:
     """
     Run InterProScan on protein sequences.
@@ -475,8 +231,7 @@ def run_interproscan(
         output_base: Output file basename (set via -b option)
         output_format: Output format (TSV, XML, JSON, GFF3)
         pathways: Include pathway annotations
-        search_term: Optional search term filter
-        databases: Databases to search (Option and default to all if unset, or comma-separated list)
+        databases: Databases to search (default to all if unset, or comma-separated list)
 
     Returns:
         True if successful, False otherwise
@@ -515,7 +270,7 @@ def run_interproscan(
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Parse InterProScan output or run InterProScan and parse results'
+        description='Parse InterProScan TSV output or run InterProScan and parse results'
     )
 
     # Mode selection
@@ -553,14 +308,13 @@ def main():
     )
     parser.add_argument(
         '--databases',
-        # default='all',
         help='Databases to search (default to all if unset, or comma-separated list)'
     )
 
     # Parsing arguments
     parser.add_argument(
         '--parse',
-        help='InterProScan output file to parse (format auto-detected from file extension)'
+        help='InterProScan TSV output file to parse'
     )
 
     # Analysis options
@@ -570,16 +324,8 @@ def main():
         help='Select only the longest domain for each protein'
     )
     parser.add_argument(
-        '--domain-stats',
-        help='Output file for domain length distribution statistics (JSON). If not specified, defaults to <basename>_domain_distribution.json'
-    )
-    parser.add_argument(
         '--domain-stats-tsv',
         help='Output file for domain length distribution statistics (TSV). If not specified, defaults to <basename>_domain_distribution.tsv'
-    )
-    parser.add_argument(
-        '--output-parsed',
-        help='Output file for parsed results (JSON). If not specified, defaults to <basename>_parsed.json'
     )
     parser.add_argument(
         '--output-parsed-tsv',
@@ -601,6 +347,8 @@ def main():
             output_base = Path(args.input).stem
 
         # Run InterProScan
+        print(f"Running complete InterProScan pipeline for: {args.input}")
+        print(f"Output basename: {output_base}")
         success = run_interproscan(
             protein_file=args.input,
             cpu=args.cpu,
@@ -615,162 +363,93 @@ def main():
 
         # Set parse file to the output (InterProScan appends format extension)
         parse_file = f"{output_base}.{args.format.lower()}"
-        parse_format = args.format.upper()
+
+        # Automatically enable longest-domain analysis for complete pipeline
+        args.longest_domain = True
+        print(f"\nAutomatically running longest domain analysis...")
 
     elif args.parse:
         parse_file = args.parse
-
-        # Auto-detect format from file extension
-        ext = Path(parse_file).suffix.lower()
-        format_map = {
-            '.tsv': 'TSV',
-            '.txt': 'TSV',
-            '.xml': 'XML',
-            '.json': 'JSON',
-            '.gff3': 'GFF3',
-            '.gff': 'GFF3'
-        }
-        parse_format = format_map.get(ext, 'TSV')
-        print(f"Auto-detected format from extension '{ext}': {parse_format}")
+        print(f"Parsing TSV file: {parse_file}")
 
     else:
         parser.error("Either --run or --parse must be specified")
 
-    # Parse the file
-    print(f"Parsing {parse_format} file: {parse_file}")
+    # Parse the TSV file
     interpro = InterProParser()
-
-    if parse_format == 'TSV':
-        results = interpro.parse_tsv(parse_file)
-    elif parse_format == 'GFF3':
-        results = interpro.parse_gff3(parse_file)
-    elif parse_format == 'XML':
-        results = interpro.parse_xml(parse_file)
-    elif parse_format == 'JSON':
-        results = interpro.parse_json(parse_file)
-    else:
-        print(f"Unsupported format: {parse_format}", file=sys.stderr)
-        sys.exit(1)
+    results = interpro.parse_tsv(parse_file)
 
     print(f"Parsed {len(results)} entries")
 
     # Apply longest domain filter if requested
     domain_stats = None
-    interpro_domain_stats = None
-    interpro_results = None
 
     if args.longest_domain:
         print("Selecting longest domain for each protein...")
         results, domain_stats = interpro.longest_domain()
         print(f"Filtered to {len(results)} entries (one per protein)")
 
-        # Also get longest InterPro-annotated domain
-        print("Selecting longest InterPro-annotated domain for each protein...")
-        interpro_results, interpro_domain_stats = interpro.longest_interpro_domain()
-        if interpro_results:
-            print(f"Filtered to {len(interpro_results)} entries with InterPro annotation (IPR prefix)")
-        else:
-            print("No InterPro-annotated domains found (no entries with IPR prefix)")
+        # Count proteins with IPR annotations
+        ipr_count = (results['IPRorNot'] == 'yes').sum()
+        print(f"  - {ipr_count} proteins have InterPro annotations (IPR prefix)")
+        print(f"  - {len(results) - ipr_count} proteins do not have InterPro annotations")
 
     # Determine if any output is needed
-    output_any = args.domain_stats or args.domain_stats_tsv or args.output_parsed or args.output_parsed_tsv
+    output_any = args.domain_stats_tsv or args.output_parsed_tsv
 
     # Save domain statistics if requested or if longest_domain was used
-    if domain_stats:
+    if domain_stats is not None:
         # Generate default filenames if not specified
         if args.longest_domain and not output_any:
-            # Auto-generate all outputs when --longest-domain is used without explicit outputs
-            domain_stats_json = generate_default_filename(parse_file, 'domain_distribution', 'json')
+            # Auto-generate all TSV outputs when --longest-domain is used without explicit outputs
             domain_stats_tsv = generate_default_filename(parse_file, 'domain_distribution', 'tsv')
-            output_parsed_json = generate_default_filename(parse_file, 'longest_domains', 'json')
             output_parsed_tsv = generate_default_filename(parse_file, 'longest_domains', 'tsv')
-
-            # Save domain statistics (JSON)
-            with open(domain_stats_json, 'w') as f:
-                json.dump(domain_stats, f, indent=2)
-            print(f"Domain statistics (JSON) saved to {domain_stats_json}")
 
             # Save domain statistics (TSV)
             write_domain_stats_tsv(domain_stats, domain_stats_tsv)
-            print(f"Domain statistics (TSV) saved to {domain_stats_tsv}")
-
-            # Save parsed results (JSON)
-            with open(output_parsed_json, 'w') as f:
-                json.dump(results, f, indent=2)
-            print(f"Longest domains (JSON) saved to {output_parsed_json}")
+            print(f"Domain statistics saved to {domain_stats_tsv}")
 
             # Save parsed results (TSV)
             write_longest_results_tsv(results, output_parsed_tsv)
-            print(f"Longest domains (TSV) saved to {output_parsed_tsv}")
-
-            # Save InterPro-annotated results if available
-            if interpro_results and interpro_domain_stats:
-                interpro_domain_stats_json = generate_default_filename(parse_file, 'domain_distribution_NotintAnn', 'json')
-                interpro_domain_stats_tsv = generate_default_filename(parse_file, 'domain_distribution_NotintAnn', 'tsv')
-                interpro_output_parsed_json = generate_default_filename(parse_file, 'longest_domains_NotintAnn', 'json')
-                interpro_output_parsed_tsv = generate_default_filename(parse_file, 'longest_domains_NotintAnn', 'tsv')
-
-                # Save InterPro domain statistics (JSON)
-                with open(interpro_domain_stats_json, 'w') as f:
-                    json.dump(interpro_domain_stats, f, indent=2)
-                print(f"InterPro domain statistics (JSON) saved to {interpro_domain_stats_json}")
-
-                # Save InterPro domain statistics (TSV)
-                write_domain_stats_tsv(interpro_domain_stats, interpro_domain_stats_tsv)
-                print(f"InterPro domain statistics (TSV) saved to {interpro_domain_stats_tsv}")
-
-                # Save InterPro parsed results (JSON)
-                with open(interpro_output_parsed_json, 'w') as f:
-                    json.dump(interpro_results, f, indent=2)
-                print(f"Longest InterPro domains (JSON) saved to {interpro_output_parsed_json}")
-
-                # Save InterPro parsed results (TSV)
-                write_longest_results_tsv(interpro_results, interpro_output_parsed_tsv)
-                print(f"Longest InterPro domains (TSV) saved to {interpro_output_parsed_tsv}")
+            print(f"Longest domains saved to {output_parsed_tsv}")
         else:
             # User specified some outputs explicitly
-            if args.domain_stats:
-                with open(args.domain_stats, 'w') as f:
-                    json.dump(domain_stats, f, indent=2)
-                print(f"Domain statistics (JSON) saved to {args.domain_stats}")
-
             if args.domain_stats_tsv:
                 write_domain_stats_tsv(domain_stats, args.domain_stats_tsv)
-                print(f"Domain statistics (TSV) saved to {args.domain_stats_tsv}")
+                print(f"Domain statistics saved to {args.domain_stats_tsv}")
 
     # Save parsed results if requested
-    if args.output_parsed:
-        with open(args.output_parsed, 'w') as f:
-            json.dump(results, f, indent=2)
-        print(f"Parsed results (JSON) saved to {args.output_parsed}")
-
     if args.output_parsed_tsv:
         write_longest_results_tsv(results, args.output_parsed_tsv)
-        print(f"Parsed results (TSV) saved to {args.output_parsed_tsv}")
+        print(f"Parsed results saved to {args.output_parsed_tsv}")
     elif not args.longest_domain and not output_any:
         # Auto-generate parsed output (TSV) when no specific output requested and no longest_domain
         output_parsed_tsv = generate_default_filename(parse_file, 'parsed', 'tsv')
         write_longest_results_tsv(results, output_parsed_tsv)
-        print(f"Parsed results (TSV) saved to {output_parsed_tsv}")
+        print(f"Parsed results saved to {output_parsed_tsv}")
 
     # Print summary
     print("\nSummary:")
     print(f"Total entries: {len(results)}")
 
-    if results:
+    if len(results) > 0:
         # Count unique proteins
-        unique_proteins = set(r.get('protein_accession', '') for r in results)
-        print(f"Unique proteins: {len(unique_proteins)}")
+        unique_proteins = results['protein_accession'].nunique()
+        print(f"Unique proteins: {unique_proteins}")
 
         # Count analyses/databases
-        analyses = defaultdict(int)
-        for r in results:
-            analysis = r.get('analysis', r.get('source', 'Unknown'))
-            analyses[analysis] += 1
+        if 'analysis' in results.columns:
+            analysis_col = 'analysis'
+        elif 'source' in results.columns:
+            analysis_col = 'source'
+        else:
+            analysis_col = None
 
-        print("\nMatches by database:")
-        for analysis, count in sorted(analyses.items(), key=lambda x: x[1], reverse=True):
-            print(f"  {analysis}: {count}")
+        if analysis_col:
+            analyses = results[analysis_col].value_counts().to_dict()
+            print("\nMatches by database:")
+            for analysis, count in sorted(analyses.items(), key=lambda x: x[1], reverse=True):
+                print(f"  {analysis}: {count}")
 
 
 if __name__ == '__main__':
