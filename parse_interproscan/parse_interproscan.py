@@ -76,13 +76,16 @@ class InterProParser:
         self.data = df
         return df
 
-    def longest_domain(self) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    def longest_domain(self) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """
         Select proteins with longest domain when multiple domains match.
+        Splits results into IPR and non-IPR proteins based on whether
+        the longest IPR domain matches the overall longest domain.
 
         Returns:
-            Tuple of (filtered_results, domain_length_distribution)
-            - filtered_results: DataFrame with only longest domain per protein
+            Tuple of (ipr_results, non_ipr_results, domain_length_distribution)
+            - ipr_results: Proteins where longest IPR domain IS the overall longest (IPRorNot="yes")
+            - non_ipr_results: Proteins where longest IPR domain is NOT the overall longest (IPRorNot="no")
             - domain_length_distribution: DataFrame with all domains ranked by length
         """
         df = self.data.copy()
@@ -118,10 +121,16 @@ class InterProParser:
         # Fill NaN in longestIPRdom with empty string (for proteins without IPR domains)
         longest_df['longestIPRdom'] = longest_df['longestIPRdom'].fillna('')
 
-        # Add IPRorNot column (last column)
-        longest_df['IPRorNot'] = longest_df['interpro_accession'].apply(
-            lambda x: 'yes' if str(x).startswith('IPR') else 'no'
+        # Add IPRorNot column: "yes" if longestIPRdom matches longestDom, "no" otherwise
+        # This tracks whether the longest IPR domain is also the overall longest domain
+        longest_df['IPRorNot'] = longest_df.apply(
+            lambda row: 'yes' if row['longestIPRdom'] != '' and row['longestIPRdom'] == row['longestDom'] else 'no',
+            axis=1
         )
+
+        # Split into IPR and non-IPR results
+        ipr_results = longest_df[longest_df['IPRorNot'] == 'yes'].copy()
+        non_ipr_results = longest_df[longest_df['IPRorNot'] == 'no'].copy()
 
         # Create domain statistics DataFrame
         domain_stats = df.sort_values(
@@ -136,7 +145,7 @@ class InterProParser:
         domain_stats = domain_stats[['protein_accession', 'domain_name', 'domain_length',
             'score', 'start_location', 'stop_location', 'rank']].rename(columns={'start_location': 'start','stop_location': 'stop', 'domain_length': 'length','domain_name': 'domain'})
 
-        return longest_df, domain_stats
+        return ipr_results, non_ipr_results, domain_stats
 
 
 def write_longest_results_tsv(results: pd.DataFrame, filepath: str):
@@ -383,16 +392,19 @@ def main():
 
     # Apply longest domain filter if requested
     domain_stats = None
+    non_ipr_results = None
 
     if args.longest_domain:
         print("Selecting longest domain for each protein...")
-        results, domain_stats = interpro.longest_domain()
-        print(f"Filtered to {len(results)} entries (one per protein)")
+        ipr_results, non_ipr_results, domain_stats = interpro.longest_domain()
 
-        # Count proteins with IPR annotations
-        ipr_count = (results['IPRorNot'] == 'yes').sum()
-        print(f"  - {ipr_count} proteins have InterPro annotations (IPR prefix)")
-        print(f"  - {len(results) - ipr_count} proteins do not have InterPro annotations")
+        total_proteins = len(ipr_results) + len(non_ipr_results)
+        print(f"Filtered to {total_proteins} entries (one per protein)")
+        print(f"  - {len(ipr_results)} proteins: longest IPR domain is overall longest (IPRorNot=yes)")
+        print(f"  - {len(non_ipr_results)} proteins: longest IPR domain is NOT overall longest (IPRorNot=no)")
+
+        # Use ipr_results as the main results for backward compatibility
+        results = ipr_results
 
     # Determine if any output is needed
     output_any = args.domain_stats_tsv or args.output_parsed_tsv
@@ -403,15 +415,22 @@ def main():
         if args.longest_domain and not output_any:
             # Auto-generate all TSV outputs when --longest-domain is used without explicit outputs
             domain_stats_tsv = generate_default_filename(parse_file, 'domain_distribution', 'tsv')
-            output_parsed_tsv = generate_default_filename(parse_file, 'longest_domains', 'tsv')
+            output_ipr_tsv = generate_default_filename(parse_file, 'longest_domains', 'tsv')
+            output_non_ipr_tsv = generate_default_filename(parse_file, 'non_ipr', 'tsv')
 
             # Save domain statistics (TSV)
             write_domain_stats_tsv(domain_stats, domain_stats_tsv)
             print(f"Domain statistics saved to {domain_stats_tsv}")
 
-            # Save parsed results (TSV)
-            write_longest_results_tsv(results, output_parsed_tsv)
-            print(f"Longest domains saved to {output_parsed_tsv}")
+            # Save IPR results (main output)
+            if len(ipr_results) > 0:
+                write_longest_results_tsv(ipr_results, output_ipr_tsv)
+                print(f"IPR proteins (longest IPR = overall longest) saved to {output_ipr_tsv}")
+
+            # Save non-IPR results (separate file)
+            if len(non_ipr_results) > 0:
+                write_longest_results_tsv(non_ipr_results, output_non_ipr_tsv)
+                print(f"Non-IPR proteins (longest IPR != overall longest) saved to {output_non_ipr_tsv}")
         else:
             # User specified some outputs explicitly
             if args.domain_stats_tsv:

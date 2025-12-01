@@ -88,14 +88,15 @@ python parse_interproscan.py \
 
 ### Longest Domain Analysis
 
-Select only the longest domain for each protein and generate statistics.
+Select only the longest domain for each protein and generate statistics. Proteins are automatically split into two files based on whether their longest IPR domain matches their overall longest domain.
 
 **Auto-generated filenames** (simplest approach):
 
 ```bash
 python parse_interproscan.py --parse results.tsv --longest-domain
-# Creates 2 files:
-#   - results_longest_domains.tsv (18 columns with longestDom, longestIPRdom, IPRorNot)
+# Creates 3 files:
+#   - results_longest_domains.tsv (proteins where longest IPR domain = overall longest, IPRorNot=yes)
+#   - results_non_ipr.tsv (proteins where longest IPR domain != overall longest, IPRorNot=no)
 #   - results_domain_distribution.tsv (statistics for all domains)
 ```
 
@@ -174,15 +175,20 @@ InterProScan outputs a 15-column TSV format:
 
 When using `--parse` without `--longest-domain`, the output maintains the standard 15-column InterProScan format.
 
-#### Longest Domain Analysis (18 columns)
+#### Longest Domain Analysis (18 columns, split into 2 files)
 
-When using `--longest-domain`, the output contains **18 columns**:
+When using `--longest-domain`, proteins are split into two output files, each containing **18 columns**:
+
+**Main output file** (`*_longest_domains.tsv`): Proteins where longest IPR domain IS the overall longest (IPRorNot="yes")
+**Non-IPR output file** (`*_non_ipr.tsv`): Proteins where longest IPR domain is NOT the overall longest (IPRorNot="no")
+
+**Column structure (both files)**:
 - **Columns 1-15**: Standard InterProScan fields (same as input)
 - **Column 16**: `longestDom` - name of the longest domain overall (any database)
 - **Column 17**: `longestIPRdom` - name of the longest InterPro-annotated domain (IPR prefix)
-- **Column 18**: `IPRorNot` - yes/no indicating if the overall longest domain has IPR annotation
+- **Column 18**: `IPRorNot` - yes/no indicating if longestIPRdom matches longestDom
 
 **Column Details**:
 - `longestDom`: The domain name (or accession if no description) of the longest matching domain from any database
 - `longestIPRdom`: The domain name of the longest domain with InterPro annotation (starts with "IPR"). Empty if no IPR domains found.
-- `IPRorNot`: "yes" if the overall longest domain has an InterPro accession starting with "IPR", "no" otherwise
+- `IPRorNot`: "yes" if the longest IPR domain matches the overall longest domain, "no" otherwise (determines which file the protein goes to)
