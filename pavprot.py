@@ -192,8 +192,67 @@ class PAVprot:
                 entry['class_code_multi'] = info['class_code_multi']
                 entry['class_type'] = info['class_type']
                 
-        return full_dict 
-    
+        return full_dict
+
+    @classmethod
+    def load_extra_copy_numbers(cls, liftoff_gff: str):
+        """
+        Parse Liftoff GFF3 (mRNA features) and extract extra_copy_number
+        Returns: {query_transcript_id: int(extra_copy_number)}
+        """
+        extra_copy = {}
+
+        if not liftoff_gff or not os.path.exists(liftoff_gff):
+            return extra_copy
+
+        with open(liftoff_gff) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#') or '\tmRNA\t' not in line:
+                    continue
+
+                cols = line.split('\t')
+                if len(cols) < 9:
+                    continue
+
+                attrs = cols[8]
+                transcript_id = None
+                copy_number = None
+
+                for pair in attrs.split(';'):
+                    if '=' not in pair:
+                        continue
+                    k, v = pair.split('=', 1)
+
+                    if k == 'ID':
+                        # Extract transcript ID (e.g. from "ID=FOZG_02018-t36_1")
+                        transcript_id = v.split('.')[0]  # remove version if present
+                    elif k.lower() == 'extra_copy_number':
+                        try:
+                            copy_number = int(v)
+                        except ValueError:
+                            copy_number = None
+
+                if transcript_id and copy_number is not None:
+                    extra_copy[transcript_id] = copy_number
+
+        return extra_copy
+
+    @classmethod
+    def filter_extra_copy_transcripts(cls, full_dict: dict, liftoff_gff: str = None):
+        """
+        Add extra_copy_number from Liftoff GFF3 to entries based on query_transcript
+        """
+        extra_copy_map = cls.load_extra_copy_numbers(liftoff_gff)
+
+        for entries in full_dict.values():
+            for entry in entries:
+                q_trans = entry["query_transcript"]
+                copy_num = extra_copy_map.get(q_trans, 0)  # default 0 if not found
+                entry["extra_copy_number"] = copy_num
+
+        return full_dict
+
 class DiamondRunner:
     def __init__(self, threads: int = 40, output_prefix: str = "gffcompare"):
         self.threads = threads
@@ -287,6 +346,7 @@ def main():
     parser = argparse.ArgumentParser(description="PAVprot – complete class-based pipeline")
     parser.add_argument('--gff-comp', required=True)
     parser.add_argument('--ref-gff', help="GFF3 CDS feature table (optional)")
+    parser.add_argument('--liftoff-gff', help="Liftoff GFF3 with extra_copy_number (optional)")
     parser.add_argument('--class-code', help="Comma-separated class codes (e.g. em,j)")
     parser.add_argument('--ref-faa', help="Reference proteins FASTA")
     parser.add_argument('--qry-faa', help="Query proteins FASTA")
@@ -328,7 +388,11 @@ def main():
 
     # Apply multi-transcript classification
     data = PAVprot.filter_multi_transcripts(data)
-    
+
+    # Apply extra copy number from Liftoff GFF
+    if args.liftoff_gff:
+        data = PAVprot.filter_extra_copy_transcripts(data, args.liftoff_gff)
+
     # Output
     pavprot_out = os.path.join(os.getcwd(), 'pavprot_out')
     os.makedirs(pavprot_out, exist_ok=True)
@@ -344,6 +408,8 @@ def main():
     header = "ref_gene\tref_transcript\tquery_gene\tquery_transcript\tclass_code\texons\tclass_code_multi\tclass_type"
     if args.run_diamond:
         header += "\tidentical_aa\tmismatched_aa\tindels_aa\taligned_aa"
+    if args.liftoff_gff:
+        header += "\textra_copy_number"
 
     with open(output_file, 'w') as f:
         f.write(header + "\n")
@@ -351,11 +417,16 @@ def main():
             for e in entries:
                 exons = e.get('exons') if e.get('exons') is not None else '-'
                 base = f"{e['ref_gene']}\t{e['ref_transcript']}\t{e['query_gene']}\t{e['query_transcript']}\t{e['class_code']}\t{exons}\t{e['class_code_multi']}\t{e['class_type']}"
+
+                diamond_line = ""
                 if args.run_diamond:
-                    f.write(f"{base}\t{e.get('identical_aa', 0)}\t{e.get('mismatched_aa', 0)}\t"
-                            f"{e.get('indels_aa', 0)}\t{e.get('aligned_aa', 0)}\n")
-                else:
-                    f.write(base + "\n")
+                    diamond_line = f"\t{e.get('identical_aa', 0)}\t{e.get('mismatched_aa', 0)}\t{e.get('indels_aa', 0)}\t{e.get('aligned_aa', 0)}"
+
+                extra_copy_line = ""
+                if args.liftoff_gff:
+                    extra_copy_line = f"\t{e.get('extra_copy_number', 0)}"
+
+                f.write(f"{base}{diamond_line}{extra_copy_line}\n")
     print(f"Results saved to {output_file}", file=sys.stderr)
 
 
