@@ -146,10 +146,12 @@ class PAVprot:
         
         """
         Assign class_type (for visualization purpose):
-            0 → only em,c,k
-            1 → only em,c,k,j
-            2 → anything else
-            3 → single-transcript query genes (no multi-transcript)
+            0 → em,c,k,m,n
+            1 → em,c,k,m,n,j
+            2 → o,e
+            3 → s,x
+            4 → i,y 
+            5 → anything else (p,r,u)
         """
         
         # Step 1: Group entries by query_gene
@@ -173,12 +175,18 @@ class PAVprot:
             code_str = ';'.join(sorted(class_codes))
             
             # Assign class_type
-            if class_codes <= {'em','c','k'}:
+            if class_codes <= {'em','c','k','m','n'}:
                 ctype = '0'
-            elif class_codes <= {'em','c','k','j'}:
+            elif class_codes <= {'em','c','k','m','n','j'}:
                 ctype = '1'
-            else:
+            elif class_codes <= {'o','e'}:
                 ctype = '2'
+            elif class_codes <= {'s','x'}:
+                ctype = '3'
+            elif class_codes <= {'i','y'}:
+                ctype = '4'
+            else:
+                ctype = '5'
             
             query_gene_info[qgene] = {'class_code_multi': code_str, 'class_type': ctype}
             
