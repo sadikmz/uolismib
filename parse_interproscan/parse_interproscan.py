@@ -104,7 +104,7 @@ class InterProParser:
         longest_df = df.loc[idx_longest].copy()
 
         # Add longestDom column (overall longest domain)
-        longest_df['longestDom'] = longest_df['domain_name']
+        # longest_df['longestDom'] = longest_df['domain_name']
 
         # Find longest IPR domain for each protein
         ipr_df = df[df['interpro_accession'].str.startswith('IPR', na=False)].copy()
@@ -214,7 +214,11 @@ def write_longest_results_tsv(results: pd.DataFrame, filepath: str, include_head
         index=False,
         na_rep=''
     )
-
+    
+    #  remove pathway_annotations from results 
+    # exclude pathway_annotations from result 
+    results = results.drop(columns=["pathway_annotations"])
+    
 
 def write_domain_stats_tsv(domain_stats: pd.DataFrame, filepath: str):
     """
@@ -364,10 +368,10 @@ def main():
         '--domain-stats-tsv',
         help='Output file for domain length distribution statistics (TSV). If not specified, defaults to <basename>_domain_distribution.tsv'
     )
-    parser.add_argument(
-        '--output-parsed-tsv',
-        help='Output file for parsed results (TSV). If not specified, defaults to <basename>_parsed.tsv'
-    )
+    # parser.add_argument(
+    #     '--output-parsed-tsv',
+    #     help='Output file for parsed results (TSV). If not specified, defaults to <basename>_parsed.tsv'
+    # )
     parser.add_argument(
         '--tsv-header',
         action='store_true',
@@ -433,7 +437,7 @@ def main():
     results = ipr_results
 
     # Determine if any output is needed
-    output_any = args.domain_stats_tsv or args.output_parsed_tsv
+    output_any = args.domain_stats_tsv
 
     # Save domain statistics and results
     if not output_any:
@@ -462,10 +466,12 @@ def main():
             print(f"Domain statistics saved to {args.domain_stats_tsv}")
 
         # Save parsed results if requested
-        if args.output_parsed_tsv:
+        if args.parse:
             # Always write 18-column format with longest domain info
-            write_longest_results_tsv(results, args.output_parsed_tsv, args.tsv_header)
-            print(f"Parsed results saved to {args.output_parsed_tsv}")
+            # # exclude pathway_annotations from result 
+            # results = results.drop(columns=["pathway_annotations"])
+            write_longest_results_tsv(results, args.parse, args.tsv_header)
+            print(f"Parsed results saved to {args.parse}")
 
     # Print summary
     print("\nSummary:")
