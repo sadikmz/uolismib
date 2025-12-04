@@ -115,11 +115,17 @@ def write_output(extra_copies, output_file=None, class_codes_map=None):
     """
     Write the extra copy number table to output
 
-    Format:
-    original_gene_id    duplicated_genes    duplicated_transcripts    count_dup_genes    class_codes (optional)
+    Format (without gffcompare):
+    original_gene_id    duplicated_genes_liftover    duplicated_transcripts_liftover    count_dup_genes
+
+    Format (with gffcompare):
+    original_gene_id    duplicated_genes_liftover    duplicated_transcripts_liftover    duplicated_transcripts_gffcomp    count_dup_genes    class_codes
     """
     # Update header based on whether class_codes are provided
-    header = "original_gene_id\tduplicated_genes\tduplicated_transcripts\tcount_dup_genes"
+    header = "original_gene_id\tduplicated_genes_liftover\tduplicated_transcripts_liftover"
+    if class_codes_map:
+        header += "\tduplicated_transcripts_gffcomp"
+    header += "\tcount_dup_genes"
     if class_codes_map:
         header += "\tclass_codes"
     header += "\n"
@@ -135,15 +141,24 @@ def write_output(extra_copies, output_file=None, class_codes_map=None):
         # Sort by original gene ID for consistent output
         for original_gene_id in sorted(extra_copies.keys()):
             info = extra_copies[original_gene_id]
-            duplicated_genes = ','.join(sorted(info['duplicated_genes']))
+            duplicated_genes_liftover = ','.join(sorted(info['duplicated_genes']))
 
             # Keep transcripts in sorted order to maintain consistent mapping
             sorted_transcripts = sorted(info['duplicated_transcripts'])
-            duplicated_transcripts = ','.join(sorted_transcripts)
+            duplicated_transcripts_liftover = ','.join(sorted_transcripts)
+
             count_dup_genes = len(info['duplicated_genes'])
 
             # Build the output line
-            line = f"{original_gene_id}\t{duplicated_genes}\t{duplicated_transcripts}\t{count_dup_genes}"
+            line = f"{original_gene_id}\t{duplicated_genes_liftover}\t{duplicated_transcripts_liftover}"
+
+            # Add duplicated_transcripts_gffcomp column only if class_codes_map is provided
+            if class_codes_map:
+                gffcomp_transcripts = [t for t in sorted_transcripts if t in class_codes_map]
+                duplicated_transcripts_gffcomp = ','.join(gffcomp_transcripts) if gffcomp_transcripts else '-'
+                line += f"\t{duplicated_transcripts_gffcomp}"
+
+            line += f"\t{count_dup_genes}"
 
             # Add class codes if provided
             if class_codes_map:
@@ -171,12 +186,19 @@ Examples:
   %(prog)s --gff liftover.gff3 --output extra_copies.tsv
   %(prog)s --gff liftover.gff3 --gffcomp-tracking gffcompare.tracking --output extra_copies.tsv
 
-Output format:
+Output format (without --gffcomp-tracking):
   Column 1: Original gene ID (e.g., FOZG_18552)
-  Column 2: Comma-separated duplicated genes (e.g., FOZG_18552_1,FOZG_18552_2)
-  Column 3: Comma-separated duplicated transcripts (e.g., FOZG_18552-t1_1,FOZG_18552-t1_2)
+  Column 2: Comma-separated duplicated genes from liftover (e.g., FOZG_18552_1,FOZG_18552_2)
+  Column 3: Comma-separated duplicated transcripts from liftover (e.g., FOZG_18552-t1_1,FOZG_18552-t1_2)
   Column 4: Count of duplicated genes (e.g., 2)
-  Column 5: Comma-separated class codes (e.g., em,j) [only if --gffcomp-tracking is provided]
+
+Output format (with --gffcomp-tracking):
+  Column 1: Original gene ID (e.g., FOZG_18552)
+  Column 2: Comma-separated duplicated genes from liftover (e.g., FOZG_18552_1,FOZG_18552_2)
+  Column 3: Comma-separated duplicated transcripts from liftover (e.g., FOZG_18552-t1_1,FOZG_18552-t1_2)
+  Column 4: Comma-separated duplicated transcripts found in gffcompare (e.g., FOZG_18552-t1_1)
+  Column 5: Count of duplicated genes (e.g., 2)
+  Column 6: Comma-separated class codes (e.g., em,j)
         """
     )
 
