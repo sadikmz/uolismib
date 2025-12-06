@@ -1,0 +1,49 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# DIAMOND databases
+*.dmnd
+
+# Results and outputs
+results/*.tsv
+results/*.txt
+results/forward_*
+results/reverse_*
+
+# Temporary files
+tmp/*
+!tmp/.gitkeep
+
+# Data files (user-specific)
+data/*
+!data/.gitkeep
+!data/README.md
+
+# Example outputs
+examples/*.tsv
+examples/*.txt
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Backups
+*.backup
+*.bak
+*~
