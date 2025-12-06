@@ -117,7 +117,6 @@ gene_split_merge/               # Project root
 - **Bidirectional Best Hits (BBH)**: Ortholog identification
 - **Gene Structure Analysis**: Detect splits and merges
 - **Protein Clustering**: Optional clustering with multiple algorithms
-- **Modular Design**: Use as package or command-line tool
 
 ## Output Files
 
@@ -140,14 +139,6 @@ results/
 └── combined_diamond_linclust_clusters.tsv
 ```
 
-## Documentation
-
-- **[Usage Guide](docs/usage_readme.md)** - Quick usage guide with examples
-- **[Design & Implementation](docs/DESIGN_AND_IMPLEMENTATION.md)** - Technical details
-- **[API Documentation](docs/README.md)** - Full documentation
-
-## Development
-
 ### Install Development Dependencies
 
 ```bash
@@ -163,20 +154,6 @@ pytest tests/
 # Run with coverage
 pytest --cov=gene_split_merge tests/
 ```
-
-### Code Style
-
-```bash
-# Format code
-black gene_split_merge/
-
-# Check style
-flake8 gene_split_merge/
-
-# Type checking
-mypy gene_split_merge/
-```
-
 ## Citation
 
 If you use this tool, please cite:
@@ -191,22 +168,3 @@ If you use this tool, please cite:
 
 MIT License
 
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## Support
-
-For issues or questions:
-1. Check documentation in `docs/`
-2. Review test files in `tests/`
-3. Verify DIAMOND installation: `diamond --version`
-
-## Version History
-
-- v1.5.0: Restructured as Python package with modular design
-- v1.4: Multi-mode clustering with automatic ID renaming
-- v1.3: Added standalone clustering CLI
-- v1.2: Integrated DIAMOND clustering
-- v1.1: Added bidirectional best hits (BBH)
-- v1.0: Initial implementation with DIAMOND BLASTP
