@@ -6,7 +6,72 @@ Generates a table with original gene IDs and their duplicated genes/transcripts
 
 import argparse
 import sys
+import os
 from collections import defaultdict
+
+
+def fasta2dict(fasta_file):
+    """
+    Parse FASTA file and yield (header, sequence) tuples
+    """
+    with open(fasta_file, 'r') as f:
+        current_header = None
+        current_seq = []
+
+        for line in f:
+            line = line.rstrip('\n')
+            if not line:
+                continue
+
+            if line.startswith('>'):
+                if current_header:
+                    yield current_header, ''.join(current_seq)
+
+                header = line[1:].strip()
+                transcript_id = header.split()[0]
+
+                current_header = transcript_id
+                current_seq = []
+            else:
+                current_seq.append(line.upper())
+
+        if current_header:
+            yield current_header, ''.join(current_seq)
+
+
+def parse_all_liftover_transcripts(gff_path):
+    """
+    Parse all transcripts from liftover GFF3 file (mRNA features)
+
+    Returns: set of all transcript IDs from the liftover GFF3
+    """
+    transcript_ids = set()
+
+    with open(gff_path) as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#') or '\tmRNA\t' not in line:
+                continue
+
+            cols = line.split('\t')
+            if len(cols) < 9:
+                continue
+
+            attrs = cols[8]
+
+            # Parse attributes to get ID
+            for pair in attrs.split(';'):
+                if '=' not in pair:
+                    continue
+                k, v = pair.split('=', 1)
+
+                if k == 'ID':
+                    # Extract transcript ID
+                    transcript_id = v.split('.')[0]  # remove version if present
+                    transcript_ids.add(transcript_id)
+                    break
+
+    return transcript_ids
 
 
 def parse_extra_copy_numbers(gff_path):
@@ -109,6 +174,124 @@ def parse_tracking(filepath, feature_table=None, filter_codes=None):
             transcript_to_class[q_trans] = class_code
 
     return transcript_to_class
+
+
+def get_original_transcript_id(duplicated_transcript_id):
+    """
+    Extract the original transcript ID from a duplicated transcript ID
+    E.g., FOZG_18552-t1_1 -> FOZG_18552-t1
+    """
+    if '_' in duplicated_transcript_id:
+        parts = duplicated_transcript_id.rsplit('_', 1)
+        # Check if last part is a number (copy indicator)
+        if parts[-1].isdigit():
+            return parts[0]
+    return duplicated_transcript_id
+
+
+def write_fasta_sequences(liftover_gff, input_fasta, class_codes_map=None):
+    """
+    Write FASTA sequences for liftover and gffcompare results
+
+    Liftover FASTA: All transcripts from liftover GFF3 file
+    Gffcompare FASTA: Original transcripts + duplicated transcripts from tracking file
+
+    For duplicated transcripts, sequences are taken from their original transcript IDs
+
+    Args:
+        liftover_gff: path to liftover GFF3 file
+        input_fasta: path to input FASTA file (if None, no FASTA output)
+        class_codes_map: optional dict mapping transcript -> class_code from gffcompare
+    """
+    if not input_fasta:
+        return
+
+    # Derive output basename from input_fasta
+    output_basename = os.path.splitext(os.path.basename(input_fasta))[0]
+
+    # Load input FASTA sequences into a dictionary
+    print("Loading input FASTA sequences...", file=sys.stderr)
+    seq_dict = {}
+    for header, seq in fasta2dict(input_fasta):
+        seq_dict[header] = seq
+    print(f"Loaded {len(seq_dict)} sequences from input FASTA", file=sys.stderr)
+
+    # Parse all transcripts from liftover GFF3
+    print("Parsing liftover GFF3...", file=sys.stderr)
+    liftover_transcripts = parse_all_liftover_transcripts(liftover_gff)
+    print(f"Found {len(liftover_transcripts)} transcripts in liftover GFF3", file=sys.stderr)
+
+    # Write liftover FASTA output
+    liftover_output = f"{output_basename}_liftover.faa"
+    with open(liftover_output, 'w') as f:
+        written_count = 0
+        missing_count = 0
+
+        for transcript_id in sorted(liftover_transcripts):
+            sequence = None
+
+            # First try exact match
+            if transcript_id in seq_dict:
+                sequence = seq_dict[transcript_id]
+            else:
+                # Try to find original transcript ID (remove suffix like _1, _2)
+                original_id = get_original_transcript_id(transcript_id)
+                if original_id != transcript_id and original_id in seq_dict:
+                    sequence = seq_dict[original_id]
+
+            if sequence:
+                f.write(f">{transcript_id}\n{sequence}\n")
+                written_count += 1
+            else:
+                missing_count += 1
+
+    print(f"Wrote {written_count} sequences to {liftover_output}", file=sys.stderr)
+    if missing_count > 0:
+        print(f"Warning: {missing_count} transcripts not found in input FASTA", file=sys.stderr)
+
+    # Write gffcompare FASTA output if class_codes_map is provided
+    if class_codes_map:
+        # Collect transcripts for gffcompare output
+        # Include all original transcripts + duplicated transcripts from tracking
+        gffcompare_transcripts = set()
+
+        # Get all duplicated transcripts from tracking
+        duplicated_in_tracking = {t for t in class_codes_map.keys() if get_original_transcript_id(t) != t}
+
+        # Add duplicated transcripts from tracking
+        gffcompare_transcripts.update(duplicated_in_tracking)
+
+        # Add original transcripts for each duplicated transcript
+        for dup_transcript in duplicated_in_tracking:
+            original_transcript = get_original_transcript_id(dup_transcript)
+            gffcompare_transcripts.add(original_transcript)
+
+        gffcompare_output = f"{output_basename}_gffcompare.faa"
+        with open(gffcompare_output, 'w') as f:
+            written_count = 0
+            missing_count = 0
+
+            for transcript_id in sorted(gffcompare_transcripts):
+                sequence = None
+
+                # First try exact match
+                if transcript_id in seq_dict:
+                    sequence = seq_dict[transcript_id]
+                else:
+                    # Try to find original transcript ID (remove suffix like _1, _2)
+                    original_id = get_original_transcript_id(transcript_id)
+                    if original_id != transcript_id and original_id in seq_dict:
+                        sequence = seq_dict[original_id]
+
+                if sequence:
+                    f.write(f">{transcript_id}\n{sequence}\n")
+                    written_count += 1
+                else:
+                    missing_count += 1
+
+        print(f"Wrote {written_count} sequences to {gffcompare_output}", file=sys.stderr)
+        if missing_count > 0:
+            print(f"Warning: {missing_count} transcripts not found in input FASTA", file=sys.stderr)
 
 
 def write_output(extra_copies, output_file=None, class_codes_map=None):
@@ -216,6 +399,10 @@ Output format (with --gffcomp-tracking):
         '-o',
         help='Output TSV file (default: stdout)'
     )
+    parser.add_argument(
+        '--input-fasta',
+        help='Optional input FASTA file to generate liftover and gffcompare FASTA outputs'
+    )
 
     args = parser.parse_args()
 
@@ -238,6 +425,10 @@ Output format (with --gffcomp-tracking):
 
     if args.output:
         print(f"Output written to {args.output}", file=sys.stderr)
+
+    # Write FASTA sequences if input FASTA is provided
+    if args.input_fasta:
+        write_fasta_sequences(args.gff, args.input_fasta, class_codes_map)
 
 
 if __name__ == '__main__':
