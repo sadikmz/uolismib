@@ -111,8 +111,8 @@ class GFFParser:
                 
                 feature_type = parts[2]
                 
-                # We want gene features (adjust if your GFF uses different terminology)
-                if feature_type != 'gene':
+                # We want gene features (handles both 'gene' and 'protein_coding_gene')
+                if feature_type not in ['gene', 'protein_coding_gene']:
                     continue
                 
                 chrom = parts[0]
@@ -139,27 +139,116 @@ class GFFParser:
         
         logger.info(f"Parsed {len(genes)} genes from {gff_file}")
         return genes
-    
+
     @staticmethod
-    def add_protein_sequences(genes: Dict[str, Gene], fasta_file: str) -> None:
+    def build_transcript_to_gene_map(gff_file: str) -> Dict[str, str]:
+        """
+        Build mapping from transcript/mRNA IDs to gene IDs from GFF.
+        This handles cases where protein IDs correspond to transcript IDs.
+
+        Args:
+            gff_file: Path to GFF3 file
+
+        Returns:
+            Dictionary mapping transcript_id to gene_id
+        """
+        mapping = {}
+
+        logger.info(f"Building transcript-to-gene mapping from: {gff_file}")
+
+        with open(gff_file, 'r') as f:
+            for line in f:
+                if line.startswith('#'):
+                    continue
+
+                parts = line.strip().split('\t')
+                if len(parts) < 9:
+                    continue
+
+                feature_type = parts[2]
+
+                # Look for mRNA/transcript features
+                if feature_type not in ['mRNA', 'transcript']:
+                    continue
+
+                attributes = parts[8]
+                transcript_id = None
+                gene_id = None
+
+                # Extract transcript ID and parent gene ID
+                for attr in attributes.split(';'):
+                    if attr.startswith('ID='):
+                        transcript_id = attr.split('=')[1]
+                    elif attr.startswith('Parent='):
+                        gene_id = attr.split('=')[1]
+
+                if transcript_id and gene_id:
+                    mapping[transcript_id] = gene_id
+
+        logger.info(f"Built mapping for {len(mapping)} transcripts")
+        return mapping
+
+    @staticmethod
+    def get_protein_lengths_by_transcript(genes: Dict[str, Gene],
+                                         transcript_map: Dict[str, str]) -> Dict[str, int]:
+        """
+        Build protein length dictionary using transcript IDs as keys.
+        This is needed because BLAST results use transcript IDs, not gene IDs.
+
+        Args:
+            genes: Dictionary of Gene objects
+            transcript_map: Mapping from transcript IDs to gene IDs
+
+        Returns:
+            Dictionary mapping transcript_id to protein length
+        """
+        lengths = {}
+        for transcript_id, gene_id in transcript_map.items():
+            if gene_id in genes and genes[gene_id].protein_seq:
+                lengths[transcript_id] = len(genes[gene_id].protein_seq)
+
+        logger.info(f"Built protein lengths for {len(lengths)} transcripts")
+        return lengths
+
+    @staticmethod
+    def add_protein_sequences(genes: Dict[str, Gene], fasta_file: str,
+                             transcript_map: Dict[str, str] = None) -> None:
         """
         Add protein sequences to Gene objects from FASTA file.
-        
+        Handles both direct gene IDs and transcript IDs using the provided mapping.
+
         Args:
             genes: Dictionary of Gene objects
             fasta_file: Path to protein FASTA file
+            transcript_map: Optional mapping from transcript IDs to gene IDs
         """
         from Bio import SeqIO
-        
+
         logger.info(f"Loading protein sequences from: {fasta_file}")
-        
+
         seq_count = 0
         for record in SeqIO.parse(fasta_file, 'fasta'):
-            gene_id = record.id
-            if gene_id in genes:
+            protein_id = record.id
+            gene_id = None
+
+            # Strategy 1: Try exact match with gene ID
+            if protein_id in genes:
+                gene_id = protein_id
+            # Strategy 2: Use transcript-to-gene mapping if provided
+            elif transcript_map and protein_id in transcript_map:
+                gene_id = transcript_map[protein_id]
+            # Strategy 3: Try protein ID without -p suffix (e.g., GENE-t36_1-p1 -> GENE-t36_1)
+            elif '-p' in protein_id:
+                base_id = protein_id.rsplit('-p', 1)[0]
+                if base_id in genes:
+                    gene_id = base_id
+                elif transcript_map and base_id in transcript_map:
+                    gene_id = transcript_map[base_id]
+
+            if gene_id and gene_id in genes:
                 genes[gene_id].protein_seq = str(record.seq)
                 seq_count += 1
-        
+
         logger.info(f"Added protein sequences for {seq_count} genes")
 
 
@@ -378,7 +467,9 @@ class GeneStructureAnalyzer:
     """Main analyzer for detecting gene splits and merges."""
 
     def __init__(self, ref_genes: Dict[str, Gene], upd_genes: Dict[str, Gene],
-                 forward_blast: List[BlastHit], reverse_blast: List[BlastHit]):
+                 forward_blast: List[BlastHit], reverse_blast: List[BlastHit],
+                 ref_transcript_map: Dict[str, str] = None,
+                 upd_transcript_map: Dict[str, str] = None):
         """
         Initialize the analyzer.
 
@@ -387,21 +478,58 @@ class GeneStructureAnalyzer:
             upd_genes: Dictionary of updated genome genes
             forward_blast: BLAST hits (ref -> updated)
             reverse_blast: BLAST hits (updated -> ref)
+            ref_transcript_map: Mapping from reference transcript IDs to gene IDs
+            upd_transcript_map: Mapping from updated transcript IDs to gene IDs
         """
         self.ref_genes = ref_genes
         self.upd_genes = upd_genes
         self.forward_blast = forward_blast
         self.reverse_blast = reverse_blast
+        self.ref_transcript_map = ref_transcript_map or {}
+        self.upd_transcript_map = upd_transcript_map or {}
 
-        # Build hit maps
-        self.forward_map, _ = BlastAnalyzer.build_hit_maps(forward_blast)
-        self.reverse_map, _ = BlastAnalyzer.build_hit_maps(reverse_blast)
+        # Build hit maps with gene IDs (converting from transcript IDs if needed)
+        self.forward_map, _ = self._build_gene_hit_maps(
+            forward_blast, self.ref_transcript_map, self.upd_transcript_map
+        )
+        self.reverse_map, _ = self._build_gene_hit_maps(
+            reverse_blast, self.upd_transcript_map, self.ref_transcript_map
+        )
 
         # Build comprehensive DataFrames for advanced analysis
         self.forward_df = self._hits_to_dataframe(forward_blast)
         self.reverse_df = self._hits_to_dataframe(reverse_blast)
 
         logger.info("GeneStructureAnalyzer initialized")
+
+    @staticmethod
+    def _build_gene_hit_maps(hits: List[BlastHit],
+                            query_transcript_map: Dict[str, str],
+                            subject_transcript_map: Dict[str, str]) -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
+        """
+        Build hit maps using gene IDs instead of transcript IDs.
+
+        Args:
+            hits: List of BlastHit objects (with transcript IDs)
+            query_transcript_map: Mapping from query transcript IDs to gene IDs
+            subject_transcript_map: Mapping from subject transcript IDs to gene IDs
+
+        Returns:
+            Tuple of (forward_map, reverse_map) using gene IDs
+        """
+        forward_map = defaultdict(set)
+        reverse_map = defaultdict(set)
+
+        for hit in hits:
+            # Convert transcript IDs to gene IDs
+            query_gene_id = query_transcript_map.get(hit.query_id, hit.query_id)
+            subject_gene_id = subject_transcript_map.get(hit.subject_id, hit.subject_id)
+
+            forward_map[query_gene_id].add(subject_gene_id)
+            reverse_map[subject_gene_id].add(query_gene_id)
+
+        # Convert sets to lists
+        return {k: list(v) for k, v in forward_map.items()}, {k: list(v) for k, v in reverse_map.items()}
 
     @staticmethod
     def _hits_to_dataframe(hits: List[BlastHit]) -> pd.DataFrame:
@@ -543,48 +671,51 @@ class GeneStructureAnalyzer:
 
         return orthologs
     
-    def detect_splits(self, min_confidence: float = 0.7) -> List[GeneRelationship]:
+    def detect_splits(self, min_confidence: float = 0.7, require_adjacency: bool = True) -> List[GeneRelationship]:
         """
         Detect gene splits (1 reference gene -> multiple updated genes).
-        
+
         Args:
             min_confidence: Minimum confidence score to report
-            
+            require_adjacency: If True, only report splits where genes are adjacent (default: True)
+
         Returns:
             List of GeneRelationship objects representing splits
         """
         splits = []
-        
-        logger.info("Detecting gene splits...")
-        
+
+        adjacency_mode = "with adjacency requirement" if require_adjacency else "without adjacency requirement"
+        logger.info(f"Detecting gene splits {adjacency_mode}...")
+
         for ref_id, upd_ids in self.forward_map.items():
             # Looking for 1 -> many relationships
             if len(upd_ids) < 2:
                 continue
-            
+
             # Remove duplicates
             upd_ids = list(set(upd_ids))
-            
+
             # Verify reciprocal relationship
             reciprocal = all(
                 ref_id in self.reverse_map.get(upd_id, [])
                 for upd_id in upd_ids
             )
-            
+
             if not reciprocal:
                 continue
-            
+
             # Get gene objects
             ref_gene = self.ref_genes[ref_id]
             upd_genes_list = [self.upd_genes[uid] for uid in upd_ids if uid in self.upd_genes]
-            
+
             if len(upd_genes_list) < 2:
                 continue
-            
+
             # Check if updated genes are adjacent
             adjacent = SyntenyAnalyzer.check_genes_adjacent(upd_genes_list)
-            
-            if not adjacent:
+
+            # Skip if adjacency is required but genes are not adjacent
+            if require_adjacency and not adjacent:
                 continue
             
             # Calculate coverage
@@ -616,48 +747,51 @@ class GeneStructureAnalyzer:
         logger.info(f"Detected {len(splits)} gene splits")
         return splits
     
-    def detect_merges(self, min_confidence: float = 0.7) -> List[GeneRelationship]:
+    def detect_merges(self, min_confidence: float = 0.7, require_adjacency: bool = True) -> List[GeneRelationship]:
         """
         Detect gene merges (multiple reference genes -> 1 updated gene).
-        
+
         Args:
             min_confidence: Minimum confidence score to report
-            
+            require_adjacency: If True, only report merges where genes are adjacent (default: True)
+
         Returns:
             List of GeneRelationship objects representing merges
         """
         merges = []
-        
-        logger.info("Detecting gene merges...")
-        
+
+        adjacency_mode = "with adjacency requirement" if require_adjacency else "without adjacency requirement"
+        logger.info(f"Detecting gene merges {adjacency_mode}...")
+
         for upd_id, ref_ids in self.reverse_map.items():
             # Looking for many -> 1 relationships
             if len(ref_ids) < 2:
                 continue
-            
+
             # Remove duplicates
             ref_ids = list(set(ref_ids))
-            
+
             # Verify reciprocal relationship
             reciprocal = all(
                 upd_id in self.forward_map.get(ref_id, [])
                 for ref_id in ref_ids
             )
-            
+
             if not reciprocal:
                 continue
-            
+
             # Get gene objects
             upd_gene = self.upd_genes[upd_id]
             ref_genes_list = [self.ref_genes[rid] for rid in ref_ids if rid in self.ref_genes]
-            
+
             if len(ref_genes_list) < 2:
                 continue
-            
+
             # Check if reference genes were adjacent
             adjacent = SyntenyAnalyzer.check_genes_adjacent(ref_genes_list)
-            
-            if not adjacent:
+
+            # Skip if adjacency is required but genes are not adjacent
+            if require_adjacency and not adjacent:
                 continue
             
             # Calculate coverage

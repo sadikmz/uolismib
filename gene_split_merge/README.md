@@ -13,6 +13,12 @@ A simple Python implementation for detecting gene split and merge events between
 
 ---
 
+## Documentation
+
+- **[GFF3 File Format Guide](tmp/GFF3_FORMAT.md)** - Comprehensive documentation on GFF3 format specification, structure, and usage in this tool
+
+---
+
 <details>
 <summary><h2>🔬 Implementation</h2></summary>
 

@@ -186,17 +186,25 @@ class DetectGeneSplitMerge:
         
         # Parse GFF files
         print("\nParsing GFF files...")
-        ref_genes = GFFParser.parse_gff(str(self.ref_gff))
-        upd_genes = GFFParser.parse_gff(str(self.upd_gff))
-        
+        self.ref_genes = GFFParser.parse_gff(str(self.ref_gff))
+        self.upd_genes = GFFParser.parse_gff(str(self.upd_gff))
+        ref_genes = self.ref_genes
+        upd_genes = self.upd_genes
+
+        # Build transcript-to-gene mappings
+        print("\nBuilding transcript-to-gene mappings...")
+        ref_transcript_map = GFFParser.build_transcript_to_gene_map(str(self.ref_gff))
+        upd_transcript_map = GFFParser.build_transcript_to_gene_map(str(self.upd_gff))
+
         # Add protein sequences
         print("\nAdding protein sequences...")
-        GFFParser.add_protein_sequences(ref_genes, str(self.ref_proteins))
-        GFFParser.add_protein_sequences(upd_genes, str(self.upd_proteins))
-        
-        # Get protein lengths for BLAST parsing
-        ref_lens = {gid: len(g.protein_seq) for gid, g in ref_genes.items()}
-        upd_lens = {gid: len(g.protein_seq) for gid, g in upd_genes.items()}
+        GFFParser.add_protein_sequences(ref_genes, str(self.ref_proteins), ref_transcript_map)
+        GFFParser.add_protein_sequences(upd_genes, str(self.upd_proteins), upd_transcript_map)
+
+        # Get protein lengths for BLAST parsing (using transcript IDs)
+        print("\nBuilding protein length dictionaries...")
+        ref_lens = GFFParser.get_protein_lengths_by_transcript(ref_genes, ref_transcript_map)
+        upd_lens = GFFParser.get_protein_lengths_by_transcript(upd_genes, upd_transcript_map)
         
         # Parse BLAST results
         print("\nParsing BLAST results...")
@@ -221,54 +229,165 @@ class DetectGeneSplitMerge:
             min_coverage=70.0,
             max_evalue=1e-10
         )
-        
-        return ref_genes, upd_genes, forward_filtered, reverse_filtered
-    
-    def analyze(self, ref_genes, upd_genes, forward_hits, reverse_hits):
+
+        return ref_genes, upd_genes, forward_filtered, reverse_filtered, ref_transcript_map, upd_transcript_map
+
+    def analyze(self, ref_genes, upd_genes, forward_hits, reverse_hits,
+                ref_transcript_map, upd_transcript_map):
         """
         Run the gene structure analysis.
+        Detects both adjacent and non-adjacent splits/merges.
         """
         print("\n" + "="*60)
         print("Analyzing Gene Structure Changes")
         print("="*60)
-        
+
         # Initialize analyzer
         analyzer = GeneStructureAnalyzer(
             ref_genes=ref_genes,
             upd_genes=upd_genes,
             forward_blast=forward_hits,
-            reverse_blast=reverse_hits
+            reverse_blast=reverse_hits,
+            ref_transcript_map=ref_transcript_map,
+            upd_transcript_map=upd_transcript_map
         )
-        
-        # Detect changes
-        splits = analyzer.detect_splits(min_confidence=0.7)
-        merges = analyzer.detect_merges(min_confidence=0.7)
-        
-        return splits, merges
-    
-    def export_results(self, splits, merges):
+
+        # Detect changes with adjacency requirement (strict)
+        print("\n  Detecting adjacent splits/merges (strict criteria)...")
+        splits_adjacent = analyzer.detect_splits(min_confidence=0.7, require_adjacency=True)
+        merges_adjacent = analyzer.detect_merges(min_confidence=0.7, require_adjacency=True)
+
+        # Detect changes without adjacency requirement (relaxed)
+        print("  Detecting non-adjacent splits/merges (relaxed criteria)...")
+        splits_all = analyzer.detect_splits(min_confidence=0.7, require_adjacency=False)
+        merges_all = analyzer.detect_merges(min_confidence=0.7, require_adjacency=False)
+
+        # Get non-adjacent only (all - adjacent)
+        adjacent_split_ids = set(frozenset(s.ref_genes + s.updated_genes) for s in splits_adjacent)
+        splits_non_adjacent = [s for s in splits_all
+                               if frozenset(s.ref_genes + s.updated_genes) not in adjacent_split_ids]
+
+        adjacent_merge_ids = set(frozenset(m.ref_genes + m.updated_genes) for m in merges_adjacent)
+        merges_non_adjacent = [m for m in merges_all
+                               if frozenset(m.ref_genes + m.updated_genes) not in adjacent_merge_ids]
+
+        return splits_adjacent, merges_adjacent, splits_non_adjacent, merges_non_adjacent
+
+    def _export_gff(self, relationships, gff_file, event_type, adjacency_type):
         """
-        Export and summarize results.
+        Export detected relationships as GFF3 file.
+
+        Args:
+            relationships: List of GeneRelationship objects
+            gff_file: Output GFF3 file path
+            event_type: Type of event ('split' or 'merge')
+            adjacency_type: Adjacency type ('adjacent' or 'non_adjacent')
+        """
+        with open(gff_file, 'w') as f:
+            f.write("##gff-version 3\n")
+            f.write(f"# Gene {event_type} events ({adjacency_type})\n")
+            f.write(f"# Generated by gene-split-merge\n\n")
+
+            for idx, rel in enumerate(relationships, 1):
+                # For splits: show reference gene and updated genes
+                if event_type == 'split':
+                    ref_id = rel.ref_genes[0]
+                    if ref_id in self.ref_genes:
+                        ref_gene = self.ref_genes[ref_id]
+                        f.write(f"{ref_gene.chromosome}\tgene-split-merge\tgene_split_reference\t"
+                               f"{ref_gene.start}\t{ref_gene.end}\t{rel.confidence_score:.3f}\t"
+                               f"{ref_gene.strand}\t.\t"
+                               f"ID={ref_id};event=split_{idx};type=reference;target_genes={','.join(rel.updated_genes)}\n")
+
+                    for upd_id in rel.updated_genes:
+                        if upd_id in self.upd_genes:
+                            upd_gene = self.upd_genes[upd_id]
+                            f.write(f"{upd_gene.chromosome}\tgene-split-merge\tgene_split_product\t"
+                                   f"{upd_gene.start}\t{upd_gene.end}\t{rel.confidence_score:.3f}\t"
+                                   f"{upd_gene.strand}\t.\t"
+                                   f"ID={upd_id};event=split_{idx};type=product;source_gene={ref_id}\n")
+
+                # For merges: show reference genes and updated gene
+                elif event_type == 'merge':
+                    upd_id = rel.updated_genes[0]
+                    if upd_id in self.upd_genes:
+                        upd_gene = self.upd_genes[upd_id]
+                        f.write(f"{upd_gene.chromosome}\tgene-split-merge\tgene_merge_product\t"
+                               f"{upd_gene.start}\t{upd_gene.end}\t{rel.confidence_score:.3f}\t"
+                               f"{upd_gene.strand}\t.\t"
+                               f"ID={upd_id};event=merge_{idx};type=product;source_genes={','.join(rel.ref_genes)}\n")
+
+                    for ref_id in rel.ref_genes:
+                        if ref_id in self.ref_genes:
+                            ref_gene = self.ref_genes[ref_id]
+                            f.write(f"{ref_gene.chromosome}\tgene-split-merge\tgene_merge_source\t"
+                                   f"{ref_gene.start}\t{ref_gene.end}\t{rel.confidence_score:.3f}\t"
+                                   f"{ref_gene.strand}\t.\t"
+                                   f"ID={ref_id};event=merge_{idx};type=source;target_gene={upd_id}\n")
+
+    def export_results(self, splits_adjacent, merges_adjacent,
+                      splits_non_adjacent, merges_non_adjacent):
+        """
+        Export and summarize results for both adjacent and non-adjacent cases.
         """
         print("\n" + "="*60)
         print("Exporting Results")
         print("="*60)
-        
-        # Save to files
-        if splits:
-            splits_file = self.output_dir / "gene_splits.tsv"
-            ResultsExporter.save_results(splits, str(splits_file))
-            print(f"\n✓ Gene splits saved to: {splits_file}")
-        
-        if merges:
-            merges_file = self.output_dir / "gene_merges.tsv"
-            ResultsExporter.save_results(merges, str(merges_file))
-            print(f"✓ Gene merges saved to: {merges_file}")
-        
-        # Print summary
-        ResultsExporter.print_summary(splits, merges)
 
-        return splits, merges
+        # Save adjacent (strict criteria) results
+        if splits_adjacent:
+            splits_file = self.output_dir / "gene_splits_adjacent.tsv"
+            splits_gff = self.output_dir / "gene_splits_adjacent.gff3"
+            ResultsExporter.save_results(splits_adjacent, str(splits_file))
+            self._export_gff(splits_adjacent, splits_gff, "split", "adjacent")
+            print(f"\n✓ Adjacent gene splits saved to:")
+            print(f"    TSV: {splits_file}")
+            print(f"    GFF: {splits_gff}")
+
+        if merges_adjacent:
+            merges_file = self.output_dir / "gene_merges_adjacent.tsv"
+            merges_gff = self.output_dir / "gene_merges_adjacent.gff3"
+            ResultsExporter.save_results(merges_adjacent, str(merges_file))
+            self._export_gff(merges_adjacent, merges_gff, "merge", "adjacent")
+            print(f"✓ Adjacent gene merges saved to:")
+            print(f"    TSV: {merges_file}")
+            print(f"    GFF: {merges_gff}")
+
+        # Save non-adjacent (relaxed criteria) results
+        if splits_non_adjacent:
+            splits_file = self.output_dir / "gene_splits_non_adjacent.tsv"
+            splits_gff = self.output_dir / "gene_splits_non_adjacent.gff3"
+            ResultsExporter.save_results(splits_non_adjacent, str(splits_file))
+            self._export_gff(splits_non_adjacent, splits_gff, "split", "non_adjacent")
+            print(f"\n✓ Non-adjacent gene splits saved to:")
+            print(f"    TSV: {splits_file}")
+            print(f"    GFF: {splits_gff}")
+
+        if merges_non_adjacent:
+            merges_file = self.output_dir / "gene_merges_non_adjacent.tsv"
+            merges_gff = self.output_dir / "gene_merges_non_adjacent.gff3"
+            ResultsExporter.save_results(merges_non_adjacent, str(merges_file))
+            self._export_gff(merges_non_adjacent, merges_gff, "merge", "non_adjacent")
+            print(f"✓ Non-adjacent gene merges saved to:")
+            print(f"    TSV: {merges_file}")
+            print(f"    GFF: {merges_gff}")
+
+        # Print summary
+        print("\n" + "="*60)
+        print("GENE STRUCTURE CHANGE ANALYSIS SUMMARY")
+        print("="*60)
+        print(f"\nAdjacent (strict criteria):")
+        print(f"  - Gene splits detected: {len(splits_adjacent)}")
+        print(f"  - Gene merges detected: {len(merges_adjacent)}")
+        print(f"\nNon-adjacent (relaxed criteria):")
+        print(f"  - Gene splits detected: {len(splits_non_adjacent)}")
+        print(f"  - Gene merges detected: {len(merges_non_adjacent)}")
+        print(f"\nTotal:")
+        print(f"  - Gene splits: {len(splits_adjacent) + len(splits_non_adjacent)}")
+        print(f"  - Gene merges: {len(merges_adjacent) + len(merges_non_adjacent)}")
+        print("="*60 + "\n")
+
+        return splits_adjacent, merges_adjacent, splits_non_adjacent, merges_non_adjacent
 
     def diamond_clustering(self):
         """
@@ -444,26 +563,27 @@ class DetectGeneSplitMerge:
 
         # Parse data
         try:
-            ref_genes, upd_genes, forward_hits, reverse_hits = self.parse_data()
+            ref_genes, upd_genes, forward_hits, reverse_hits, ref_transcript_map, upd_transcript_map = self.parse_data()
         except Exception as e:
             print(f"\n✗ Workflow failed: Data parsing - {e}")
             return None, None
 
         # Analyze
         try:
-            splits, merges = self.analyze(
-                ref_genes, upd_genes, forward_hits, reverse_hits
+            splits_adj, merges_adj, splits_non_adj, merges_non_adj = self.analyze(
+                ref_genes, upd_genes, forward_hits, reverse_hits,
+                ref_transcript_map, upd_transcript_map
             )
         except Exception as e:
             print(f"\n✗ Workflow failed: Analysis - {e}")
-            return None, None
+            return None, None, None, None
 
         # Export
         try:
-            self.export_results(splits, merges)
+            self.export_results(splits_adj, merges_adj, splits_non_adj, merges_non_adj)
         except Exception as e:
             print(f"\n✗ Workflow failed: Export - {e}")
-            return None, None
+            return None, None, None, None
 
         # DIAMOND Clustering (optional)
         if self.run_clustering:
@@ -477,7 +597,7 @@ class DetectGeneSplitMerge:
         print(" "*20 + "WORKFLOW COMPLETED!")
         print("="*70 + "\n")
 
-        return splits, merges
+        return splits_adj, merges_adj, splits_non_adj, merges_non_adj
 
 
 def main():
@@ -590,9 +710,9 @@ Required tools:
         clustering_params=args.clustering_params
     )
     
-    splits, merges = workflow.run_complete_workflow()
-    
-    if splits is None and merges is None:
+    splits_adj, merges_adj, splits_non_adj, merges_non_adj = workflow.run_complete_workflow()
+
+    if all(x is None for x in [splits_adj, merges_adj, splits_non_adj, merges_non_adj]):
         sys.exit(1)
 
 
