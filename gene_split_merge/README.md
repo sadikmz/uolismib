@@ -2,22 +2,153 @@
 
 **⚠️ CODES NOT TESTED - Validate with your datasets before production use**
 
-A high-performance Python package for detecting gene split and merge events between two genome annotations using DIAMOND BLASTP with optional clustering analysis.
+A simple Python implementation for detecting gene split and merge events between two genome annotations using DIAMOND BLASTP with optional clustering analysis.
 
-## Installation
+## Features
 
-### From Source
+- **Fast Protein Alignment**: DIAMOND BLASTP (10-20,000x faster than BLAST+)
+- **Bidirectional Best Hits (BBH)**: Ortholog identification
+- **Gene Structure Analysis**: Detect splits and merges
+- **Protein Clustering**: Optional clustering with multiple algorithms
 
-```bash
-# Clone or download the repository
-cd gene_split_merge
+---
 
-# Install in development mode
-pip install -e .
+<details>
+<summary><h2>🔬 Implementation</h2></summary>
 
-# Or install normally
-pip install .
+### Pipeline Architecture
+
 ```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          INPUT FILES                                    │
+├─────────────────────────────────────────────────────────────────────────┤
+│  Reference Genome              │  Updated Genome                        │
+│  • reference.gff3              │  • updated.gff3                        │
+│  • reference_proteins.fasta    │  • updated_proteins.fasta              │
+└──────────────┬─────────────────┴──────────────┬─────────────────────────┘
+               │                                │
+               ▼                                ▼
+        ┌──────────────┐                ┌──────────────┐
+        │   DIAMOND    │                │   DIAMOND    │
+        │  makedb      │                │  makedb      │
+        │  (ref_db)    │                │  (upd_db)    │
+        └──────┬───────┘                └──────┬───────┘
+               │                                │
+               └────────────┬───────────────────┘
+                            ▼
+               ┌────────────────────────────┐
+               │   BIDIRECTIONAL BLASTP     │
+               ├────────────────────────────┤
+               │  Forward:  Ref → Updated   │
+               │  Reverse:  Updated → Ref   │
+               └────────────┬───────────────┘
+                            ▼
+               ┌────────────────────────────┐
+               │  PARSE BLAST ALIGNMENTS    │
+               │  • Extract gene matches    │
+               │  • Calculate identity/cov  │
+               └────────────┬───────────────┘
+                            ▼
+               ┌────────────────────────────┐
+               │ BIDIRECTIONAL BEST HITS    │
+               │      (BBH Analysis)        │
+               │  • Find reciprocal matches │
+               └────────────┬───────────────┘
+                            ▼
+               ┌────────────────────────────┐
+               │  GENE STRUCTURE ANALYSIS   │
+               │  • Count gene mappings     │
+               │  • Identify relationships  │
+               └────────────┬───────────────┘
+                            ▼
+                    ┌───────┴───────┐
+                    │               │
+         ┌──────────▼─────┐   ┌────▼──────────┐
+         │  GENE SPLITS   │   │  GENE MERGES  │
+         │  (1 → Many)    │   │  (Many → 1)   │
+         └──────────┬─────┘   └────┬──────────┘
+                    │               │
+                    └───────┬───────┘
+                            ▼
+               ┌────────────────────────────┐
+               │      EXPORT RESULTS        │
+               ├────────────────────────────┤
+               │  • gene_splits.tsv         │
+               │  • gene_merges.tsv         │
+               │  • forward_diamond.tsv     │
+               │  • reverse_diamond.tsv     │
+               └────────────────────────────┘
+```
+
+**Pipeline Steps:**
+
+1. **Database Creation** - Convert protein FASTA files to DIAMOND databases
+2. **Bidirectional Alignment** - Run BLASTP in both directions (ref→upd and upd→ref)
+3. **Parse Results** - Extract alignment data (identity, coverage, e-value)
+4. **BBH Analysis** - Identify genes with reciprocal best matches
+5. **Structure Analysis** - Detect one-to-many (splits) and many-to-one (merges) relationships
+6. **Export** - Save detected events to TSV files
+
+### Gene Split Scenario
+
+When one gene in the reference annotation corresponds to multiple genes in the updated annotation:
+
+```
+Reference Genome:
+┌─────────────────────────────────────┐
+│          Gene A (full length)       │
+│  ═══════════════════════════════    │
+└─────────────────────────────────────┘
+              ↓ BLASTP alignment
+              ↓
+Updated Genome:
+┌──────────────┐  ┌──────────────────┐
+│   Gene A1    │  │     Gene A2      │
+│  ═══════════  │  │  ═══════════     │
+└──────────────┘  └──────────────────┘
+
+Detection: One reference gene → Multiple updated genes
+Result: Gene SPLIT event
+```
+
+### Gene Merge Scenario
+
+When multiple genes in the reference annotation correspond to one gene in the updated annotation:
+
+```
+Reference Genome:
+┌──────────────┐  ┌──────────────────┐
+│   Gene B1    │  │     Gene B2      │
+│  ═══════════  │  │  ═══════════     │
+└──────────────┘  └──────────────────┘
+              ↓ BLASTP alignment
+              ↓
+Updated Genome:
+┌─────────────────────────────────────┐
+│          Gene B (full length)       │
+│  ═══════════════════════════════    │
+└─────────────────────────────────────┘
+
+Detection: Multiple reference genes → One updated gene
+Result: Gene MERGE event
+```
+
+### Analysis Method
+
+1. **DIAMOND BLASTP**: Fast protein sequence alignment (10-20,000× faster than BLAST+)
+2. **Bidirectional Best Hits (BBH)**: Identifies reciprocal best matches between annotations
+3. **Gene Mapping Analysis**:
+   - Counts how many genes in each annotation map to the other
+   - Identifies one-to-many relationships (splits)
+   - Identifies many-to-one relationships (merges)
+4. **Optional Clustering**: Groups similar proteins using DIAMOND linclust/cluster/deepclust
+
+</details>
+
+---
+
+<details>
+<summary><h2>📦 Installation</h2></summary>
 
 ### Requirements
 
@@ -26,15 +157,41 @@ pip install .
 - BioPython >= 1.79
 - pandas >= 1.3.0
 
-## Quick Start
+### Install from Source
+
+**IMPORTANT:** Run `pip install` from the directory containing `setup.py`
+
+```bash
+# Navigate to the package directory
+cd gene_split_merge    # ← Directory containing setup.py
+
+# Install in development mode (recommended for development)
+pip install -e .
+
+# OR install normally
+pip install .
+```
+
+**Verify Installation:**
+```bash
+gene-split-merge --help
+gene-clustering --help
+```
+
+</details>
+
+---
+
+<details>
+<summary><h2>🚀 Quick Start</h2></summary>
 
 ### As a Python Package
 
 ```python
 from gene_split_merge import DetectGeneSplitMerge
 
-# Initialize workflow
-workflow = DetectGeneSplitMerge(
+# Initialize pipeline
+pipeline = DetectGeneSplitMerge(
     ref_gff="data/reference.gff3",
     ref_proteins="data/reference_proteins.fasta",
     upd_gff="data/updated.gff3",
@@ -45,13 +202,13 @@ workflow = DetectGeneSplitMerge(
 )
 
 # Run analysis
-splits, merges = workflow.run_complete_workflow()
+splits, merges = pipeline.run_complete_workflow()
 ```
 
 ### Command Line (After Installation)
 
 ```bash
-# Main workflow
+# Main pipeline
 gene-split-merge \
     --ref-gff reference.gff3 \
     --ref-proteins reference_proteins.fasta \
@@ -73,7 +230,7 @@ gene-clustering \
 ### Using Python Module (Without Installation)
 
 ```bash
-# Main workflow
+# Main pipeline
 python -m gene_split_merge \
     --ref-gff reference.gff3 \
     --ref-proteins reference_proteins.fasta \
@@ -86,7 +243,12 @@ python -m gene_split_merge \
 ./scripts/gene-clustering --help
 ```
 
-## Package Structure
+</details>
+
+---
+
+<details>
+<summary><h2>📁 Package Structure</h2></summary>
 
 ```
 gene_split_merge/               # Project root
@@ -94,7 +256,7 @@ gene_split_merge/               # Project root
 │   └── gene_split_merge/      # Main package
 │       ├── __init__.py        # Package initialization
 │       ├── __main__.py        # Module entry point
-│       ├── core.py            # Main workflow
+│       ├── core.py            # Pipeline orchestration
 │       ├── analyzer.py        # Gene structure analysis
 │       ├── clustering.py      # DIAMOND clustering
 │       ├── utils.py           # DIAMOND utilities
@@ -111,14 +273,12 @@ gene_split_merge/               # Project root
 └── README.md                   # This file
 ```
 
-## Features
+</details>
 
-- **Fast Protein Alignment**: DIAMOND BLASTP (10-20,000x faster than BLAST+)
-- **Bidirectional Best Hits (BBH)**: Ortholog identification
-- **Gene Structure Analysis**: Detect splits and merges
-- **Protein Clustering**: Optional clustering with multiple algorithms
+---
 
-## Output Files
+<details>
+<summary><h2>📊 Output Files</h2></summary>
 
 ### Gene Split/Merge Detection
 
@@ -139,22 +299,32 @@ results/
 └── combined_diamond_linclust_clusters.tsv
 ```
 
-### Install Development Dependencies
+</details>
 
-```bash
-pip install -r requirements.txt -r requirements-dev.txt
-```
+---
+
+<details>
+<summary><h2>🔧 Development</h2></summary>
 
 ### Run Tests
 
 ```bash
+# Install test dependencies
+pip install pytest pytest-cov
+
 # Run all tests
 pytest tests/
 
 # Run with coverage
 pytest --cov=gene_split_merge tests/
 ```
-## Citation
+
+</details>
+
+---
+
+<details>
+<summary><h2>📖 Citation</h2></summary>
 
 If you use this tool, please cite:
 
@@ -164,7 +334,10 @@ If you use this tool, please cite:
 > Nature Methods 12: 59-60.
 > doi: 10.1038/nmeth.3176
 
+</details>
+
+---
+
 ## License
 
 MIT License
-

@@ -2,7 +2,7 @@
 Gene Split/Merge Detection Tool
 =================================
 
-A high-performance tool for detecting gene split and merge events between
+A simple Python implementation for detecting gene split and merge events between
 two genome annotations using DIAMOND BLASTP with optional clustering analysis.
 
 Main Components:
