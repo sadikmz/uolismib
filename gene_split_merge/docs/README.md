@@ -1,6 +1,6 @@
 # Gene Split/Merge Analyzer
 
-**⚠️ WARNING: THIS TOOL IS UNTESTED ⚠️**
+**⚠️ THIS TOOL IS UNDER DEVELOPMENT ⚠️**
 
 A Python toolkit for detecting gene splits and merges between two genome assemblies using DIAMOND BLASTP.
 

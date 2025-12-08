@@ -4,23 +4,60 @@
 
 A simple Python implementation for detecting gene split and merge events between two genome annotations using DIAMOND BLASTP with optional clustering analysis.
 
+---
+
+## Table of Contents
+
+- [Features](#features)
+- [Documentation](#documentation)
+- [Implementation](#implementation)
+  - [Pipeline Architecture](#pipeline-architecture)
+  - [Gene Split Scenario](#gene-split-scenario)
+  - [Gene Merge Scenario](#gene-merge-scenario)
+  - [Analysis Method](#analysis-method)
+- [Installation](#installation)
+  - [Requirements](#requirements)
+  - [Install from Source](#install-from-source)
+- [Quick Start](#quick-start)
+  - [As a Python Package](#as-a-python-package)
+  - [Command Line (After Installation)](#command-line-after-installation)
+  - [Using Python Module (Without Installation)](#using-python-module-without-installation)
+- [Package Structure](#package-structure)
+- [Output Files](#output-files)
+- [Development](#development)
+- [Citation](#citation)
+- [License](#license)
+
+---
+
 ## Features
 
 - **Fast Protein Alignment**: DIAMOND BLASTP (10-20,000x faster than BLAST+)
 - **Bidirectional Best Hits (BBH)**: Ortholog identification
 - **Gene Structure Analysis**: Detect splits and merges
-- **Protein Clustering**: Optional clustering with multiple algorithms
+- **Adjacency Detection**: Distinguishes adjacent vs non-adjacent events
+- **Confidence Scoring**: Quantitative assessment of detected events
+- **Protein Clustering**: Optional clustering with multiple algorithms (linclust, cluster, deepclust)
+- **Multiple Output Formats**: TSV tables and GFF3 files for genome browsers
+
+[↑ Back to Top](#table-of-contents)
 
 ---
 
 ## Documentation
 
-- **[GFF3 File Format Guide](tmp/GFF3_FORMAT.md)** - Comprehensive documentation on GFF3 format specification, structure, and usage in this tool
+**Comprehensive Guides:**
+
+- **[GFF3 File Format Guide](docs/GFF3_FORMAT.md)** - GFF3 format specification, structure, and usage in this tool
+- **[Confidence Score Explanation](docs/Confidence_Score_Explanation.md)** - How confidence scores are calculated and interpreted
+- **[Clustering Integration Guide](docs/CLUSTERING_INTEGRATION.md)** - DIAMOND clustering workflows, parameters, and use cases
+- **[Design and Implementation](docs/DESIGN_AND_IMPLEMENTATION.md)** - Complete architecture, algorithms, and technical details
+
+[↑ Back to Top](#table-of-contents)
 
 ---
 
-<details>
-<summary><h2>🔬 Implementation</h2></summary>
+## Implementation
 
 ### Pipeline Architecture
 
@@ -149,12 +186,11 @@ Result: Gene MERGE event
    - Identifies many-to-one relationships (merges)
 4. **Optional Clustering**: Groups similar proteins using DIAMOND linclust/cluster/deepclust
 
-</details>
+[↑ Back to Top](#table-of-contents)
 
 ---
 
-<details>
-<summary><h2>📦 Installation</h2></summary>
+## Installation
 
 ### Requirements
 
@@ -184,12 +220,11 @@ gene-split-merge --help
 gene-clustering --help
 ```
 
-</details>
+[↑ Back to Top](#table-of-contents)
 
 ---
 
-<details>
-<summary><h2>🚀 Quick Start</h2></summary>
+## Quick Start
 
 ### As a Python Package
 
@@ -249,12 +284,11 @@ python -m gene_split_merge \
 ./scripts/gene-clustering --help
 ```
 
-</details>
+[↑ Back to Top](#table-of-contents)
 
 ---
 
-<details>
-<summary><h2>📁 Package Structure</h2></summary>
+## Package Structure
 
 ```
 gene_split_merge/               # Project root
@@ -279,12 +313,11 @@ gene_split_merge/               # Project root
 └── README.md                   # This file
 ```
 
-</details>
+[↑ Back to Top](#table-of-contents)
 
 ---
 
-<details>
-<summary><h2>📊 Output Files</h2></summary>
+## Output Files
 
 ### Gene Split/Merge Detection
 
@@ -305,12 +338,17 @@ results/
 └── combined_diamond_linclust_clusters.tsv
 ```
 
-</details>
+**Output Format Details:**
+
+- **TSV files**: Tab-separated tables with columns for gene IDs, confidence scores, and relationship types
+- **GFF3 files**: Genome browser compatible format for visualizing split/merge events
+- **Clustering files**: Protein cluster assignments with representative sequences
+
+[↑ Back to Top](#table-of-contents)
 
 ---
 
-<details>
-<summary><h2>🔧 Development</h2></summary>
+## Development
 
 ### Run Tests
 
@@ -325,12 +363,19 @@ pytest tests/
 pytest --cov=gene_split_merge tests/
 ```
 
-</details>
+### Contributing
+
+Contributions are welcome! Please:
+1. Fork the repository
+2. Create a feature branch
+3. Add tests for new functionality
+4. Submit a pull request
+
+[↑ Back to Top](#table-of-contents)
 
 ---
 
-<details>
-<summary><h2>📖 Citation</h2></summary>
+## Citation
 
 If you use this tool, please cite:
 
@@ -340,10 +385,18 @@ If you use this tool, please cite:
 > Nature Methods 12: 59-60.
 > doi: 10.1038/nmeth.3176
 
-</details>
+**DIAMOND Clustering:**
+> Buchfink B, Reuter K, Drost HG. (2021)
+> Sensitive protein alignments at tree-of-life scale using DIAMOND.
+> Nature Methods 18: 366-368.
+> doi: 10.1038/s41592-021-01101-x
+
+[↑ Back to Top](#table-of-contents)
 
 ---
 
 ## License
 
 MIT License
+
+[↑ Back to Top](#table-of-contents)
