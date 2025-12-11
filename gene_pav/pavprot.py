@@ -9,6 +9,11 @@ import sys
 import os
 import subprocess
 import gzip
+import pandas as pd
+from pathlib import Path
+
+# Import InterProParser and run_interproscan from same directory
+from parse_interproscan import InterProParser, run_interproscan
 
 class PAVprot:
     @staticmethod
@@ -187,8 +192,19 @@ class PAVprot:
                 ctype = '4'
             else:
                 ctype = '5'
-            
-            query_gene_info[qgene] = {'class_code_multi': code_str, 'class_type': ctype}
+
+            # Calculate emckmnj: 1 if any code in [em,c,k,m,n,j], else 0
+            emckmnj = 1 if class_codes & {'em', 'c', 'k', 'm', 'n', 'j'} else 0
+
+            # Calculate emckmnje: 1 if any code in [em,c,k,m,n,j,e], else 0
+            emckmnje = 1 if class_codes & {'em', 'c', 'k', 'm', 'n', 'j', 'e'} else 0
+
+            query_gene_info[qgene] = {
+                'class_code_multi': code_str,
+                'class_type': ctype,
+                'emckmnj': emckmnj,
+                'emckmnje': emckmnje
+            }
             
         # Step 3: Attach info back to entries
         for entries in full_dict.values():
@@ -196,9 +212,16 @@ class PAVprot:
                 qgene = entry['query_gene']
                 # if qgene in query_gene_info:
                     # entry.update(query_gene_info[qgene])
-                info = query_gene_info.get(qgene, {'class_code_multi': entry['class_code'], 'class_type': '3'})
+                info = query_gene_info.get(qgene, {
+                    'class_code_multi': entry['class_code'],
+                    'class_type': '3',
+                    'emckmnj': 0,
+                    'emckmnje': 0
+                })
                 entry['class_code_multi'] = info['class_code_multi']
                 entry['class_type'] = info['class_type']
+                entry['emckmnj'] = info['emckmnj']
+                entry['emckmnje'] = info['emckmnje']
                 
         return full_dict
 
@@ -261,8 +284,186 @@ class PAVprot:
 
         return full_dict
 
+    @classmethod
+    def load_interproscan_data(cls, interproscan_tsv: str) -> dict:
+        """
+        Load InterProScan data and extract domain information for each protein.
+
+        Can load either:
+        - Raw InterProScan TSV output (15 columns, no header)
+        - Processed parse_interproscan output (with header, longest_ipr_domains files)
+
+        Returns:
+            Dictionary mapping protein_accession to:
+            {
+                'analysis': analysis type (from longest IPR domain),
+                'signature_accession': signature accession (from longest IPR domain),
+                'total_IPR_domain_length': sum of all IPR domain lengths
+            }
+        """
+        if not interproscan_tsv or not os.path.exists(interproscan_tsv):
+            return {}
+
+        # Check if file has header by reading first line
+        with open(interproscan_tsv, 'r') as f:
+            first_line = f.readline().strip()
+
+        has_header = 'protein_accession' in first_line or 'gene_id' in first_line
+
+        if has_header:
+            # Read processed output file with header
+            df = pd.read_csv(interproscan_tsv, sep='\t')
+
+            # Check if this is already a longest_ipr_domains file (has longestIPRdom or signature_description duplicated)
+            if 'interpro_accession' in df.columns:
+                # Filter to only IPR domains
+                ipr_df = df[df['interpro_accession'].str.startswith('IPR', na=False)].copy()
+
+                if len(ipr_df) == 0:
+                    return {}
+
+                # Calculate domain length
+                ipr_df['domain_length'] = ipr_df['stop_location'] - ipr_df['start_location'] + 1
+            else:
+                # This might be a domain_distribution file without IPR filtering already done
+                print(f"Warning: File {interproscan_tsv} doesn't appear to be an InterProScan output file")
+                return {}
+        else:
+            # Parse raw InterProScan file (no header)
+            parser = InterProParser()
+            df = parser.parse_tsv(interproscan_tsv)
+
+            # Filter to only IPR domains
+            ipr_df = df[df['interpro_accession'].str.startswith('IPR', na=False)].copy()
+
+            if len(ipr_df) == 0:
+                return {}
+
+            # Calculate domain length
+            ipr_df['domain_length'] = ipr_df['stop_location'] - ipr_df['start_location'] + 1
+
+        result = {}
+
+        for protein_acc in ipr_df['protein_accession'].unique():
+            protein_data = ipr_df[ipr_df['protein_accession'] == protein_acc]
+
+            # Get longest IPR domain info
+            longest_idx = protein_data['domain_length'].idxmax()
+            longest_domain = protein_data.loc[longest_idx]
+
+            # Calculate total IPR domain length (sum of all IPR domains)
+            total_length = protein_data['domain_length'].sum()
+
+            result[protein_acc] = {
+                'analysis': longest_domain['analysis'],
+                'signature_accession': longest_domain['signature_accession'],
+                'total_IPR_domain_length': int(total_length)
+            }
+
+        return result
+
+    @classmethod
+    def enrich_interproscan_data(cls, data: dict, qry_interproscan_map: dict, ref_interproscan_map: dict):
+        """
+        Add InterProScan total IPR domain length to the data dictionary.
+
+        Args:
+            data: The main data dictionary to enrich
+            qry_interproscan_map: Query gene_id -> total_iprdom_len mapping
+            ref_interproscan_map: Reference gene_id -> total_iprdom_len mapping
+        """
+        for entries in data.values():
+            for entry in entries:
+                # Add query InterProScan data (map by query_gene)
+                qry_gene = entry['query_gene']
+                if qry_gene in qry_interproscan_map:
+                    entry['query_gene_total_iprdom_len'] = qry_interproscan_map[qry_gene]
+                else:
+                    entry['query_gene_total_iprdom_len'] = 0
+
+                # Add reference InterProScan data (map by ref_gene)
+                ref_gene = entry['ref_gene']
+                if ref_gene in ref_interproscan_map:
+                    entry['ref_gene_total_iprdom_len'] = ref_interproscan_map[ref_gene]
+                else:
+                    entry['ref_gene_total_iprdom_len'] = 0
+
+        return data
+
+    @classmethod
+    def detect_interproscan_type(cls, data: dict, interproscan_tsv: str) -> str:
+        """
+        Auto-detect whether InterProScan file matches reference or query transcripts.
+
+        Args:
+            data: The main data dictionary with ref_transcript and query_transcript
+            interproscan_tsv: Path to InterProScan TSV file
+
+        Returns:
+            'reference' if InterProScan matches reference transcripts
+            'query' if InterProScan matches query transcripts
+            'unknown' if no clear match
+        """
+        if not interproscan_tsv or not os.path.exists(interproscan_tsv):
+            return 'unknown'
+
+        # Collect all reference and query transcript IDs from tracking data
+        ref_transcripts = set()
+        query_transcripts = set()
+        query_genes = set()
+
+        for entries in data.values():
+            for entry in entries:
+                ref_transcripts.add(entry['ref_transcript'])
+                query_transcripts.add(entry['query_transcript'])
+                query_genes.add(entry['query_gene'])
+
+        # Load protein IDs from InterProScan file
+        interpro_proteins = set()
+
+        # Check if file has header
+        with open(interproscan_tsv, 'r') as f:
+            first_line = f.readline().strip()
+
+        has_header = 'protein_accession' in first_line or 'gene_id' in first_line
+
+        if has_header:
+            df = pd.read_csv(interproscan_tsv, sep='\t', usecols=[0])
+            interpro_proteins = set(df.iloc[:, 0].unique())
+        else:
+            # Raw InterProScan format (column 0 is protein_accession)
+            with open(interproscan_tsv, 'r') as f:
+                for line in f:
+                    if line.strip():
+                        protein_id = line.split('\t')[0]
+                        interpro_proteins.add(protein_id)
+
+        # Count matches
+        ref_matches = len(interpro_proteins & ref_transcripts)
+        query_matches = len(interpro_proteins & query_transcripts)
+        query_gene_matches = len(interpro_proteins & query_genes)
+
+        # Combine query transcript and gene matches
+        total_query_matches = query_matches + query_gene_matches
+
+        print(f"  → InterProScan auto-detection:", file=sys.stderr)
+        print(f"     Reference transcript matches: {ref_matches}/{len(ref_transcripts)}", file=sys.stderr)
+        print(f"     Query transcript matches: {query_matches}/{len(query_transcripts)}", file=sys.stderr)
+        print(f"     Query gene matches: {query_gene_matches}/{len(query_genes)}", file=sys.stderr)
+
+        # Determine type based on match counts
+        if ref_matches > total_query_matches:
+            print(f"  → Detected as: REFERENCE", file=sys.stderr)
+            return 'reference'
+        elif total_query_matches > ref_matches:
+            print(f"  → Detected as: QUERY", file=sys.stderr)
+            return 'query'
+        else:
+            print(f"  → Could not auto-detect (defaulting to: REFERENCE)", file=sys.stderr)
+            return 'reference'  # Default to reference if unclear
+
 class DiamondRunner:
-    def __init__(self, threads: int = 40, output_prefix: str = "gffcompare"):
+    def __init__(self, threads: int = 40, output_prefix: str = "synonym_mapping_liftover_gffcomp"):
         self.threads = threads
         self.output_prefix = output_prefix
 
@@ -353,19 +554,133 @@ class DiamondRunner:
 def main():
     parser = argparse.ArgumentParser(description="PAVprot – complete class-based pipeline")
     parser.add_argument('--gff-comp', required=True)
-    parser.add_argument('--ref-gff', help="GFF3 CDS feature table (optional)")
+    parser.add_argument('--gff', help="GFF3 CDS feature table. Single GFF for reference only, or comma-separated 'ref.gff,query.gff' for both")
     parser.add_argument('--liftoff-gff', help="Liftoff GFF3 with extra_copy_number (optional)")
     parser.add_argument('--class-code', help="Comma-separated class codes (e.g. em,j)")
     parser.add_argument('--ref-faa', help="Reference proteins FASTA")
     parser.add_argument('--qry-faa', help="Query proteins FASTA")
     parser.add_argument('--run-diamond', action='store_true')
     parser.add_argument('--diamond-threads', type=int, default=40)
-    parser.add_argument('--output-prefix', default="gffcompare")
+    parser.add_argument('--output-prefix', default="synonym_mapping_liftover_gffcomp")
+    parser.add_argument('--interproscan-out', help="InterProScan TSV output file(s). Single file for single GFF, or comma-separated for 2 GFFs. Format: 'ref_interpro.tsv' or 'ref_interpro.tsv,query_interpro.tsv'")
+
+    # InterProScan running options
+    parser.add_argument('--run-interproscan', action='store_true', help='Run InterProScan on input protein files before parsing')
+    parser.add_argument('--input-prots', help="Comma-separated protein FASTA file(s). Single file for single GFF, or 2 files for 2 GFFs. Format: 'ref.faa' or 'ref.faa,query.faa'")
+    parser.add_argument('--interproscan-cpu', type=int, default=4, help='Number of CPUs for InterProScan (default: 4)')
+    parser.add_argument('--interproscan-pathways', action='store_true', help='Include pathway annotations in InterProScan')
+    parser.add_argument('--interproscan-databases', help='Databases to search (comma-separated, default: all)')
 
     args = parser.parse_args()
 
+    # Parse ref-gff to check if comma-separated
+    ref_gff_list = [g.strip() for g in args.gff.split(',')] if args.gff else []
+    num_gffs = len(ref_gff_list)
+
+    # Handle InterProScan running if requested
+    if args.run_interproscan:
+        if not args.input_prots:
+            parser.error("--run-interproscan requires --input-prots argument")
+
+        # Parse input protein files
+        input_prot_files = [f.strip() for f in args.input_prots.split(',')]
+
+        # Validate number of protein files matches number of GFFs (if GFF provided)
+        if args.gff:
+            if num_gffs == 2 and len(input_prot_files) != 2:
+                parser.error(f"When --gff has 2 files, --input-prots must also have exactly 2 comma-separated files. Got {len(input_prot_files)} protein files.")
+            elif num_gffs == 1 and len(input_prot_files) > 2:
+                parser.error(f"When --gff has 1 file, --input-prots can have at most 2 files. Got {len(input_prot_files)} protein files.")
+
+            print(f"\nNote: Protein file order follows GFF file order:", file=sys.stderr)
+            for i, (prot_file, gff_file) in enumerate(zip(input_prot_files, ref_gff_list)):
+                file_type = "Reference" if i == 0 else "Query"
+                print(f"  {file_type}: {prot_file} → {gff_file}", file=sys.stderr)
+        else:
+            print(f"\nNote: Running InterProScan without GFF - gene IDs will not be mapped", file=sys.stderr)
+
+        # Validate files exist
+        for f in input_prot_files:
+            if not os.path.exists(f):
+                parser.error(f"Protein file not found: {f}")
+
+        # Run InterProScan for each protein file
+        print("\n" + "="*80, file=sys.stderr)
+        print("RUNNING INTERPROSCAN", file=sys.stderr)
+        print("="*80, file=sys.stderr)
+
+        # Create pavprot_out directory for all outputs
+        pavprot_out = os.path.join(os.getcwd(), 'pavprot_out')
+        os.makedirs(pavprot_out, exist_ok=True)
+
+        interproscan_output_files = []
+        for i, prot_file in enumerate(input_prot_files):
+            file_type = "Reference" if i == 0 else "Query"
+            print(f"\n[{i+1}/{len(input_prot_files)}] Running InterProScan for {file_type} proteins: {prot_file}", file=sys.stderr)
+
+            # Generate output basename in pavprot_out directory
+            output_basename = Path(prot_file).stem + "_interproscan"
+            output_base = os.path.join(pavprot_out, output_basename)
+
+            # Run InterProScan
+            success = run_interproscan(
+                protein_file=prot_file,
+                cpu=args.interproscan_cpu,
+                output_base=output_base,
+                output_format='TSV',
+                pathways=args.interproscan_pathways,
+                databases=args.interproscan_databases
+            )
+
+            if not success:
+                print(f"Error: InterProScan failed for {prot_file}", file=sys.stderr)
+                sys.exit(1)
+
+            # Add output file to list
+            output_file = f"{output_base}.tsv"
+            interproscan_output_files.append(output_file)
+            print(f"  → InterProScan output: {output_file}", file=sys.stderr)
+
+        print("\n" + "="*80, file=sys.stderr)
+        print("✓ InterProScan completed for all files!", file=sys.stderr)
+        print("="*80 + "\n", file=sys.stderr)
+
+        # Set interproscan_files to the generated output files
+        interproscan_files = interproscan_output_files
+
+    # Validate interproscan-out based on number of GFFs
+    else:
+        interproscan_files = []
+        if args.interproscan_out:
+            interproscan_files = [f.strip() for f in args.interproscan_out.split(',')]
+
+        # Validate number of InterProScan files
+        if num_gffs == 2:
+            if len(interproscan_files) == 1:
+                print(f"Note: Single InterProScan file provided with 2 GFFs - will be treated as reference-only", file=sys.stderr)
+            elif len(interproscan_files) != 2:
+                parser.error(f"--interproscan-out must have 1 or 2 comma-separated files when --gff has 2 GFFs. Got {len(interproscan_files)} files.")
+        elif num_gffs == 1:
+            if len(interproscan_files) == 1:
+                print(f"Note: Single InterProScan file provided with 1 GFF - will be treated as reference-only", file=sys.stderr)
+            elif len(interproscan_files) == 2:
+                print(f"Note: Two InterProScan files provided with 1 GFF - first for reference (with gene mapping), second for query (protein-level only)", file=sys.stderr)
+            elif len(interproscan_files) > 2:
+                parser.error(f"--interproscan-out can have at most 2 files when --gff has 1 GFF. Got {len(interproscan_files)} files.")
+        elif num_gffs == 0:
+            if len(interproscan_files) > 0:
+                print(f"Note: {len(interproscan_files)} InterProScan file(s) provided without GFF - protein-level data only (no gene mapping)", file=sys.stderr)
+
+        # Validate files exist
+        for f in interproscan_files:
+            if not os.path.exists(f):
+                parser.error(f"InterProScan file not found: {f}")
+
+    # Use first GFF for parse_tracking (reference GFF)
+    ref_gff_for_tracking = ref_gff_list[0] if ref_gff_list else None
+
     filter_set = {c.strip() for c in args.class_code.split(',')} if args.class_code else None
-    full, filtered = PAVprot.parse_tracking(args.gff_comp, args.ref_gff, filter_set)
+    full, filtered = PAVprot.parse_tracking(args.gff_comp, ref_gff_for_tracking, filter_set)
     data = filtered if filtered else full
 
     if args.run_diamond:
@@ -401,30 +716,329 @@ def main():
     if args.liftoff_gff:
         data = PAVprot.filter_extra_copy_transcripts(data, args.liftoff_gff)
 
+    # Load and enrich with InterProScan data
+    has_interproscan = False
+    ref_interproscan_map = {}
+    qry_interproscan_map = {}
+
+    # Create pavprot_out directory for parse_interproscan outputs
+    pavprot_out = os.path.join(os.getcwd(), 'pavprot_out')
+    os.makedirs(pavprot_out, exist_ok=True)
+
+    if interproscan_files and len(interproscan_files) > 0:
+        print("\n" + "="*80, file=sys.stderr)
+        print("RUNNING INTERPROSCAN INTEGRATION (parse_interproscan functionality)", file=sys.stderr)
+        print("="*80, file=sys.stderr)
+
+        # Case 1: No GFF - Parse InterProScan without gene mapping
+        if num_gffs == 0:
+            print(f"\n[1/3] No GFF mode: Protein-level data only (no gene mapping)", file=sys.stderr)
+            for i, interpro_file in enumerate(interproscan_files):
+                file_type = "Reference" if i == 0 else "Query"
+                print(f"  {file_type} InterProScan: {interpro_file}", file=sys.stderr)
+
+            # Parse each InterProScan file without gene mapping
+            parsers_list = []
+            for i, interpro_file in enumerate(interproscan_files):
+                file_type = "Reference" if i == 0 else "Query"
+                print(f"\n[{i+2}/{len(interproscan_files)+2}] Parsing {file_type.lower()} InterProScan (protein-level only)...", file=sys.stderr)
+
+                parser = InterProParser(gff_file=None)
+                df = parser.parse_tsv(interpro_file)
+                print(f"  → Loaded {len(df)} InterProScan entries", file=sys.stderr)
+                print(f"  → Calculating total IPR lengths per protein...", file=sys.stderr)
+
+                ipr_map = parser.total_ipr_length()
+                print(f"  → Calculated for {len(ipr_map)} proteins (using protein_accession as key)", file=sys.stderr)
+
+                if i == 0:
+                    ref_interproscan_map = ipr_map
+                else:
+                    qry_interproscan_map = ipr_map
+
+                parsers_list.append((parser, interpro_file))
+
+            # Save parse_interproscan outputs to pavprot_out
+            for i, (parser, interpro_file) in enumerate(parsers_list):
+                file_type = "reference" if i == 0 else "query"
+                file_base = Path(interpro_file).stem
+
+                # Save total IPR lengths
+                total_ipr_file = os.path.join(pavprot_out, f"{file_base}_total_ipr_length.tsv")
+                domain_dist_file = os.path.join(pavprot_out, f"{file_base}_domain_distribution.tsv")
+
+                ipr_map = ref_interproscan_map if i == 0 else qry_interproscan_map
+                total_df = pd.DataFrame(list(ipr_map.items()),
+                                       columns=['protein_accession', 'total_iprdom_len'])
+                total_df.to_csv(total_ipr_file, sep='\t', index=False)
+
+                # Save domain distribution
+                domain_stats = parser.domain_distribution()
+                if len(domain_stats) > 0:
+                    domain_stats.to_csv(domain_dist_file, sep='\t', index=False, na_rep='')
+                print(f"  → Saved {file_type} outputs to pavprot_out/", file=sys.stderr)
+
+            print(f"\nNote: Gene IDs not added to output (no GFF provided)", file=sys.stderr)
+
+        # Case 2: Single GFF + Single InterProScan file
+        # Auto-detect whether InterProScan matches reference or query transcripts
+        elif num_gffs == 1 and len(interproscan_files) == 1:
+            print(f"\n[1/4] Single GFF mode: Auto-detecting InterProScan type", file=sys.stderr)
+            print(f"  GFF: {ref_gff_list[0]}", file=sys.stderr)
+            print(f"  InterProScan: {interproscan_files[0]}", file=sys.stderr)
+
+            print(f"\n[2/4] Auto-detecting InterProScan type...", file=sys.stderr)
+            interproscan_type = PAVprot.detect_interproscan_type(data, interproscan_files[0])
+
+            print(f"\n[3/4] Parsing InterProScan with gene mapping...", file=sys.stderr)
+            parser = InterProParser(gff_file=ref_gff_list[0])
+            df = parser.parse_tsv(interproscan_files[0])
+            print(f"  → Loaded {len(df)} InterProScan entries", file=sys.stderr)
+
+            print(f"\n[4/4] Calculating total IPR domain lengths per gene...", file=sys.stderr)
+            ipr_map = parser.total_ipr_length()
+
+            if interproscan_type == 'query':
+                qry_interproscan_map = ipr_map
+                print(f"  → Calculated for {len(qry_interproscan_map)} query genes", file=sys.stderr)
+                print(f"  → Reference genes: No InterProScan data", file=sys.stderr)
+            else:  # reference or unknown (default to reference)
+                ref_interproscan_map = ipr_map
+                print(f"  → Calculated for {len(ref_interproscan_map)} reference genes", file=sys.stderr)
+                print(f"  → Query genes: No InterProScan data", file=sys.stderr)
+
+            # Save parse_interproscan outputs to pavprot_out
+            file_base = Path(interproscan_files[0]).stem
+            total_ipr_file = os.path.join(pavprot_out, f"{file_base}_total_ipr_length.tsv")
+            domain_dist_file = os.path.join(pavprot_out, f"{file_base}_domain_distribution.tsv")
+
+            # Save total IPR lengths
+            total_df = pd.DataFrame(list(ipr_map.items()),
+                                    columns=['gene_id' if parser.transcript_to_gene_map else 'protein_accession',
+                                            'total_iprdom_len'])
+            total_df.to_csv(total_ipr_file, sep='\t', index=False)
+            print(f"  → Saved: {total_ipr_file}", file=sys.stderr)
+
+            # Save domain distribution
+            domain_stats = parser.domain_distribution()
+            if len(domain_stats) > 0:
+                domain_stats.to_csv(domain_dist_file, sep='\t', index=False, na_rep='')
+                print(f"  → Saved: {domain_dist_file}", file=sys.stderr)
+
+        # Case 2b: Two GFFs + Single InterProScan file
+        # Auto-detect whether InterProScan matches reference or query
+        elif num_gffs == 2 and len(interproscan_files) == 1:
+            print(f"\n[1/4] Dual GFF mode with single InterProScan: Auto-detecting type", file=sys.stderr)
+            print(f"  Reference GFF: {ref_gff_list[0]}", file=sys.stderr)
+            print(f"  Query GFF: {ref_gff_list[1]}", file=sys.stderr)
+            print(f"  InterProScan: {interproscan_files[0]}", file=sys.stderr)
+
+            print(f"\n[2/4] Auto-detecting InterProScan type...", file=sys.stderr)
+            interproscan_type = PAVprot.detect_interproscan_type(data, interproscan_files[0])
+
+            # Choose which GFF to use for mapping based on detection
+            gff_to_use = ref_gff_list[0] if interproscan_type == 'reference' else ref_gff_list[1]
+
+            print(f"\n[3/4] Parsing InterProScan with gene mapping...", file=sys.stderr)
+            parser = InterProParser(gff_file=gff_to_use)
+            df = parser.parse_tsv(interproscan_files[0])
+            print(f"  → Loaded {len(df)} InterProScan entries", file=sys.stderr)
+
+            print(f"\n[4/4] Calculating total IPR domain lengths per gene...", file=sys.stderr)
+            ipr_map = parser.total_ipr_length()
+
+            if interproscan_type == 'query':
+                qry_interproscan_map = ipr_map
+                print(f"  → Calculated for {len(qry_interproscan_map)} query genes", file=sys.stderr)
+                print(f"  → Reference genes: No InterProScan data", file=sys.stderr)
+            else:  # reference or unknown
+                ref_interproscan_map = ipr_map
+                print(f"  → Calculated for {len(ref_interproscan_map)} reference genes", file=sys.stderr)
+                print(f"  → Query genes: No InterProScan data", file=sys.stderr)
+
+            # Save parse_interproscan outputs to pavprot_out
+            file_base = Path(interproscan_files[0]).stem
+            total_ipr_file = os.path.join(pavprot_out, f"{file_base}_total_ipr_length.tsv")
+            domain_dist_file = os.path.join(pavprot_out, f"{file_base}_domain_distribution.tsv")
+
+            # Save total IPR lengths
+            total_df = pd.DataFrame(list(ipr_map.items()),
+                                    columns=['gene_id' if parser.transcript_to_gene_map else 'protein_accession',
+                                            'total_iprdom_len'])
+            total_df.to_csv(total_ipr_file, sep='\t', index=False)
+            print(f"  → Saved: {total_ipr_file}", file=sys.stderr)
+
+            # Save domain distribution
+            domain_stats = parser.domain_distribution()
+            if len(domain_stats) > 0:
+                domain_stats.to_csv(domain_dist_file, sep='\t', index=False, na_rep='')
+                print(f"  → Saved: {domain_dist_file}", file=sys.stderr)
+
+        # Case 3: Single GFF + Two InterProScan files
+        # Map first InterProScan to GFF (reference), second without mapping (query)
+        elif num_gffs == 1 and len(interproscan_files) == 2:
+            print(f"\n[1/4] Single GFF mode: Reference with gene mapping, Query without", file=sys.stderr)
+            print(f"  Reference GFF: {ref_gff_list[0]}", file=sys.stderr)
+            print(f"  Reference InterProScan: {interproscan_files[0]}", file=sys.stderr)
+            print(f"  Query InterProScan: {interproscan_files[1]} (no gene mapping)", file=sys.stderr)
+
+            # Load reference InterProScan with GFF mapping
+            print(f"\n[2/4] Parsing reference InterProScan with gene mapping...", file=sys.stderr)
+            ref_parser = InterProParser(gff_file=ref_gff_list[0])
+            ref_df = ref_parser.parse_tsv(interproscan_files[0])
+            print(f"  → Loaded {len(ref_df)} InterProScan entries", file=sys.stderr)
+            print(f"  → Calculating total IPR lengths per gene...", file=sys.stderr)
+            ref_interproscan_map = ref_parser.total_ipr_length()
+            print(f"  → Calculated for {len(ref_interproscan_map)} reference genes", file=sys.stderr)
+
+            # Load query InterProScan without GFF mapping
+            print(f"\n[3/4] Parsing query InterProScan (protein-level only)...", file=sys.stderr)
+            qry_parser = InterProParser(gff_file=None)
+            qry_df = qry_parser.parse_tsv(interproscan_files[1])
+            print(f"  → Loaded {len(qry_df)} InterProScan entries", file=sys.stderr)
+            print(f"  → Calculating total IPR lengths per protein...", file=sys.stderr)
+            qry_interproscan_map = qry_parser.total_ipr_length()
+            print(f"  → Calculated for {len(qry_interproscan_map)} query proteins (using protein_accession)", file=sys.stderr)
+
+            # Save parse_interproscan outputs to pavprot_out
+            ref_base = Path(interproscan_files[0]).stem
+            qry_base = Path(interproscan_files[1]).stem
+
+            # Save reference outputs
+            ref_total_ipr_file = os.path.join(pavprot_out, f"{ref_base}_total_ipr_length.tsv")
+            ref_domain_dist_file = os.path.join(pavprot_out, f"{ref_base}_domain_distribution.tsv")
+            ref_total_df = pd.DataFrame(list(ref_interproscan_map.items()),
+                                        columns=['gene_id' if ref_parser.transcript_to_gene_map else 'protein_accession',
+                                                'total_iprdom_len'])
+            ref_total_df.to_csv(ref_total_ipr_file, sep='\t', index=False)
+            ref_domain_stats = ref_parser.domain_distribution()
+            if len(ref_domain_stats) > 0:
+                ref_domain_stats.to_csv(ref_domain_dist_file, sep='\t', index=False, na_rep='')
+            print(f"  → Saved reference outputs to pavprot_out/", file=sys.stderr)
+
+            # Save query outputs
+            qry_total_ipr_file = os.path.join(pavprot_out, f"{qry_base}_total_ipr_length.tsv")
+            qry_domain_dist_file = os.path.join(pavprot_out, f"{qry_base}_domain_distribution.tsv")
+            qry_total_df = pd.DataFrame(list(qry_interproscan_map.items()),
+                                        columns=['protein_accession', 'total_iprdom_len'])
+            qry_total_df.to_csv(qry_total_ipr_file, sep='\t', index=False)
+            qry_domain_stats = qry_parser.domain_distribution()
+            if len(qry_domain_stats) > 0:
+                qry_domain_stats.to_csv(qry_domain_dist_file, sep='\t', index=False, na_rep='')
+            print(f"  → Saved query outputs to pavprot_out/", file=sys.stderr)
+
+        # Case 4: Two GFFs + Two InterProScan files
+        # Load both reference and query InterProScan data with gene mapping
+        elif num_gffs == 2 and len(interproscan_files) == 2:
+            print(f"\n[1/4] Dual GFF mode: Reference + Query", file=sys.stderr)
+            print(f"  Reference GFF: {ref_gff_list[0]}", file=sys.stderr)
+            print(f"  Reference InterProScan: {interproscan_files[0]}", file=sys.stderr)
+            print(f"  Query GFF: {ref_gff_list[1]}", file=sys.stderr)
+            print(f"  Query InterProScan: {interproscan_files[1]}", file=sys.stderr)
+
+            # Load reference InterProScan with reference GFF
+            print(f"\n[2/4] Parsing reference InterProScan...", file=sys.stderr)
+            ref_parser = InterProParser(gff_file=ref_gff_list[0])
+            ref_df = ref_parser.parse_tsv(interproscan_files[0])
+            print(f"  → Loaded {len(ref_df)} InterProScan entries", file=sys.stderr)
+            print(f"  → Calculating total IPR lengths per gene...", file=sys.stderr)
+            ref_interproscan_map = ref_parser.total_ipr_length()
+            print(f"  → Calculated for {len(ref_interproscan_map)} reference genes", file=sys.stderr)
+
+            # Load query InterProScan with query GFF
+            print(f"\n[3/4] Parsing query InterProScan...", file=sys.stderr)
+            qry_parser = InterProParser(gff_file=ref_gff_list[1])
+            qry_df = qry_parser.parse_tsv(interproscan_files[1])
+            print(f"  → Loaded {len(qry_df)} InterProScan entries", file=sys.stderr)
+            print(f"  → Calculating total IPR lengths per gene...", file=sys.stderr)
+            qry_interproscan_map = qry_parser.total_ipr_length()
+            print(f"  → Calculated for {len(qry_interproscan_map)} query genes", file=sys.stderr)
+
+            # Save parse_interproscan outputs to pavprot_out
+            ref_base = Path(interproscan_files[0]).stem
+            qry_base = Path(interproscan_files[1]).stem
+
+            # Save reference outputs
+            ref_total_ipr_file = os.path.join(pavprot_out, f"{ref_base}_total_ipr_length.tsv")
+            ref_domain_dist_file = os.path.join(pavprot_out, f"{ref_base}_domain_distribution.tsv")
+            ref_total_df = pd.DataFrame(list(ref_interproscan_map.items()),
+                                        columns=['gene_id' if ref_parser.transcript_to_gene_map else 'protein_accession',
+                                                'total_iprdom_len'])
+            ref_total_df.to_csv(ref_total_ipr_file, sep='\t', index=False)
+            ref_domain_stats = ref_parser.domain_distribution()
+            if len(ref_domain_stats) > 0:
+                ref_domain_stats.to_csv(ref_domain_dist_file, sep='\t', index=False, na_rep='')
+            print(f"  → Saved reference outputs to pavprot_out/", file=sys.stderr)
+
+            # Save query outputs
+            qry_total_ipr_file = os.path.join(pavprot_out, f"{qry_base}_total_ipr_length.tsv")
+            qry_domain_dist_file = os.path.join(pavprot_out, f"{qry_base}_domain_distribution.tsv")
+            qry_total_df = pd.DataFrame(list(qry_interproscan_map.items()),
+                                        columns=['gene_id' if qry_parser.transcript_to_gene_map else 'protein_accession',
+                                                'total_iprdom_len'])
+            qry_total_df.to_csv(qry_total_ipr_file, sep='\t', index=False)
+            qry_domain_stats = qry_parser.domain_distribution()
+            if len(qry_domain_stats) > 0:
+                qry_domain_stats.to_csv(qry_domain_dist_file, sep='\t', index=False, na_rep='')
+            print(f"  → Saved query outputs to pavprot_out/", file=sys.stderr)
+
+        # Enrich data with InterProScan information
+        if qry_interproscan_map or ref_interproscan_map:
+            has_interproscan = True
+            print(f"\n[{4 if num_gffs == 2 else 4}/4] Enriching PAVprot data with InterProScan totals...", file=sys.stderr)
+            data = PAVprot.enrich_interproscan_data(data, qry_interproscan_map, ref_interproscan_map)
+            print(f"  → Added columns: query_gene_total_iprdom_len, ref_gene_total_iprdom_len", file=sys.stderr)
+            print(f"\n" + "="*80, file=sys.stderr)
+            print(f"✓ InterProScan integration complete!", file=sys.stderr)
+            print(f"  Query genes with IPR data: {len(qry_interproscan_map)}", file=sys.stderr)
+            print(f"  Reference genes with IPR data: {len(ref_interproscan_map)}", file=sys.stderr)
+            print("="*80 + "\n", file=sys.stderr)
+
     # Output
     pavprot_out = os.path.join(os.getcwd(), 'pavprot_out')
     os.makedirs(pavprot_out, exist_ok=True)
 
+    # Add InterProScan basename prefix when single InterProScan file is provided
+    interproscan_prefix = ""
+    if interproscan_files and len(interproscan_files) == 1:
+        # Extract short basename (remove extensions like .tsv, .faa, etc.)
+        interpro_basename = Path(interproscan_files[0]).stem
+        # Further clean: remove common suffixes like .prot, .faa
+        interproscan_prefix = interpro_basename.replace('.prot', '').replace('.faa', '')
+
+    # Always include "synonym_mapping_liftover_gffcomp" prefix
+    base_prefix = "synonym_mapping_liftover_gffcomp"
+    if args.output_prefix and args.output_prefix != "synonym_mapping_liftover_gffcomp":
+        full_prefix = f"{base_prefix}_{args.output_prefix}"
+    else:
+        full_prefix = base_prefix
+
+    # Prepend InterProScan prefix if single file
+    if interproscan_prefix:
+        full_prefix = f"{interproscan_prefix}_{full_prefix}"
+
     if args.class_code:
         safe_codes = "_".join(sorted(filter_set))
         suffix = "_diamond_blastp.tsv" if args.run_diamond else ".tsv"
-        output_file = os.path.join(pavprot_out, f"{args.output_prefix}_{safe_codes}{suffix}")
+        output_file = os.path.join(pavprot_out, f"{full_prefix}_{safe_codes}{suffix}")
     else:
         suffix = "_diamond_blastp.tsv" if args.run_diamond else ".tsv"
-        output_file = os.path.join(pavprot_out, f"{args.output_prefix}{suffix}")
+        output_file = os.path.join(pavprot_out, f"{full_prefix}{suffix}")
 
-    header = "ref_gene\tref_transcript\tquery_gene\tquery_transcript\tclass_code\texons\tclass_code_multi\tclass_type"
+    header = "ref_gene\tref_transcript\tquery_gene\tquery_transcript\tclass_code\texons\tclass_code_multi\tclass_type\temckmnj\temckmnje"
     if args.run_diamond:
         header += "\tidentical_aa\tmismatched_aa\tindels_aa\taligned_aa"
     if args.liftoff_gff:
         header += "\textra_copy_number"
+    if has_interproscan:
+        header += "\tquery_total_ipr_domain_length\tref_total_ipr_domain_length"
 
     with open(output_file, 'w') as f:
         f.write(header + "\n")
         for entries in data.values():
             for e in entries:
                 exons = e.get('exons') if e.get('exons') is not None else '-'
-                base = f"{e['ref_gene']}\t{e['ref_transcript']}\t{e['query_gene']}\t{e['query_transcript']}\t{e['class_code']}\t{exons}\t{e['class_code_multi']}\t{e['class_type']}"
+                base = f"{e['ref_gene']}\t{e['ref_transcript']}\t{e['query_gene']}\t{e['query_transcript']}\t{e['class_code']}\t{exons}\t{e['class_code_multi']}\t{e['class_type']}\t{e['emckmnj']}\t{e['emckmnje']}"
 
                 diamond_line = ""
                 if args.run_diamond:
@@ -434,7 +1048,15 @@ def main():
                 if args.liftoff_gff:
                     extra_copy_line = f"\t{e.get('extra_copy_number', 0)}"
 
-                f.write(f"{base}{diamond_line}{extra_copy_line}\n")
+                interproscan_line = ""
+                if has_interproscan:
+                    query_val = e.get('query_gene_total_iprdom_len', 0)
+                    ref_val = e.get('ref_gene_total_iprdom_len', 0)
+                    query_val = 'NA' if query_val == 0 else query_val
+                    ref_val = 'NA' if ref_val == 0 else ref_val
+                    interproscan_line = f"\t{query_val}\t{ref_val}"
+
+                f.write(f"{base}{diamond_line}{extra_copy_line}{interproscan_line}\n")
     print(f"Results saved to {output_file}", file=sys.stderr)
 
 
