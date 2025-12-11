@@ -1,5 +1,3 @@
-# Bioinformatics tools and scripts for genomic analysis at ISMIB.
-
 ### Gene Split/Merge Detection Tool
 
 A Python implementation for detecting gene split and merge events between two genome annotations using DIAMOND BLASTP.
@@ -10,9 +8,9 @@ A Python implementation for detecting gene split and merge events between two ge
 - Gene structure analysis to detect splits and merges
 - Optional protein clustering with multiple algorithms
 
-**Documentation:**
-- [Main README](gene_split_merge/README.md)
-- [GFF3 File Format Guide](gene_split_merge/tmp/GFF3_FORMAT.md)
+<!-- **Documentation:** -->
+<!-- - [Main README](gene_split_merge/README.md) -->
+<!-- - [GFF3 File Format Guide](gene_split_merge/tmp/GFF3_FORMAT.md) -->
 <!-- - [Confidence Score Explanation](gene_split_merge/docs/Confidence_Score_Explanation.md) -->
 
 **Location:** `gene_split_merge/`
@@ -23,13 +21,12 @@ A Python implementation for detecting gene split and merge events between two ge
 
 Parsing and analyzing InterProScan results.
 
-**Location:** `parse_interproscan/`
 
 ---
 
 ### Gene PAV (Presence/Absence Variation)
 
-Detecting gene presence/absence variations.
+Detecting gene presence/absence variations and parsing interproscan output
 
 **Location:** `gene_pav/`
 
