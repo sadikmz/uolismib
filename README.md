@@ -17,16 +17,11 @@ A Python implementation for detecting gene split and merge events between two ge
 
 ---
 
-### Parse InterProScan output
-
-Parsing and analyzing InterProScan results.
-
-
----
-
 ### Gene PAV (Presence/Absence Variation)
 
 Detecting gene presence/absence variations and parsing interproscan output
+
+Parsing and analyzing InterProScan results.
 
 **Location:** `gene_pav/`
 
