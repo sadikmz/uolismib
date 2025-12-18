@@ -180,30 +180,30 @@ class PAVprot:
             code_str = ';'.join(sorted(class_codes))
             
             # Assign class_type
-            if class_codes <= {'em','c','k','m','n'}:
-                ctype = '0'
-            elif class_codes <= {'em','c','k','m','n','j'}:
-                ctype = '1'
-            elif class_codes <= {'o','e'}:
-                ctype = '2'
+            if class_codes <= {'em','c','k','m','n','j'}:
+                ctype = 'ackmnj'
+            elif class_codes <= {'em','c','k','m','n','j','e'}:
+                ctype = 'ackmnje'
+            elif class_codes <= {'o'}:
+                ctype = 'o'
             elif class_codes <= {'s','x'}:
-                ctype = '3'
+                ctype = 'sx'
             elif class_codes <= {'i','y'}:
-                ctype = '4'
+                ctype = 'iy'
             else:
-                ctype = '5'
+                ctype = 'pru'
 
-            # Calculate emckmnj: 1 if any code in [em,c,k,m,n,j], else 0
-            emckmnj = 1 if class_codes & {'em', 'c', 'k', 'm', 'n', 'j'} else 0
+            # Calculate ackmnj: 1 if any code in [em,c,k,m,n,j], else 0
+            ackmnj = 1 if class_codes & {'em', 'c', 'k', 'm', 'n', 'j'} else 0
 
-            # Calculate emckmnje: 1 if any code in [em,c,k,m,n,j,e], else 0
-            emckmnje = 1 if class_codes & {'em', 'c', 'k', 'm', 'n', 'j', 'e'} else 0
+            # Calculate ackmnje: 1 if any code in [em,c,k,m,n,j,e], else 0
+            ackmnje = 1 if class_codes & {'em', 'c', 'k', 'm', 'n', 'j', 'e'} else 0
 
             query_gene_info[qgene] = {
                 'class_code_multi': code_str,
                 'class_type': ctype,
-                'emckmnj': emckmnj,
-                'emckmnje': emckmnje
+                'ackmnj': ackmnj,
+                'ackmnje': ackmnje
             }
             
         # Step 3: Attach info back to entries
@@ -215,13 +215,13 @@ class PAVprot:
                 info = query_gene_info.get(qgene, {
                     'class_code_multi': entry['class_code'],
                     'class_type': '3',
-                    'emckmnj': 0,
-                    'emckmnje': 0
+                    'ackmnj': 0,
+                    'ackmnje': 0
                 })
                 entry['class_code_multi'] = info['class_code_multi']
                 entry['class_type'] = info['class_type']
-                entry['emckmnj'] = info['emckmnj']
-                entry['emckmnje'] = info['emckmnje']
+                entry['ackmnj'] = info['ackmnj']
+                entry['ackmnje'] = info['ackmnje']
                 
         return full_dict
 
@@ -347,12 +347,16 @@ class PAVprot:
         for protein_acc in ipr_df['protein_accession'].unique():
             protein_data = ipr_df[ipr_df['protein_accession'] == protein_acc]
 
-            # Get longest IPR domain info
+            # Get longest IPR domain info (for analysis and signature)
+            # Calculate individual domain lengths first
+            protein_data = protein_data.copy()
+            protein_data['domain_length'] = protein_data['stop_location'] - protein_data['start_location'] + 1
             longest_idx = protein_data['domain_length'].idxmax()
             longest_domain = protein_data.loc[longest_idx]
 
-            # Calculate total IPR domain length (sum of all IPR domains)
-            total_length = protein_data['domain_length'].sum()
+            # Calculate total IPR domain coverage with overlap handling
+            intervals = list(zip(protein_data['start_location'], protein_data['stop_location']))
+            total_length = cls._calculate_interval_coverage(intervals)
 
             result[protein_acc] = {
                 'analysis': longest_domain['analysis'],
@@ -361,6 +365,45 @@ class PAVprot:
             }
 
         return result
+
+    @staticmethod
+    def _calculate_interval_coverage(intervals: list) -> int:
+        """
+        Calculate total coverage by merging overlapping intervals.
+
+        Args:
+            intervals: List of tuples (start, end) where coordinates are inclusive
+
+        Returns:
+            Total length covered (sum of merged interval lengths)
+        """
+        if not intervals:
+            return 0
+
+        # Sort intervals by start position
+        sorted_intervals = sorted(intervals, key=lambda x: (x[0], x[1]))
+
+        # Merge overlapping intervals
+        merged = []
+        current_start, current_end = sorted_intervals[0]
+
+        for start, end in sorted_intervals[1:]:
+            # Check if intervals overlap or are adjacent
+            if start <= current_end + 1:
+                # Overlapping or adjacent - extend current interval
+                current_end = max(current_end, end)
+            else:
+                # No overlap - save current interval and start new one
+                merged.append((current_start, current_end))
+                current_start, current_end = start, end
+
+        # Add the last interval
+        merged.append((current_start, current_end))
+
+        # Calculate total length (inclusive coordinates)
+        total_length = sum(end - start + 1 for start, end in merged)
+
+        return total_length
 
     @classmethod
     def enrich_interproscan_data(cls, data: dict, qry_interproscan_map: dict, ref_interproscan_map: dict):
@@ -1038,7 +1081,7 @@ def main():
         for entries in data.values():
             for e in entries:
                 exons = e.get('exons') if e.get('exons') is not None else '-'
-                base = f"{e['ref_gene']}\t{e['ref_transcript']}\t{e['query_gene']}\t{e['query_transcript']}\t{e['class_code']}\t{exons}\t{e['class_code_multi']}\t{e['class_type']}\t{e['emckmnj']}\t{e['emckmnje']}"
+                base = f"{e['ref_gene']}\t{e['ref_transcript']}\t{e['query_gene']}\t{e['query_transcript']}\t{e['class_code']}\t{exons}\t{e['class_code_multi']}\t{e['class_type']}\t{e['ackmnj']}\t{e['ackmnje']}"
 
                 diamond_line = ""
                 if args.run_diamond:

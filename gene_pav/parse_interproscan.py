@@ -203,19 +203,24 @@ class InterProParser:
 
     def total_ipr_length(self) -> Dict[str, int]:
         """
-        Calculate the sum total of all IPR domain lengths for each gene.
+        Calculate the total IPR domain coverage for each gene, handling overlapping intervals.
+
+        This function merges overlapping IPR domains before calculating the total length,
+        preventing double-counting of overlapping regions.
 
         Returns:
-            Dictionary mapping gene_id (or protein_accession if no gene mapping) to total IPR domain length
+            Dictionary mapping gene_id (or protein_accession if no gene mapping) to total IPR coverage length
             Example: {'FOZG_00001': 280, 'FOZG_01645': 341, ...}
+
+        Note:
+            - Intervals are merged if they overlap or are adjacent
+            - Coverage is calculated per gene/protein after merging
+            - Returns a single numeric value per unique transcript/gene ID
         """
         if self.data is None or len(self.data) == 0:
             return {}
 
         df = self.data.copy()
-
-        # Calculate domain length
-        df['domain_length'] = df['stop_location'] - df['start_location'] + 1
 
         # Filter to only IPR domains
         ipr_df = df[df['interpro_accession'].str.startswith('IPR', na=False)].copy()
@@ -223,17 +228,64 @@ class InterProParser:
         if len(ipr_df) == 0:
             return {}
 
-        # Add gene_id mapping if available
+        # Determine grouping column
         if self.transcript_to_gene_map:
             ipr_df['gene_id'] = ipr_df['protein_accession'].map(self.transcript_to_gene_map)
-            # Group by gene_id and sum domain lengths
-            total_lengths = ipr_df.groupby('gene_id')['domain_length'].sum()
+            group_col = 'gene_id'
         else:
-            # Group by protein_accession if no gene mapping
-            total_lengths = ipr_df.groupby('protein_accession')['domain_length'].sum()
+            group_col = 'protein_accession'
 
-        # Convert to dictionary
-        return total_lengths.to_dict()
+        # Calculate coverage with overlap handling for each group
+        coverage_dict = {}
+
+        for group_id, group_df in ipr_df.groupby(group_col):
+            # Extract intervals (start, end)
+            intervals = list(zip(group_df['start_location'], group_df['stop_location']))
+
+            # Calculate total coverage by merging overlapping intervals
+            coverage = self._calculate_interval_coverage(intervals)
+            coverage_dict[group_id] = coverage
+
+        return coverage_dict
+
+    @staticmethod
+    def _calculate_interval_coverage(intervals: list) -> int:
+        """
+        Calculate total coverage by merging overlapping intervals.
+
+        Args:
+            intervals: List of tuples (start, end) where coordinates are inclusive
+
+        Returns:
+            Total length covered (sum of merged interval lengths)
+        """
+        if not intervals:
+            return 0
+
+        # Sort intervals by start position
+        sorted_intervals = sorted(intervals, key=lambda x: (x[0], x[1]))
+
+        # Merge overlapping intervals
+        merged = []
+        current_start, current_end = sorted_intervals[0]
+
+        for start, end in sorted_intervals[1:]:
+            # Check if intervals overlap or are adjacent
+            if start <= current_end + 1:
+                # Overlapping or adjacent - extend current interval
+                current_end = max(current_end, end)
+            else:
+                # No overlap - save current interval and start new one
+                merged.append((current_start, current_end))
+                current_start, current_end = start, end
+
+        # Add the last interval
+        merged.append((current_start, current_end))
+
+        # Calculate total length (inclusive coordinates)
+        total_length = sum(end - start + 1 for start, end in merged)
+
+        return total_length
 
     def domain_distribution(self) -> pd.DataFrame:
         """
@@ -315,8 +367,12 @@ class InterProParser:
                 (domain_stats['count_max_ipr'] > 1)
             )
 
-            # Calculate total IPR domain length per protein
-            total_ipr_lengths = ipr_df.groupby('protein_accession')['domain_length'].sum()
+            # Calculate total IPR domain length per protein with overlap handling
+            total_ipr_lengths = {}
+            for protein_acc, protein_df in ipr_df.groupby('protein_accession'):
+                intervals = list(zip(protein_df['start_location'], protein_df['stop_location']))
+                total_ipr_lengths[protein_acc] = self._calculate_interval_coverage(intervals)
+            total_ipr_lengths = pd.Series(total_ipr_lengths)
 
             # Drop temporary columns
             domain_stats = domain_stats.drop(columns=['max_ipr_length', 'count_max_ipr'])
