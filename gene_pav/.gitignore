@@ -1,0 +1,75 @@
+# Output directories
+output/
+archive/
+*_out/
+*_output/
+pavprot_out/
+new_pavprot_output/
+fungidb_analysis_*/
+figures_out/
+
+# Input directories
+input/
+*_input/
+
+# Backup directories
+backup*/
+old_output*/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*.log
+tmp_docs/
+
+# Large data files
+*.tsv
+*.csv
+*.faa
+*.fasta
+*.fa
+*.gff
+*.gff3
+*.bed
+*.bam
+*.sam
+*.tracking
+*.dmnd
+*.json
+!package.json
+!tsconfig.json
+
+# Keep test input data (small mock files)
+!test/data/**/*
+
+# Ignore test output (generated files)
+test/output/
+
+# Images (except documentation)
+*.png
+!docs/*.png
+!docs/**/*.png
+
+# Always track docs folder
+!docs/
+!docs/**
