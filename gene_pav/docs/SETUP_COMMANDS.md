@@ -197,4 +197,141 @@ git checkout -b dev
 
 ---
 
+## Git Branch Management
+
+### List Branches
+
+```bash
+# List local branches (* = current, + = checked out in worktree)
+git branch
+
+# List all branches (local and remote)
+git branch -a
+```
+
+### Switch Branches
+
+```bash
+# Switch to existing branch
+git checkout branch_name
+
+# Or (newer syntax)
+git switch branch_name
+
+# Create and switch to new branch
+git checkout -b new_branch_name
+```
+
+### Delete Branches
+
+```bash
+# Delete local branch (safe - won't delete if unmerged)
+git branch -d branch_name
+
+# Force delete local branch (even if unmerged)
+git branch -D branch_name
+
+# Delete remote branch
+git push origin --delete branch_name
+```
+
+### Compare Branches
+
+```bash
+# Show commits on branch_a not in branch_b
+git log branch_b..branch_a --oneline
+
+# Show file differences between branches
+git diff branch_a..branch_b --stat
+
+# Show detailed diff
+git diff branch_a..branch_b
+```
+
+### Assess a Branch
+
+```bash
+# View last N commits on a branch
+git log branch_name --oneline -10
+
+# Compare branch to main
+git diff main..branch_name --stat
+
+# Compare branch to dev
+git diff dev..branch_name --stat
+
+# List worktrees (shows where branches are checked out)
+git worktree list
+```
+
+---
+
+## Git Worktrees Explained
+
+A **worktree** lets you have multiple branches checked out at the same time in different directories.
+
+### Normal Git (without worktrees)
+
+```
+/my-repo/           ← only ONE branch at a time
+├── .git/
+├── file1.py
+└── file2.py
+
+# To switch: git checkout other-branch
+# Problem: ALL files change, can't work on both simultaneously
+```
+
+### With Worktrees
+
+```
+/my-repo/                          ← main branch
+├── .git/
+├── file1.py
+└── file2.py
+
+/another-folder/worktree-dev/      ← dev branch (separate folder)
+├── file1.py
+└── file2.py
+
+# Both branches exist simultaneously!
+# Edit main in one folder, dev in another
+```
+
+### Your Current Setup
+
+```
+/Users/sadik/projects/github_prj/uolismib                    ← dev branch
+/Users/sadik/.claude-worktrees/uolismib/focused-lumiere      ← focused-lumiere branch
+```
+
+### Why Use Worktrees?
+
+| Use Case | Benefit |
+|----------|---------|
+| Compare branches side-by-side | Open both in different editor windows |
+| Run tests on one branch while coding another | No need to stash/switch |
+| Long-running builds | Build on main while developing on feature branch |
+| Quick hotfix | Fix main without losing work in progress |
+
+### Common Commands
+
+```bash
+# Add worktree
+git worktree add ../feature-branch feature-branch
+
+# List worktrees
+git worktree list
+
+# Remove worktree
+git worktree remove ../feature-branch
+
+# Prune stale worktree entries
+git worktree prune
+```
+
+**Note:** A `+` sign in `git branch` output indicates the branch is checked out in another worktree.
+
+---
+
 *Generated: 2026-01-19*
