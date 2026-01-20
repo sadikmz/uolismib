@@ -1,7 +1,7 @@
 # PAVprot Pipeline - Development Todo
 
 > **Branch:** dev
-> **Last Updated:** 2026-01-19
+> **Last Updated:** 2026-01-20
 
 ---
 
@@ -10,6 +10,39 @@
 - [x] Set up dev branch on uolismib/gene_pav
 - [x] Copy files from uolocal/fungidb/dev/gene_pav
 - [x] Organize project scripts into `project_scripts/` subfolder
+- [x] **Completed Section 6 tasks (2026-01-20)** - See "Completed Tasks" below
+
+---
+
+## Completed Tasks (2026-01-20)
+
+| Task | Description | Commit |
+|------|-------------|--------|
+| 1 | Created `tools_runner.py` with ToolsRunner class (8 tools) | b3b4d01 |
+| 2 | Added `detect_annotation_source()` to tools_runner.py | b3b4d01 |
+| 3 | Fixed hardcoded path in `test/test_all_outputs.py` | b3b4d01 |
+| 4 | Created `config.yaml` for pipeline configuration | b3b4d01 |
+| 5-6 | Created `plot/config.py` and `plot/utils.py` | b3b4d01 |
+| 7-8,10 | Rewrote `synonym_mapping_parse.py` (fixed IndentationError, removed unused imports) | b3b4d01 |
+| 9 | Renamed: `detect_advanced_scenarios.py` → `gsmc.py`, `detect_one2many_mappings.py` → `mapping_multiplicity.py` | b3b4d01 |
+| 11 | Fixed typo: `pariwise_align_prot.py` → `pairwise_align_prot.py` | b3b4d01 |
+| 12 | Consolidated plotting utilities into `plot/utils.py` | b3b4d01 |
+| 13 | Fixed test import paths in `test_pavprot.py` | b3b4d01 |
+| 14 | Updated `README.md` directory structure | b3b4d01 |
+| 15 | Created `requirements.txt` | b3b4d01 |
+| 19 | Added docstrings to `__init__.py` and `plot/__init__.py` | b3b4d01 |
+
+**Files created:**
+- `tools_runner.py` - Unified external tools interface
+- `config.yaml` - Pipeline configuration
+- `plot/config.py` - Plotting configuration and palettes
+- `plot/utils.py` - Shared data loading utilities
+- `requirements.txt` - Python dependencies
+
+**Files renamed:**
+- `detect_advanced_scenarios.py` → `gsmc.py` (Gene Synteny Mapping Classifier)
+- `detect_one2many_mappings.py` → `mapping_multiplicity.py`
+- `pariwise_align_prot.py` → `pairwise_align_prot.py`
 
 ---
 
@@ -28,16 +61,16 @@
 - [ ] Complete all review without user command prompts   
 - [ ] Provide extensive report in markdown if possible for each files and show how each files are connected to the pipeline 
 
-### 2. Initial tidy-up
+### 2. Initial tidy-up ✓
 
-- [ ] Remove hardcoded paths from all pipeline scripts
-- [ ] Rename detect_advanced_scenarios.py gamc.py (Gene Annotation Mapping Classifier) 
-- [ ] Review and update docstrings
-- [ ] Ensure all imports are correct after file reorganization
+- [x] Remove hardcoded paths from all pipeline scripts
+- [x] Renamed: detect_advanced_scenarios.py → gsmc.py (Gene Synteny Mapping Classifier) 
+- [x] Review and update docstrings
+- [x] Ensure all imports are correct after file reorganization
 
 ### 3. Tidy up and review code
 
-2. [ ] Commit changes to dev branch
+2. [x] Commit changes to dev branch
 3. [ ] Push dev branch to remote
 4. [ ] Review and merge to main
 
@@ -45,8 +78,8 @@
 
 - [ ] Update main README.md with usage examples
 - [ ] Review docs/ folder for accuracy
-- [ ] Add installation instructions
-- [ ] Document dependencies (requirements.txt)
+- [x] Add installation instructions
+- [x] Document dependencies (requirements.txt)
 
 ### 4. Testing
 
@@ -144,20 +177,27 @@
 gene_pav/
 ├── Core Pipeline (root level)
 │   ├── pavprot.py                    # Main orchestrator
+│   ├── tools_runner.py               # Unified external tools module
+│   ├── config.yaml                   # Pipeline configuration
+│   ├── requirements.txt              # Python dependencies
 │   ├── parse_interproscan.py         # IPR domain parsing
-│   ├── detect_advanced_scenarios.py  # Scenario classification
+│   ├── gsmc.py                       # Gene Synteny Mapping Classifier (scenarios)
+│   ├── mapping_multiplicity.py       # 1:N mapping detection
 │   ├── bidirectional_best_hits.py    # BBH analysis
-│   ├── detect_one2many_mappings.py   # Mapping detection
-│   ├── pariwise_align_prot.py        # Protein alignment
-│   └── ...
+│   ├── pairwise_align_prot.py        # Protein alignment
+│   ├── synonym_mapping_parse.py      # Synonym mapping utilities
+│   └── synonym_mapping_summary.py    # Summary statistics
+│
+├── plot/                             # Generic plotting modules
+│   ├── __init__.py
+│   ├── config.py                     # Plot configuration
+│   ├── utils.py                      # Shared utilities
+│   └── plot_*.py                     # Visualization scripts
 │
 ├── project_scripts/                  # Project-specific examples
 │   ├── run_pipeline.py
-│   ├── run_emckmnje1_analysis.py
-│   ├── analyze_fungidb_species.py
-│   └── plot_*.py
+│   └── ...
 │
-├── plot/                             # Generic plotting modules
 ├── docs/                             # Documentation
 ├── test/                             # Unit tests
 └── README.md
