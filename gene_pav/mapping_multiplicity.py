@@ -203,11 +203,11 @@ def detect_multiple_mappings(input_file, output_prefix=None):
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: python3 detect_one2many_mappings.py <synonym_mapping_liftover_gffcomp.tsv> [output_prefix]",
+        print("Usage: python3 mapping_multiplicity.py <synonym_mapping_liftover_gffcomp.tsv> [output_prefix]",
               file=sys.stderr)
         print("\nExample:", file=sys.stderr)
-        print("  python3 detect_one2many_mappings.py synonym_mapping_liftover_gffcomp.tsv", file=sys.stderr)
-        print("  python3 detect_one2many_mappings.py input.tsv my_output", file=sys.stderr)
+        print("  python3 mapping_multiplicity.py synonym_mapping_liftover_gffcomp.tsv", file=sys.stderr)
+        print("  python3 mapping_multiplicity.py input.tsv my_output", file=sys.stderr)
         sys.exit(1)
 
     input_file = sys.argv[1]

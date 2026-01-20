@@ -42,10 +42,10 @@ from pathlib import Path
 
 # Import InterProParser and run_interproscan from same directory
 from parse_interproscan import InterProParser, run_interproscan
-from detect_one2many_mappings import detect_multiple_mappings
+from mapping_multiplicity import detect_multiple_mappings
 from bidirectional_best_hits import BidirectionalBestHits, enrich_pavprot_with_bbh
-from pariwise_align_prot import local_alignment_similarity, read_all_sequences
-from detect_advanced_scenarios import (
+from pairwise_align_prot import local_alignment_similarity, read_all_sequences
+from gsmc import (
     get_cdi_genes,
     detect_one_to_one_orthologs,
     detect_one_to_many,

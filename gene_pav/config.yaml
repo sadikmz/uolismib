@@ -1,0 +1,95 @@
+# PAVprot Pipeline Configuration
+# ================================
+# This file contains default configuration values for the PAVprot pipeline.
+# Users can override these by providing their own config file via --config flag.
+
+# Directory settings
+directories:
+  output_dir: "./pavprot_out"
+  temp_dir: "./tmp"
+  log_dir: "./logs"
+
+# Prefix settings for annotation sources
+# Use --prefix flag to override: --prefix old_prefix,new_prefix
+prefixes:
+  old: "old"      # Prefix for old/query annotation
+  new: "new"      # Prefix for new/reference annotation
+
+# Column name mappings
+# These map internal column names to output column names based on prefixes
+column_mappings:
+  ref_gene: "{new}_gene"
+  ref_transcript: "{new}_transcript"
+  query_gene: "{old}_gene"
+  query_transcript: "{old}_transcript"
+
+# DIAMOND settings
+diamond:
+  evalue: 1e-5
+  max_target_seqs: 1
+  threads: 4
+  output_format: 6
+
+# InterProScan settings
+interproscan:
+  applications:
+    - Pfam
+    - SMART
+    - ProSiteProfiles
+    - CDD
+  cpu: 4
+  formats:
+    - tsv
+    - gff3
+
+# gffcompare settings
+gffcompare:
+  strict_match: false
+
+# Liftoff settings
+liftoff:
+  copies: true
+  coverage: 0.5
+  identity: 0.5
+
+# BUSCO settings
+busco:
+  mode: "proteins"
+  lineage: "fungi_odb10"
+  cpu: 4
+
+# Psauron settings
+psauron:
+  threshold: 0.5
+
+# Pairwise alignment settings
+alignment:
+  mode: "global"
+  matrix: "BLOSUM62"
+  gap_open: -10
+  gap_extend: -0.5
+
+# Logging settings
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+# Class type definitions for gffcompare class codes
+class_types:
+  exact_match:
+    - "="
+  contained:
+    - "c"
+  intron_match:
+    - "j"
+    - "e"
+    - "o"
+  novel:
+    - "u"
+    - "i"
+    - "y"
+    - "p"
+  other:
+    - "x"
+    - "s"
+    - "r"

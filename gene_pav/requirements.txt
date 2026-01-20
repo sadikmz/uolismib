@@ -1,0 +1,27 @@
+# PAVprot Pipeline Dependencies
+# ==============================
+# Install with: pip install -r requirements.txt
+
+# Core dependencies
+pandas>=1.3.0
+numpy>=1.21.0
+biopython>=1.79
+
+# Visualization (optional - required for plotting modules)
+matplotlib>=3.4.0
+seaborn>=0.11.0
+
+# Configuration handling
+pyyaml>=5.4.0
+
+# Development/Testing (optional)
+pytest>=6.0.0
+pytest-cov>=2.12.0
+flake8>=3.9.0
+
+# External tools (install separately via system package manager or conda):
+# - DIAMOND (https://github.com/bbuchfink/diamond)
+# - InterProScan (https://www.ebi.ac.uk/interpro/interproscan.html)
+# - gffcompare (https://github.com/gpertea/gffcompare)
+# - Liftoff (https://github.com/agshumate/Liftoff)
+# - BUSCO (https://busco.ezlab.org/)

@@ -372,13 +372,13 @@ def main():
         epilog="""
 Examples:
   # Single alignment (first sequence from each file)
-  python pariwise_align_prot.py ref.faa query.faa
+  python pairwise_align_prot.py ref.faa query.faa
 
   # All-vs-all alignment to TSV
-  python pariwise_align_prot.py ref.faa query.faa --all-vs-all -o results.tsv
+  python pairwise_align_prot.py ref.faa query.faa --all-vs-all -o results.tsv
 
   # All-vs-all with filters
-  python pariwise_align_prot.py ref.faa query.faa --all-vs-all -o results.tsv \\
+  python pairwise_align_prot.py ref.faa query.faa --all-vs-all -o results.tsv \\
       --min-identity 30 --min-coverage 50
         """
     )

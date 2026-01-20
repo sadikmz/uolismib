@@ -22,7 +22,7 @@ Exclusivity Rules:
 5. G, H are genes NOT in pavprot output
 
 Usage:
-    python detect_advanced_scenarios.py \
+    python gsmc.py \
         --pavprot-output pavprot_out/synonym_mapping_liftover_gffcomp.tsv \
         --ref-faa ref.faa \
         --qry-faa query.faa \

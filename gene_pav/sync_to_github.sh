@@ -42,9 +42,9 @@ SYNC_ITEMS=(
     "analysis/pavprot.py:pavprot.py"
     "analysis/parse_interproscan.py:parse_interproscan.py"
     "analysis/bidirectional_best_hits.py:bidirectional_best_hits.py"
-    "analysis/detect_one2many_mappings.py:detect_one2many_mappings.py"
-    "analysis/detect_advanced_scenarios.py:detect_advanced_scenarios.py"
-    "analysis/pariwise_align_prot.py:pariwise_align_prot.py"
+    "analysis/detect_one2many_mappings.py:mapping_multiplicity.py"
+    "analysis/detect_advanced_scenarios.py:gsmc.py"
+    "analysis/pariwise_align_prot.py:pairwise_align_prot.py"
     "analysis/inconsistent_genes_transcript_IPR_PAV.py:inconsistent_genes_transcript_IPR_PAV.py"
     "analysis/synonym_mapping_summary.py:synonym_mapping_summary.py"
 

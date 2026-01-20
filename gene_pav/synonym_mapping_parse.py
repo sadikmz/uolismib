@@ -1,93 +1,171 @@
 #!/usr/bin/env python3
+"""
+Synonym Mapping Parser for PAVprot Pipeline
 
-from curses import start_color
+This script parses synonym mapping files and extracts relevant information
+for gene annotation comparison analysis.
+"""
+
+import sys
 import pandas as pd
+import argparse
+from pathlib import Path
+from typing import List, Optional
 
-NAMES = [
-"GCF_013085055.1_gene",
-"GCF_013085055.1_transcript",
-"FungiDB-68_Fo47_gene",	
-"FungiDB-68_Fo47_Fo47_transcript",	
-"gffcompare_class_code",
-"exons",	
-"class_code_multi",
-"class_type",
-"emckmnj",	
-"emckmnje"
+
+# Default column names - can be overridden via CLI or config
+DEFAULT_COLUMN_NAMES = [
+    "ref_gene",
+    "ref_transcript",
+    "query_gene",
+    "query_transcript",
+    "gffcompare_class_code",
+    "exons",
+    "class_code_multi",
+    "class_type",
+    "emckmnj",
+    "emckmnje"
 ]
 
+
+def parse_synonym_mapping(input_file: Path,
+                          column_names: Optional[List[str]] = None,
+                          has_header: bool = False) -> pd.DataFrame:
+    """
+    Parse synonym mapping TSV file.
+
+    Args:
+        input_file: Path to input TSV file
+        column_names: List of column names (uses DEFAULT_COLUMN_NAMES if None)
+        has_header: Whether the file has a header row
+
+    Returns:
+        pandas DataFrame with parsed data
+    """
+    names = column_names or DEFAULT_COLUMN_NAMES
+
+    if has_header:
+        df = pd.read_csv(input_file, sep='\t')
+    else:
+        df = pd.read_csv(input_file, sep='\t', header=None, names=names)
+
+    return df
+
+
+def count_unique_query_genes(df: pd.DataFrame,
+                             ref_col: str = 'ref_gene',
+                             query_col: str = 'query_gene') -> pd.DataFrame:
+    """
+    Count unique query genes for each reference gene.
+
+    Args:
+        df: Input DataFrame
+        ref_col: Name of reference gene column
+        query_col: Name of query gene column
+
+    Returns:
+        DataFrame with counts per reference gene
+    """
+    result = df.groupby(ref_col)[query_col].nunique().reset_index()
+    result.columns = [ref_col, 'unique_query_gene_count']
+    result = result.sort_values(ref_col)
+    return result
+
+
+def print_summary_statistics(counts_df: pd.DataFrame,
+                             count_col: str = 'unique_query_gene_count') -> None:
+    """
+    Print summary statistics for query gene counts.
+
+    Args:
+        counts_df: DataFrame with counts
+        count_col: Name of count column
+    """
+    print(f"\n# Total reference genes: {len(counts_df)}", file=sys.stderr)
+    print(f"# Min unique query genes: {counts_df[count_col].min()}", file=sys.stderr)
+    print(f"# Max unique query genes: {counts_df[count_col].max()}", file=sys.stderr)
+    print(f"# Average unique query genes: {counts_df[count_col].mean():.2f}", file=sys.stderr)
+    print(f"# Median unique query genes: {counts_df[count_col].median():.2f}", file=sys.stderr)
+
+    print(f"\n# Distribution of unique query gene counts:", file=sys.stderr)
+    print(counts_df[count_col].value_counts().sort_index().to_string(), file=sys.stderr)
+
+
 def main(args):
-    df = pd.read_csv(args.input_tsv, sep='\t', header=None )
-    df.columns = NAMES
-    
-    # print(df)
-    
-    # find the longest hit with an IntroPro ID
-    # df["length"] = df["stop_location"] - df["start_location"] + 1
-    df_grouped = df.groupby["GCF_013085055.1_gene"]
-    df_sorted = df.sort_values(by=["length"], ascending=False)
-    df_sorted.drop_duplicates(subset=["protein_accession"], keep="first", inplace=True)
-    
-    df_sorted["chosen_name"] = df_sorted.apply(
-        lambda row:row["interpro_accession"] 
-        if row["interpro_accession"].startswith("IPR")
-        else row["signature_accession"],
-        axis=1
+    """Main function"""
+    # Parse column names if provided
+    column_names = None
+    if args.columns:
+        column_names = args.columns.split(',')
+
+    # Load data
+    df = parse_synonym_mapping(
+        Path(args.input_tsv),
+        column_names=column_names,
+        has_header=args.header
     )
-    print(df_sorted)
-    
-    
+
+    if args.count_unique:
+        # Count unique query genes per reference gene
+        counts = count_unique_query_genes(
+            df,
+            ref_col=args.ref_col,
+            query_col=args.query_col
+        )
+        print(counts.to_csv(sep='\t', index=False))
+        print_summary_statistics(counts)
+    else:
+        # Just output the parsed data
+        print(df.to_csv(sep='\t', index=False))
+
 
 def parse_args():
-    import argparse
-    
+    """Parse command line arguments"""
     parser = argparse.ArgumentParser(
-        description="")
-    
-    parser.add_argument(
-        "--input_tsv",
-        required=True,
-        help="Input TSV file with InterPro IDs in the second column"
+        description="Parse synonym mapping files for PAVprot analysis"
     )
+
+    parser.add_argument(
+        "--input_tsv", "-i",
+        required=True,
+        help="Input TSV file"
+    )
+
+    parser.add_argument(
+        "--columns", "-c",
+        help="Comma-separated list of column names (default: uses standard PAVprot columns)"
+    )
+
+    parser.add_argument(
+        "--header",
+        action="store_true",
+        help="Input file has a header row"
+    )
+
+    parser.add_argument(
+        "--count-unique",
+        action="store_true",
+        dest="count_unique",
+        help="Count unique query genes per reference gene"
+    )
+
+    parser.add_argument(
+        "--ref-col",
+        default="ref_gene",
+        dest="ref_col",
+        help="Reference gene column name (default: ref_gene)"
+    )
+
+    parser.add_argument(
+        "--query-col",
+        default="query_gene",
+        dest="query_col",
+        help="Query gene column name (default: query_gene)"
+    )
+
     return parser.parse_args()
-    
+
+
 if __name__ == "__main__":
     args = parse_args()
     main(args)
-    
-
-   import sys
-     import pandas as pd
-
-     def count_unique_qry_genes_pandas(input_file):
-         """Count unique query genes for each reference gene using pandas"""
-
-         # Read the TSV file
-         df = pd.read_csv(input_file, sep='\t')
-
-         # Count unique query genes per reference gene
-         result = df.groupby('ref_gene')['query_gene'].nunique().reset_index()
-         result.columns = ['ref_gene', 'unique_qry_gene_count']
-
-         # Sort by ref_gene
-         result = result.sort_values('ref_gene')
-
-         # Print results
-         print(result.to_csv(sep='\t', index=False))
-
-         # Print summary statistics
-         print(f"\n# Total reference genes: {len(result)}", file=sys.stderr)
-         print(f"# Min unique query genes: {result['unique_qry_gene_count'].min()}", file=sys.stderr)
-         print(f"# Max unique query genes: {result['unique_qry_gene_count'].max()}", file=sys.stderr)
-         print(f"# Average unique query genes: {result['unique_qry_gene_count'].mean():.2f}", file=sys.stderr)
-
-         # Show distribution
-         print(f"\n# Distribution of unique query gene counts:", file=sys.stderr)
-         print(result['unique_qry_gene_count'].value_counts().sort_index().to_string(), file=sys.stderr)
-
-     if __name__ == '__main__':
-         if len(sys.argv) != 2:
-             print("Usage: python3 count_unique_qry_genes_pandas.py <pavprot_output.tsv>", file=sys.stderr)
-             sys.exit(1)
-
-         count_unique_qry_genes_pandas(sys.argv[1])
