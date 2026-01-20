@@ -10,36 +10,52 @@
 - [x] Set up dev branch on uolismib/gene_pav
 - [x] Copy files from uolocal/fungidb/dev/gene_pav
 - [x] Organize project scripts into `project_scripts/` subfolder
-- [ ] Tidy up and review code
-- [ ] Commit changes to dev branch
-- [ ] Push dev branch to remote
-- [ ] Review and merge to main
 
 ---
 
 ## Priority Tasks
 
-### 1. Code Cleanup
+### 1. Code Cleanup (top priority )
 
-- [ ] Remove hardcoded paths from core pipeline scripts
+- [ ] Extensively and critically review the entire pipeline
+- [ ] Revisit critically individual scripts, input/output files, and documentation
+- [ ] Review plotting scripts and assess if any project_scripts/*.py should be integrated into main plotting scripts
+- [ ] Assess integrating project_scripts/run_pipeline.py into the main script to allow running all or specific parts
+- [ ] All of the codes of files have to assessed, examined, and review critically 
+- [ ] Extensively and critically review file organization  
+- [ ] Suggest scripts to be combined or split
+- [ ] Do not copy or delet files
+- [ ] Complete all review without user command prompts   
+- [ ] Provide extensive report in markdown if possible for each files and show how each files are connected to the pipeline 
+
+### 2. Initial tidy-up
+
+- [ ] Remove hardcoded paths from all pipeline scripts
+- [ ] Rename detect_advanced_scenarios.py gamc.py (Gene Annotation Mapping Classifier) 
 - [ ] Review and update docstrings
 - [ ] Ensure all imports are correct after file reorganization
-- [ ] Test pipeline with sample data
 
-### 2. Documentation
+### 3. Tidy up and review code
+
+2. [ ] Commit changes to dev branch
+3. [ ] Push dev branch to remote
+4. [ ] Review and merge to main
+
+### 4. Documentation
 
 - [ ] Update main README.md with usage examples
 - [ ] Review docs/ folder for accuracy
 - [ ] Add installation instructions
 - [ ] Document dependencies (requirements.txt)
 
-### 3. Testing
+### 4. Testing
 
+- [ ] Test pipeline with sample data
 - [ ] Run existing tests in test/ folder
 - [ ] Fix any failing tests
 - [ ] Add tests for new modules if needed
 
-### 4. project_scripts/ Folder
+### 5. project_scripts/ Folder
 
 - [ ] Update paths in project_scripts/ to be configurable
 - [ ] Add example config file or CLI arguments
