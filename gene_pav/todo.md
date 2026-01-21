@@ -49,18 +49,18 @@
 
 ## Priority Tasks
 
-### 1. Code Cleanup (top priority )
+### 1. Code Cleanup (top priority)
 
-- [ ] Extensively and critically review the entire pipeline
-- [ ] Revisit critically individual scripts, input/output files, and documentation
+- [ ] Conduct a thorough critical review of the entire pipeline
+- [ ] Critically revisit individual scripts, input/output files, and documentation
 - [ ] Review plotting scripts and assess if any project_scripts/*.py should be integrated into main plotting scripts
 - [ ] Assess integrating project_scripts/run_pipeline.py into the main script to allow running all or specific parts
-- [ ] All of the codes of files have to assessed, examined, and review critically 
-- [ ] Extensively and critically review file organization  
+- [ ] Assess, examine, and critically review all code files
+- [ ] Critically review file organization
 - [ ] Suggest scripts to be combined or split
-- [ ] Do not copy or delet files
-- [ ] Complete all review without user command prompts   
-- [ ] Provide extensive report in markdown if possible for each files and show how each files are connected to the pipeline 
+- [ ] Do not copy or delete files
+- [ ] Complete all reviews autonomously without user prompts
+- [ ] Provide an extensive markdown report for each file showing how it connects to the pipeline 
 
 ### 2. Initial tidy-up ✓
 
@@ -82,20 +82,20 @@
 - [x] Add installation instructions
 - [x] Document dependencies (requirements.txt)
 
-### 4. Testing
+### 5. Testing
 
 - [ ] Test pipeline with sample data
 - [ ] Run existing tests in test/ folder
 - [ ] Fix any failing tests
 - [ ] Add tests for new modules if needed
 
-### 5. project_scripts/ Folder
+### 6. project_scripts/ Folder
 
 - [ ] Update paths in project_scripts/ to be configurable
 - [ ] Add example config file or CLI arguments
 - [ ] Update project_scripts/README.md with usage
 
-### 6. Codebase review note (Top priority 20/01/2026)
+### 7. Codebase Review Notes (Top priority 20/01/2026)
 
 - [x] Ref: doc/CODE_REVIEW_REPOR.md under "Critical Issues Found"
   - [x] `synonym_mapping_parse.py` - Syntax error, non-functional ✅ **FIXED (b3b4d01)**
@@ -231,9 +231,9 @@ gene_pav/
 
 *See `docs/SETUP_COMMANDS.md` for setup history*
 
-## Codebase review note (Top priority 20/01/2026)
+## Codebase Review Notes - Detailed Breakdown
 
-**Lines 64-137**
+**Reference: Lines 64-137 in original task list**
 
 ---
 
@@ -317,8 +317,8 @@ gene_pav/
 **Task:** Example `--prefix` flag
 
 **Note content:**
-- "comma prefix input file annotation or genome for old and new annotations"
-- "by detault old annotation as "old" and new annotation as "new""
+- Comma-separated prefix for input file annotation or genome (old and new annotations)
+- By default: old annotation as "old" and new annotation as "new"
 
 ---
 
@@ -328,11 +328,11 @@ gene_pav/
 - [ ] First create a mock/dry module to `tools running` - pick appropriate naming for this module
 ```
 
-**Task (Line 89):** When `--prefix` not provided, input of old vs new annotation will be autodetected from `Tools running module`
+**Task (Line 89):** When `--prefix` is not provided, old vs new annotation will be auto-detected from `Tools running module`
 
 **Reference:** See `8. Future: Unified External Tools Module` in RUN_PIPELINE_INTEGRATION_ASSESSMENT.md
 
-**Sub-task (Line 90):** First create a mock/dry module to `tools running` - pick appropriate naming for this module
+**Sub-task (Line 90):** First create a mock/dry module for `tools running` - choose an appropriate name for this module
 
 ---
 
@@ -341,9 +341,9 @@ gene_pav/
 - [ ] So any ref and query or qry prefix need to be updated to the associated prefix of the input files example in ref_gene, ref_transcript, query_gene, query_transcript etc...
 ```
 
-**Task:** Any ref and query or qry prefix need to be updated to the associated prefix of the input files
+**Task:** Update ref and query (qry) prefixes to match the associated prefix of the input files
 
-**Examples given:** ref_gene, ref_transcript, query_gene, query_transcript etc...
+**Examples:** ref_gene, ref_transcript, query_gene, query_transcript, etc.
 
 ---
 
@@ -387,7 +387,7 @@ gene_pav/
       - [ ] Assess the code and suggest a better implementation or if the existing way is the best way to handle
       - [ ] Assess different version in `plot_ipr_comparison.py` what is different from the other function where the functionality in this script adapted other scripts. Assess also the recommendation: Create `plot/utils.py` with shared functions.
       - [ ] Common Boilerplate (plotting scripts repeat):
-        - [ ] Assess the suggeison - Move to `plot/config.py`.
+        - [ ] Assess the suggestion - Move to `plot/config.py`.
 ```
 
 **Tasks:**
@@ -404,8 +404,8 @@ gene_pav/
 
 ```
   - [ ] Integration Assessment
-    - [ ] Create a single module for internally running tools - pick appropriate naming for this modul. See note in 4.3 Future Integration Note
-    - [ ] Create a template / dry-code module that will used to write the full implementation. See note in 4.3 Future Integration Note
+    - [ ] Create a single module for internally running tools - choose appropriate naming for this module. See note in 4.3 Future Integration Note
+    - [ ] Create a template / dry-code module that will be used to write the full implementation. See note in 4.3 Future Integration Note
 ```
 
 **Tasks:**
