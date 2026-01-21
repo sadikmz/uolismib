@@ -597,24 +597,24 @@ Update sections 6 and 8 to reflect completed fixes
 
 **Step-by-step (in order):**
 
-1. [ ] Pre-testing: Commit current state before running tests (safety net)
-2. [ ] Set up infrastructure: Create `test/data/` folder with sample input files
-3. [ ] Set up infrastructure: Add pytest.ini with output directory configuration
-4. [ ] Sample data: Identify or create sample GFF, FAA, and tracking files (small size: ~10-20 entries)
-5. [ ] Sample data: Store in `test/data/`
-6. [ ] Verify requirements.txt has all dependencies
-7. [ ] Pin specific versions in requirements.txt (e.g., `pandas==2.0.0`)
-8. [ ] Run `python -m pytest test/ -v` to check current test status
-9. [ ] Add tests for new modules: tools_runner.py, gsmc.py, mapping_multiplicity.py
-10. [ ] Ensure tests are isolated (no side effects on main code)
-11. [ ] Edge cases: Empty input files
-12. [ ] Edge cases: Malformed GFF files
-13. [ ] Edge cases: Missing required columns
-14. [ ] Verify CLI --help works for pavprot.py and gsmc.py
-15. [ ] Input validation: Basic input file validation before processing
-16. [ ] Test on clean virtual environment (venv) - final verification
+1. [x] Pre-testing: Commit current state before running tests (safety net)
+2. [x] Set up infrastructure: Create `test/data/` folder with sample input files
+3. [x] Set up infrastructure: Add pytest.ini with output directory configuration
+4. [x] Sample data: Identify or create sample GFF, FAA, and tracking files (small size: ~10-20 entries)
+5. [x] Sample data: Store in `test/data/`
+6. [x] Verify requirements.txt has all dependencies
+7. [x] Pin specific versions in requirements.txt (e.g., `pandas~=2.3.0`)
+8. [x] Run `python -m pytest test/ -v` to check current test status
+9. [x] Add tests for new modules: tools_runner.py, gsmc.py, mapping_multiplicity.py
+10. [x] Ensure tests are isolated (no side effects on main code)
+11. [x] Edge cases: Empty input files
+12. [x] Edge cases: Malformed GFF files
+13. [x] Edge cases: Missing required columns
+14. [x] Verify CLI --help works for pavprot.py and gsmc.py
+15. [x] Input validation: Basic input file validation before processing
+16. [x] Test on clean virtual environment (venv) - final verification
 
-- Success criteria: All tests pass with 0 errors
+- Success criteria: **47 passed, 2 skipped** (All tests pass with 0 errors)
 
 ### 3. Documentation (after testing)
 

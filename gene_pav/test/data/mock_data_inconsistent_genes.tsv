@@ -1,0 +1,23 @@
+ref_gene	ref_transcript	query_gene	query_transcript	class_code	exons	class_code_multi	class_type	emckmnj	emckmnje	query_total_ipr_domain_length	ref_total_ipr_domain_length
+gene-MOCK_001	MOCK_001_t1	QMOCK_001	QMOCK_001_t1	em	3	em	ackmnj	1	1	500.0	450.0
+gene-MOCK_001	MOCK_001_t2	QMOCK_001	QMOCK_001_t2	em	2	em	ackmnj	1	1		300.0
+gene-MOCK_001	MOCK_001_t3	QMOCK_001	QMOCK_001_t3	j	2	j	ackmnj	1	1	480.0	440.0
+gene-MOCK_002	MOCK_002_t1	QMOCK_002	QMOCK_002_t1	em	4	em	ackmnj	1	1	600.0	580.0
+gene-MOCK_002	MOCK_002_t2	QMOCK_002	QMOCK_002_t2	em	3	em	ackmnj	1	1	550.0	
+gene-MOCK_003	MOCK_003_t1	QMOCK_003	QMOCK_003_t1	em	2	em	ackmnj	1	1		
+gene-MOCK_003	MOCK_003_t2	QMOCK_003	QMOCK_003_t2	j	3	j	ackmnj	1	1	400.0	380.0
+gene-MOCK_003	MOCK_003_t3	QMOCK_003	QMOCK_003_t3	n	2	n	ackmnj	1	1		
+gene-MOCK_004	MOCK_004_t1	QMOCK_004	QMOCK_004_t1	em	5	em	ackmnj	1	1	700.0	650.0
+gene-MOCK_004	MOCK_004_t2	QMOCK_004	QMOCK_004_t2	j	4	j	ackmnj	1	1		600.0
+gene-MOCK_004	MOCK_004_t3	QMOCK_004	QMOCK_004_t3	m	3	m	ackmnj	1	1	680.0	
+gene-MOCK_004	MOCK_004_t4	QMOCK_004	QMOCK_004_t4	n	2	n	ackmnj	1	1		
+gene-MOCK_005	MOCK_005_t1	QMOCK_005	QMOCK_005_t1	em	3	em	ackmnj	1	1	450.0	430.0
+gene-MOCK_005	MOCK_005_t2	QMOCK_005	QMOCK_005_t2	j	2	j	ackmnj	1	1	460.0	440.0
+gene-MOCK_006	MOCK_006_t1	QMOCK_006	QMOCK_006_t1	em	3	em	ackmnj	1	1	460.0	440.0
+gene-MOCK_006	MOCK_006_t2	QMOCK_006	QMOCK_006_t2	j	2	j	ackmnj	1	1	470.0	450.0
+gene-MOCK_007	MOCK_007_t1	QMOCK_007	QMOCK_007_t1	em	3	em	ackmnj	1	1	470.0	450.0
+gene-MOCK_007	MOCK_007_t2	QMOCK_007	QMOCK_007_t2	j	2	j	ackmnj	1	1	480.0	460.0
+gene-MOCK_008	MOCK_008_t1	QMOCK_008	QMOCK_008_t1	em	3	em	ackmnj	1	1	480.0	460.0
+gene-MOCK_008	MOCK_008_t2	QMOCK_008	QMOCK_008_t2	j	2	j	ackmnj	1	1	490.0	470.0
+gene-MOCK_009	MOCK_009_t1	QMOCK_009	QMOCK_009_t1	em	3	em	ackmnj	1	1	490.0	470.0
+gene-MOCK_009	MOCK_009_t2	QMOCK_009	QMOCK_009_t2	j	2	j	ackmnj	1	1	500.0	480.0

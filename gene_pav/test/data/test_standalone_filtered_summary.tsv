@@ -1,0 +1,5 @@
+ref_gene	query_gene	num_transcripts	quadrants	count_Present_in_both	count_Absent_in_both	count_Ref_only	count_Query_only
+gene-MOCK_001	QMOCK_001	3	Present in both, Ref only	2	0	1	0
+gene-MOCK_002	QMOCK_002	2	Present in both, Query only	1	0	0	1
+gene-MOCK_003	QMOCK_003	3	Absent in both, Present in both	1	2	0	0
+gene-MOCK_004	QMOCK_004	4	Absent in both, Present in both, Query only, Ref only	1	1	1	1
