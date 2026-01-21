@@ -9,7 +9,7 @@ The current test data only has 1:1 gene mappings, so we can't fully verify the `
 For a gene pair with `class_code_pair="em;j"`, we don't know if it's 90% 'em' + 10% 'j' or 50/50.
 
 ### 3. Duplicate Detection Logic
-`detect_one2many_mappings.py` does similar analysis separately. Could be unified with the new `ref_query_count` and `qry_ref_count` columns.
+`mapping_multiplicity.py` does similar analysis separately. Could be unified with the new `ref_query_count` and `qry_ref_count` columns.
 
 ---
 
@@ -41,9 +41,9 @@ Identify the "best" matching transcript for each gene pair (highest identity, or
 ```
 **Priority**: Low (User requested to keep for future)
 
-### 5. Unify with detect_one2many_mappings.py
+### 5. Unify with mapping_multiplicity.py
 The new `ref_query_count` and `qry_ref_count` columns provide similar information. Consider:
-- Using pavprot output as input for detect_one2many_mappings.py
+- Using pavprot output as input for mapping_multiplicity.py
 - Or integrating the detailed output generation into pavprot.py
 **Priority**: Low
 
@@ -66,7 +66,7 @@ The new `ref_query_count` and `qry_ref_count` columns provide similar informatio
 | Gene-level summary output | Pending | | |
 | Best transcript selection | Pending | | |
 | Reciprocal best hit flag | Pending | | |
-| Unify with detect_one2many_mappings.py | Pending | | |
+| Unify with mapping_multiplicity.py | Pending | | |
 
 ---
 

@@ -7,11 +7,11 @@ gene_pav/
 ├── pavprot.py                          # Main orchestrator
 ├── parse_interproscan.py               # IPR domain parsing (imported by pavprot)
 ├── bidirectional_best_hits.py          # BBH analysis (imported by pavprot)
-├── detect_one2many_mappings.py         # 1:N mapping detection (imported by pavprot)
-├── pariwise_align_prot.py              # Pairwise protein alignment
+├── mapping_multiplicity.py         # 1:N mapping detection (imported by pavprot)
+├── pairwise_align_prot.py              # Pairwise protein alignment
 │
 ├── analysis/                           # Downstream analysis scripts
-│   ├── detect_advanced_scenarios.py    # Scenario classification (E,A,B,J,CDI,F,G,H)
+│   ├── gsmc.py    # Scenario classification (E,A,B,J,CDI,F,G,H)
 │   ├── inconsistent_genes_transcript_IPR_PAV.py  # IPR consistency analysis
 │   └── synonym_mapping_summary.py      # Statistics summary
 │
@@ -159,7 +159,7 @@ gene_pav/
 |--------|-----------------|---------|----------------|
 | `parse_interproscan.py` | `from parse_interproscan import InterProParser, run_interproscan` | Parse InterProScan TSV, calculate IPR domain lengths with overlap merging | `--interproscan-out` or `--run-interproscan` |
 | `bidirectional_best_hits.py` | `from bidirectional_best_hits import BidirectionalBestHits, enrich_pavprot_with_bbh` | Find reciprocal best DIAMOND hits for ortholog confidence | `--run-diamond --run-bbh` |
-| `detect_one2many_mappings.py` | `from detect_one2many_mappings import detect_multiple_mappings` | Generate 1:N and N:1 mapping summary reports | Always (called at end of pavprot) |
+| `mapping_multiplicity.py` | `from detect_one2many_mappings import detect_multiple_mappings` | Generate 1:N and N:1 mapping summary reports | Always (called at end of pavprot) |
 
 ---
 
@@ -167,7 +167,7 @@ gene_pav/
 
 | Script | Input | Output | Purpose |
 |--------|-------|--------|---------|
-| `detect_advanced_scenarios.py` | `synonym_mapping_liftover_gffcomp.tsv` | `scenario_*.tsv` files | Classify gene pairs into biological scenarios (E, A, B, J, CDI, F, G, H) |
+| `gsmc.py` | `synonym_mapping_liftover_gffcomp.tsv` | `scenario_*.tsv` files | Classify gene pairs into biological scenarios (E, A, B, J, CDI, F, G, H) |
 | `synonym_mapping_summary.py` | `synonym_mapping_liftover_gffcomp.tsv` | stdout statistics | Generate summary statistics (counts, distributions) |
 | `inconsistent_genes_transcript_IPR_PAV.py` | `synonym_mapping_liftover_gffcomp.tsv` (with IPR) | `*_inconsistent_genes.tsv`, `*.png` | Find genes with transcripts in different IPR presence/absence quadrants |
 
@@ -226,9 +226,9 @@ class_code_pair | ref_multi_query | qry_multi_ref | ref_query_count | qry_ref_co
 
 ---
 
-### detect_advanced_scenarios.py (Scenario Classification)
+### gsmc.py (Scenario Classification)
 
-**Location:** `analysis/detect_advanced_scenarios.py`
+**Location:** `analysis/gsmc.py`
 
 #### Exclusive Scenario Definitions (Updated 2026-01-09)
 
@@ -267,9 +267,9 @@ query_transcript_count | scenario | mapping_type
 
 ---
 
-### detect_one2many_mappings.py (1:N Detection)
+### mapping_multiplicity.py (1:N Detection)
 
-**Location:** `analysis/detect_one2many_mappings.py` (imported by pavprot.py)
+**Location:** `analysis/mapping_multiplicity.py` (imported by pavprot.py)
 
 | Output File | Description |
 |-------------|-------------|
@@ -423,7 +423,7 @@ python pavprot.py --gff-comp tracking.txt --gff ref.gff,query.gff \
     --ref-faa ref.faa --qry-faa query.faa \
     --run-diamond --run-bbh
 
-python analysis/detect_advanced_scenarios.py \
+python analysis/gsmc.py \
     --pavprot-output pavprot_out/synonym_mapping_liftover_gffcomp.tsv \
     --gff ref.gff,query.gff --scenarios E,A,B,J,CDI,F,G,H
 ```

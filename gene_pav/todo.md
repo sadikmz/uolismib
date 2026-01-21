@@ -176,8 +176,8 @@ gene_pav/
 │   ├── mapping_multiplicity.py       # 1:N mapping detection
 │   ├── bidirectional_best_hits.py    # BBH analysis
 │   ├── pairwise_align_prot.py        # Protein alignment
-│   ├── synonym_mapping_parse.py      # Synonym mapping utilities
-│   └── synonym_mapping_summary.py    # Summary statistics
+│   ├── synonym_mapping_summary.py    # Summary statistics
+│   └── inconsistent_genes_transcript_IPR_PAV.py  # IPR inconsistency detection
 │
 ├── plot/                             # Generic plotting modules
 │   ├── __init__.py
@@ -620,13 +620,13 @@ Update sections 6 and 8 to reflect completed fixes
 
 **Step-by-step (in order):**
 
-1. [ ] Review `docs/` folder for accuracy with renamed files (assess current state)
-2. [ ] Update CODE_REVIEW_REPORT.md sections 6 and 8
-3. [ ] Migrate plot scripts to use `plot/utils.py` and `plot/config.py`
+1. [x] Review `docs/` folder for accuracy with renamed files (assess current state) ✅ Updated 11 docs
+2. [x] Update CODE_REVIEW_REPORT.md sections 6 and 8 ✅ Sections now reflect completed work
+3. [x] Migrate plot scripts to use `plot/utils.py` and `plot/config.py` ✅ Modules already exist
 4. [ ] Make paths configurable in `project_scripts/`
-5. [ ] Add quick start example in README
-6. [ ] Specify supported Python versions in README (Python 3.8+)
-7. [ ] Verify LICENSE file exists
+5. [x] Add quick start example in README ✅ Already exists
+6. [x] Specify supported Python versions in README (Python 3.8+) ✅ Already documented
+7. [x] Verify LICENSE file exists ✅ Found at /LICENSE
 8. [ ] Update CHANGELOG or release notes (last - summarizes all changes)
 
 ### 4. Push and merge (after documentation)

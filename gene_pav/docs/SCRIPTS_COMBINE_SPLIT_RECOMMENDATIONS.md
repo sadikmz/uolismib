@@ -245,7 +245,7 @@ project_scripts/
 
 ---
 
-### 2.3 detect_advanced_scenarios.py (1,344 lines) - NO SPLIT RECOMMENDED
+### 2.3 gsmc.py (1,344 lines) - NO SPLIT RECOMMENDED
 
 **Analysis:**
 
@@ -291,7 +291,7 @@ rm /Users/sadik/projects/github_prj/uolismib/gene_pav/synonym_mapping_parse.py
 | `synonym_mapping_summary.py` | Keep as-is (or combine after rewrite) | LOW | - |
 | `pavprot.py` | Keep as-is | - | - |
 | `run_pipeline.py` | Keep as-is | - | - |
-| `detect_advanced_scenarios.py` | Keep as-is | - | - |
+| `gsmc.py` | Keep as-is | - | - |
 
 ---
 
@@ -342,10 +342,10 @@ The following scripts are appropriately sized and focused:
 |--------|-------|---------------------|
 | `parse_interproscan.py` | 669 | Single responsibility, well-organized class |
 | `bidirectional_best_hits.py` | 524 | Single responsibility |
-| `pariwise_align_prot.py` | 462 | Single responsibility |
+| `pairwise_align_prot.py` | 462 | Single responsibility |
 | `inconsistent_genes_transcript_IPR_PAV.py` | 451 | Single responsibility |
 | `parse_liftover_extra_copy_number.py` | 435 | Single responsibility |
-| `detect_one2many_mappings.py` | 219 | Single responsibility |
+| `mapping_multiplicity.py` | 219 | Single responsibility |
 | All `plot/*.py` files | 232-839 | Each serves distinct visualization purpose |
 
 ---

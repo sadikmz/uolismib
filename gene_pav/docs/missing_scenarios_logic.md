@@ -1,6 +1,6 @@
 # Logic for Missing Scenario Detection
 
-This document outlines the logic needed to detect scenarios that are currently not implemented in `pavprot.py`.
+This document outlines the logic needed to detect scenarios that are currently not implemented in `gsmc.py`.
 
 ---
 
@@ -225,7 +225,7 @@ cross_mapping_group_id   - integer group identifier
 ## Code Structure Suggestion
 
 ```python
-# New module: detect_advanced_scenarios.py
+# New module: gsmc.py
 
 def detect_unmapped_genes(pavprot_output, ref_faa, qry_faa, ref_gff=None, query_gff=None):
     """
@@ -270,7 +270,7 @@ def classify_cross_mappings(pavprot_output):
     pass
 ```
 
-### Integration with pavprot.py
+### Integration with gsmc.py
 
 Add new arguments to pavprot:
 ```
@@ -281,7 +281,7 @@ Add new arguments to pavprot:
 
 Or run as standalone after pavprot completes:
 ```bash
-python detect_advanced_scenarios.py \
+python gsmc.py \
     --pavprot-output pavprot_out/synonym_mapping_liftover_gffcomp.tsv \
     --ref-faa ref.faa \
     --qry-faa query.faa \

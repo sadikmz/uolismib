@@ -43,19 +43,19 @@
 **Internal Imports:**
 ```python
 from parse_interproscan import InterProParser
-from detect_one2many_mappings import detect_one2many_mappings
+from mapping_multiplicity import mapping_multiplicity
 from bidirectional_best_hits import identify_bbh
-from pariwise_align_prot import align_proteins  # TYPO in import
+from pairwise_align_prot import align_proteins  # TYPO in import
 from detect_advanced_scenarios import classify_scenarios
 ```
 
-**Minor Issue:** Import uses typo `pariwise_align_prot` (see 1.5 below)
+**Minor Issue:** Import uses typo `pairwise_align_prot` (see 1.5 below)
 
 **Assessment:** Well-structured main module with proper CLI, docstrings, and error handling.
 
 ---
 
-### 1.2 detect_advanced_scenarios.py
+### 1.2 gsmc.py
 
 | Attribute | Value |
 |-----------|-------|
@@ -130,7 +130,7 @@ from detect_advanced_scenarios import classify_scenarios
 
 ---
 
-### 1.5 pariwise_align_prot.py
+### 1.5 pairwise_align_prot.py
 
 | Attribute | Value |
 |-----------|-------|
@@ -141,7 +141,7 @@ from detect_advanced_scenarios import classify_scenarios
 **ISSUE:** Filename has typo
 | Current | Should Be |
 |---------|-----------|
-| `pariwise_align_prot.py` | `pairwise_align_prot.py` |
+| `pairwise_align_prot.py` | `pairwise_align_prot.py` |
 
 **Key Function:** `align_proteins(ref_fasta, query_fasta, ...)`
 
@@ -195,7 +195,7 @@ Identifies genes where different transcripts fall into different IPR presence/ab
 
 ---
 
-### 1.8 detect_one2many_mappings.py
+### 1.8 mapping_multiplicity.py
 
 | Attribute | Value |
 |-----------|-------|
@@ -203,7 +203,7 @@ Identifies genes where different transcripts fall into different IPR presence/ab
 | **Status** | OK |
 | **Purpose** | Detect 1:N and N:1 mappings |
 
-**Key Function:** `detect_one2many_mappings(data_dict)`
+**Key Function:** `mapping_multiplicity(data_dict)`
 
 **Output Columns Added:**
 - `ref_to_query_count` - Number of queries per reference
@@ -714,7 +714,7 @@ sys.path.insert(0, '..')  # Relative path to parent directory
 | File | Issue | Action |
 |------|-------|--------|
 | `test/test_pavprot.py:10` | Import without path setup | Add `sys.path.insert(0, '..')` |
-| `pariwise_align_prot.py` | Filename typo | Rename to `pairwise_align_prot.py` |
+| `pairwise_align_prot.py` | Filename typo | Rename to `pairwise_align_prot.py` |
 | `pavprot.py` | Import uses typo | Update import after rename |
 
 ### P2 - Medium Priority
@@ -760,7 +760,7 @@ sys.path.insert(0, '..')  # Relative path to parent directory
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                    detect_advanced_scenarios.py                          │
+│                    gsmc.py                          │
 │  - Scenario classification (E, A, B, J, CDI, F, G, H)                    │
 │  - Multi-transcript consolidation                                        │
 └────────────────────────────────┬────────────────────────────────────────┘
@@ -805,10 +805,10 @@ sys.path.insert(0, '..')  # Relative path to parent directory
 gene_pav/
 ├── pavprot.py                              # Main orchestrator
 ├── parse_interproscan.py                   # IPR parsing
-├── detect_advanced_scenarios.py            # Scenario classification
+├── gsmc.py            # Scenario classification
 ├── bidirectional_best_hits.py              # BBH analysis
-├── detect_one2many_mappings.py             # Mapping detection
-├── pariwise_align_prot.py                  # TYPO - Protein alignment
+├── mapping_multiplicity.py             # Mapping detection
+├── pairwise_align_prot.py                  # TYPO - Protein alignment
 ├── inconsistent_genes_transcript_IPR_PAV.py # IPR inconsistency
 ├── parse_liftover_extra_copy_number.py     # Liftoff parsing
 ├── synonym_mapping_summary.py              # Summary statistics
@@ -851,7 +851,7 @@ gene_pav/
 ### Recommended Changes
 
 1. **Delete:** `synonym_mapping_parse.py`
-2. **Rename:** `pariwise_align_prot.py` → `pairwise_align_prot.py`
+2. **Rename:** `pairwise_align_prot.py` → `pairwise_align_prot.py`
 3. **Create:** `plot/utils.py` with shared functions
 4. **Fix:** Test import paths (3 files)
 

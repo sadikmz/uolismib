@@ -278,7 +278,7 @@ cross_mapping_group_id   - integer group identifier
 ## Code Structure Suggestion
 
 ```python
-# New module: detect_advanced_scenarios.py
+# New module: gsmc.py
 
 def detect_unmapped_genes(pavprot_output, ref_faa, qry_faa, ref_gff=None, query_gff=None):
     """
@@ -334,7 +334,7 @@ Add new arguments to pavprot:
 
 Or run as standalone after pavprot completes:
 ```bash
-python detect_advanced_scenarios.py \
+python gsmc.py \
     --pavprot-output pavprot_out/synonym_mapping_liftover_gffcomp.tsv \
     --ref-faa ref.faa \
     --qry-faa query.faa \

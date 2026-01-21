@@ -69,7 +69,7 @@ git add -A
 git commit -m "Add enhanced PAVprot pipeline with scenario detection
 
 - Enhanced pavprot.py with scenario detection and quality metrics
-- Added detect_advanced_scenarios.py for orthology classification
+- Added gsmc.py for orthology classification
 - Added bidirectional_best_hits.py for BBH analysis
 - Added comprehensive documentation in docs/
 - Added plotting modules in plot/
@@ -105,10 +105,10 @@ git push origin main
 gene_pav/
 ├── pavprot.py                    # Main pipeline
 ├── parse_interproscan.py         # IPR parsing
-├── detect_advanced_scenarios.py  # Scenario classification
+├── gsmc.py  # Scenario classification
 ├── bidirectional_best_hits.py    # BBH analysis
-├── detect_one2many_mappings.py   # Mapping detection
-├── pariwise_align_prot.py        # Protein alignment
+├── mapping_multiplicity.py   # Mapping detection
+├── pairwise_align_prot.py        # Protein alignment
 ├── ...
 │
 ├── project_scripts/              # Project-specific (Fo47)

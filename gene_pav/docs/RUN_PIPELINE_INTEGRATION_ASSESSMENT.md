@@ -328,7 +328,7 @@ Step 3: Custom Analysis (Optional)
 > | **InterProScan** | Domain/motif detection | `parse_interproscan.py` |
 > | **gffcompare** | GFF comparison and tracking | External (output parsed) |
 > | **Liftoff** | Annotation liftover | `parse_liftover_extra_copy_number.py` |
-> | **Pairwise alignment** | Protein sequence alignment | `pariwise_align_prot.py` |
+> | **Pairwise alignment** | Protein sequence alignment | `pairwise_align_prot.py` |
 >
 > This unified module will:
 > 1. Provide a consistent interface for running external tools

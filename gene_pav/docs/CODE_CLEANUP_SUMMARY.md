@@ -43,13 +43,13 @@ A comprehensive one-by-one assessment of **all 29 Python scripts** in the PAVpro
 gene_pav/
 ├── Core Scripts (11 files)          6,139 lines
 │   ├── pavprot.py                   1,841 lines (main orchestrator)
-│   ├── detect_advanced_scenarios.py 1,344 lines (scenario classification)
+│   ├── gsmc.py 1,344 lines (scenario classification)
 │   ├── parse_interproscan.py          669 lines (IPR domain parsing)
 │   ├── bidirectional_best_hits.py     524 lines (BBH analysis)
-│   ├── pariwise_align_prot.py         462 lines (protein alignment)
+│   ├── pairwise_align_prot.py         462 lines (protein alignment)
 │   ├── inconsistent_genes_*.py        451 lines (inconsistency detection)
 │   ├── parse_liftover_*.py            435 lines (liftover parsing)
-│   ├── detect_one2many_mappings.py    219 lines (mapping detection)
+│   ├── mapping_multiplicity.py    219 lines (mapping detection)
 │   ├── synonym_mapping_summary.py      84 lines (summary stats)
 │   ├── synonym_mapping_parse.py        92 lines ⚠️ BROKEN
 │   └── __init__.py                      0 lines
@@ -128,7 +128,7 @@ sys.path.insert(0, '..')
 
 | Current | Should Be |
 |---------|-----------|
-| `pariwise_align_prot.py` | `pairwise_align_prot.py` |
+| `pairwise_align_prot.py` | `pairwise_align_prot.py` |
 
 ---
 
@@ -207,7 +207,7 @@ This module will provide:
 
 | Task | Effort |
 |------|--------|
-| Rename `pariwise_align_prot.py` → `pairwise_align_prot.py` | 5 min |
+| Rename `pairwise_align_prot.py` → `pairwise_align_prot.py` | 5 min |
 | Update README.md directory structure | 15 min |
 | Add docstrings to empty `__init__.py` files | 10 min |
 
