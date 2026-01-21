@@ -572,5 +572,81 @@ Review docs/ folder to ensure accuracy with new file names
 
 Update sections 6 and 8 to reflect completed fixes
 
----
+## Priority
+
+> Date: 21/01/2026
+> Python version: 3.8+
+
+### 1. Prefix handling (deferred)
+
+> Reference: Task 13-15, 18
+> Status: Deferred to future sprint - not blocking current release
+
+- [ ] Design `--prefix` CLI argument (comma-separated: old,new)
+- [ ] Implement auto-detection in `tools_runner.detect_annotation_source()`
+- [ ] Update `synonym_mapping_parse.py` to use dynamic prefixes instead of hardcoded column names
+
+### 2. Testing
+
+> Test with sample data: GCF_013085055.1 (new) vs FungiDB-68_Fo47 (old)
+> Testing should not change any code in the main scripts
+> Implement in a way that helps debug the main code:
+>   - Set a unique output folder for each test run (use timestamp or UUID - if timestamp it should include minutes)
+>   - Identify where issues are found in the main code
+>   - Resolve issues in the main code based on identified bugs
+
+**Step-by-step (in order):**
+
+1. [ ] Pre-testing: Commit current state before running tests (safety net)
+2. [ ] Set up infrastructure: Create `test/data/` folder with sample input files
+3. [ ] Set up infrastructure: Add pytest.ini with output directory configuration
+4. [ ] Sample data: Identify or create sample GFF, FAA, and tracking files (small size: ~10-20 entries)
+5. [ ] Sample data: Store in `test/data/`
+6. [ ] Verify requirements.txt has all dependencies
+7. [ ] Pin specific versions in requirements.txt (e.g., `pandas==2.0.0`)
+8. [ ] Run `python -m pytest test/ -v` to check current test status
+9. [ ] Add tests for new modules: tools_runner.py, gsmc.py, mapping_multiplicity.py
+10. [ ] Ensure tests are isolated (no side effects on main code)
+11. [ ] Edge cases: Empty input files
+12. [ ] Edge cases: Malformed GFF files
+13. [ ] Edge cases: Missing required columns
+14. [ ] Verify CLI --help works for pavprot.py and gsmc.py
+15. [ ] Input validation: Basic input file validation before processing
+16. [ ] Test on clean virtual environment (venv) - final verification
+
+- Success criteria: All tests pass with 0 errors
+
+### 3. Documentation (after testing)
+
+**Step-by-step (in order):**
+
+1. [ ] Review `docs/` folder for accuracy with renamed files (assess current state)
+2. [ ] Update CODE_REVIEW_REPORT.md sections 6 and 8
+3. [ ] Migrate plot scripts to use `plot/utils.py` and `plot/config.py`
+4. [ ] Make paths configurable in `project_scripts/`
+5. [ ] Add quick start example in README
+6. [ ] Specify supported Python versions in README (Python 3.8+)
+7. [ ] Verify LICENSE file exists
+8. [ ] Update CHANGELOG or release notes (last - summarizes all changes)
+
+### 4. Push and merge (after documentation)
+
+**Step-by-step (in order):**
+
+1. [ ] Run linter (flake8) to check code quality
+2. [ ] Verify all tests pass on clean environment
+3. [ ] Create git tag before merge (e.g., v0.2.0)
+4. [ ] Push dev branch to remote
+5. [ ] Create PR: dev → main
+6. [ ] Review changes before merge
+7. [ ] Merge PR
+8. [ ] Post-merge: verify main branch works
+
+> Rollback plan: `git revert <commit>` if critical issues found
+
+### 5. Optional (lower priority)
+
+1. [ ] Cross-platform testing (Linux/macOS/Windows)
+2. [ ] Add --verbose and --dry-run options for debugging
+3. [ ] Link to issue tracker in documentation
 
