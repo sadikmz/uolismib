@@ -864,3 +864,93 @@ Bio.Align.PairwiseAligner scoring parameter incompatibility
 
 > **Note:** All 3 issues are non-blocking for the main pipeline. Core functionality (pavprot.py, gsmc.py, mapping_multiplicity.py) works correctly.
 
+---
+
+## Verification Summary (2026-01-26)
+
+> **Source:** Full execution of `docs/MANUAL_VERIFICATION_GUIDE.md`
+> **Test Directory:** `/tmp/pavprot_manual_20260126_150704/`
+
+### Results Overview
+
+| Category | Result |
+|----------|--------|
+| **Total Checks** | 31 |
+| **Passed** | 28 ✅ |
+| **Minor Issues** | 3 ⚠️ |
+| **Failed** | 0 ❌ |
+
+### Detailed Checklist
+
+```
+PART 1: Environment
+[✓] 1.1 Correct directory
+[✓] 1.2 Python version OK (3.13.1)
+[✓] 1.3 Dependencies OK (pandas 2.2.3, numpy 2.2.1, biopython 1.85)
+[✓] 1.4 Test data present (6 files)
+
+PART 2: CLI Help
+[✓] 2.1 pavprot.py
+[✓] 2.2 gsmc.py
+[✓] 2.3 mapping_multiplicity.py
+[✓] 2.4 bidirectional_best_hits.py
+[✓] 2.5 pairwise_align_prot.py
+[✓] 2.6 parse_interproscan.py
+[✓] 2.7 synonym_mapping_summary.py
+
+PART 3: Unit Tests
+[✓] 3.1 All tests pass
+[✓] 3.2 Test count correct (47 passed, 2 skipped)
+
+PART 4: Main Pipeline
+[✓] 4.1 Directory created
+[✓] 4.2 Minimal pipeline runs
+[✓] 4.3 Output structure OK (20 columns)
+[✓] 4.4 Pipeline with GFF runs
+[✓] 4.5 Pipeline with InterProScan runs
+[✓] 4.6 Gene-level output OK
+
+PART 5: Individual Modules
+[✓] 5.1 mapping_multiplicity
+[⚠] 5.2 synonym_mapping_summary (partial - column mismatch)
+[⚠] 5.3 pairwise_align_prot (Biopython API issue)
+[✓] 5.4 parse_interproscan
+[✓] 5.5 bidirectional_best_hits
+[✓] 5.6 gsmc
+
+PART 6: Plot Modules
+[✓] 6.1 plot.config (13 exports)
+[✓] 6.2 plot.utils (all functions)
+[✓] 6.3 plot_ipr_advanced (9 functions)
+
+PART 7: Tools Runner
+[⚠] 7.1 Tools runner (7/9 methods available)
+
+PART 8: Pre-Release Script
+[✓] 8.1 Script exists
+[✓] 8.2 Script help works
+[✓] 8.3 Quick pre-release check passes
+
+PART 9: Output Validation
+[✓] 9.1 Output validation passes (20 cols, 7 records, no NaN)
+
+PART 10: Cleanup
+[✓] 10.1 Summary reviewed (28 files, 112K)
+[✓] 10.2 Cleanup noted
+```
+
+### Test Output Statistics
+
+| Metric | Value |
+|--------|-------|
+| Output files generated | 28 |
+| Total output size | 112K |
+| Transcript-level columns | 20 |
+| Records processed | 7 |
+| Unique ref genes | 3 |
+| Unique query genes | 3 |
+
+### Conclusion
+
+**Pipeline is ready for release.** All core functionality works correctly. The 3 minor issues documented above are non-blocking and don't affect the main pipeline workflow.
+
