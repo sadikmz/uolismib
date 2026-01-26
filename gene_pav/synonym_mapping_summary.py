@@ -1,7 +1,16 @@
 #!/usr/bin/env python3
+"""
+Generate summary statistics for synonym_mapping_liftover_gffcomp.tsv files.
+
+Usage:
+    python synonym_mapping_summary.py <input_file>
+    python synonym_mapping_summary.py synonym_mapping_liftover_gffcomp.tsv
+"""
 
 import sys
+import argparse
 import pandas as pd
+
 
 def generate_summary_statistics(input_file):
     """Generate summary statistics for synonym_mapping_liftover_gffcomp.tsv"""
@@ -74,11 +83,24 @@ def generate_summary_statistics(input_file):
 
     print("\n" + "=" * 80)
 
-if __name__ == '__main__':
-    if len(sys.argv) != 2:
-        print("Usage: python3 synonym_mapping_summary.py <synonym_mapping_liftover_gffcomp.tsv>", file=sys.stderr)
-        print("\nExample:", file=sys.stderr)
-        print("  python3 synonym_mapping_summary.py synonym_mapping_liftover_gffcomp.tsv", file=sys.stderr)
-        sys.exit(1)
+def main():
+    parser = argparse.ArgumentParser(
+        description='Generate summary statistics for synonym_mapping_liftover_gffcomp.tsv files',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+Examples:
+  python synonym_mapping_summary.py synonym_mapping_liftover_gffcomp.tsv
+  python synonym_mapping_summary.py output/mapping_results.tsv
+        '''
+    )
+    parser.add_argument(
+        'input_file',
+        help='Path to synonym_mapping_liftover_gffcomp.tsv file'
+    )
 
-    generate_summary_statistics(sys.argv[1])
+    args = parser.parse_args()
+    generate_summary_statistics(args.input_file)
+
+
+if __name__ == '__main__':
+    main()

@@ -12,6 +12,9 @@
 - [x] Organize project scripts into `project_scripts/` subfolder
 - [x] **Completed Section 6 tasks (2026-01-20)** - See "Completed Tasks" below
 - [x] **Verified pipeline structure (2026-01-21)** - All modules functional
+- [ ] In every section and action add Git, bash and other commands used and their descriptions, document suggessions on git and other command usage in in gene_pav/docs/SETUP_COMMANDS.md   
+  - [ ] help document commands as I go for a personal reference guide
+
 
 ---
 
@@ -629,7 +632,37 @@ Update sections 6 and 8 to reflect completed fixes
 7. [x] Verify LICENSE file exists ✅ Found at /LICENSE
 8. [ ] Update CHANGELOG or release notes (last - summarizes all changes)
 
-### 4. Push and merge (after documentation)
+### 4. Running a test job
+
+**Step-by-step (reorganized by logical priority):**
+
+#### Phase 1: Prerequisites
+1. [x] Verify dependencies installed (requirements.txt) ✅ All deps match
+2. [x] Verify test data exists in test/data/ ✅ 11 files found
+3. [x] Review test/data/ files (GFF, tracking, InterProScan, mock data) ✅ Reviewed
+
+#### Phase 2: CLI & Unit Testing
+4. [x] Test CLI help commands work (--help) ✅ All modules pass
+5. [x] Fix mapping_multiplicity.py CLI issue ✅ Added argparse
+6. [x] Verify all tests pass (pytest) ✅ 47 passed, 2 skipped
+
+#### Phase 3: Module Testing
+7. [x] Test each module individually ✅ All 7 modules have working --help
+
+#### Phase 4: Integration Testing
+8. [x] Run pavprot all functionality with test data ✅ Passed
+   - Output: /tmp/pavprot_test_20260121_144213/
+   - 9 output files generated
+   - Scenarios detected: E=3 (1:1 orthologs)
+9. [x] Use wrapper scripts in test/ or create new one ✅ Created test/run_integration_test.sh
+10. [x] Create output log for test run ✅ Log saved to test/output_*/test_run.log
+11. [x] Compare output against expected results ✅ 3 gene pairs, all E scenarios, 0 multiple mappings
+
+#### Phase 5: Documentation
+12. [x] Document issues and suggest fixes ✅ CLI fix, wrapper script documented
+13. [x] Record git commands in docs/SETUP_COMMANDS.md ✅ Added Section 4 commands
+
+### 5. Push and merge (after documentation)
 
 **Step-by-step (in order):**
 
@@ -644,9 +677,126 @@ Update sections 6 and 8 to reflect completed fixes
 
 > Rollback plan: `git revert <commit>` if critical issues found
 
-### 5. Optional (lower priority)
+### 6. Optional (lower priority)
 
 1. [ ] Cross-platform testing (Linux/macOS/Windows)
 2. [ ] Add --verbose and --dry-run options for debugging
 3. [ ] Link to issue tracker in documentation
+
+---
+
+## Reorganized Priority Tasks (2026-01-26)
+
+> **Goal:** Finalize all steps before push/merge, automate where possible
+> **Push/merge is the LAST step - not a priority, just the final action**
+
+### Phase 1: Finalization (Partially Automatable)
+
+> Run `./scripts/pre_release_check.sh` to automate marked items
+
+#### 1.1 Code Quality
+
+| Task | Auto? | Command | Status |
+|------|-------|---------|--------|
+| Run linter | ✅ | `flake8 *.py plot/*.py` | [x] |
+| Fix linting errors | ❌ | Manual fixes | [x] |
+| Verify tests pass | ✅ | `pytest test/ -v` | [x] |
+
+**Fixes applied (2026-01-26):**
+- `plot/plot_ipr_advanced.py`: Added 5 missing functions (F821 errors)
+- `synonym_mapping_summary.py`: Added argparse for --help support
+
+#### 1.2 Documentation Gaps
+
+| Task | Auto? | Notes | Status |
+|------|-------|-------|--------|
+| Make paths configurable in `project_scripts/` | ❌ | Created `config.yaml.template` | [x] |
+| Update CHANGELOG | ⚡ | Created `CHANGELOG.md` | [x] |
+| Document commands in SETUP_COMMANDS.md | ❌ | Added Section 6 (linting fixes) | [x] |
+
+**Completed (2026-01-26):**
+- Created `project_scripts/config.yaml.template`
+- Updated `project_scripts/README.md` with configuration guide
+- Created `CHANGELOG.md` with full version history
+
+---
+
+### Phase 2: Code Review (Manual - Guided)
+
+> These require human judgment but can be assisted
+
+| Task | Notes | Status |
+|------|-------|--------|
+| Critical review of entire pipeline | Assessed all core modules | [x] |
+| Review plotting scripts integration | Documented in PIPELINE_ARCHITECTURE.md | [x] |
+| Review file organization | Structure is logical, no changes needed | [x] |
+| Generate markdown report per file | Created `docs/PIPELINE_ARCHITECTURE.md` | [x] |
+
+**Completed (2026-01-26):**
+- Created comprehensive `docs/PIPELINE_ARCHITECTURE.md`
+- Documented module connections, data flow, CLI options
+- Mapped all dependencies and output columns
+
+---
+
+### Phase 3: Pre-Release Checks (Automatable)
+
+> Run `./scripts/pre_release_check.sh --full` for complete check
+
+| Task | Auto? | Command | Status |
+|------|-------|---------|--------|
+| Run full test suite | ✅ | `pytest test/ -v --tb=short` | [x] |
+| Verify clean venv install | ✅ | Script creates fresh venv | [x] |
+| All CLI --help works | ✅ | Script tests each module | [x] |
+| Integration test passes | ✅ | `./test/run_integration_test.sh` | [x] |
+
+**Results (2026-01-26):**
+- Linting: ✅ No critical errors (422 style warnings, non-blocking)
+- Tests: ✅ 47 passed, 2 skipped
+- CLI: ✅ All 7 modules pass --help
+- Clean venv: ✅ Tests pass in fresh environment
+
+---
+
+### Phase 4: Release (Manual - Final Step)
+
+> Only proceed when Phases 1-3 are complete
+
+| Step | Command | Status |
+|------|---------|--------|
+| 1. Create git tag | `git tag -a v0.2.0 -m "Release v0.2.0"` | [ ] |
+| 2. Push dev to remote | `git push origin dev` | [ ] |
+| 3. Create PR | `gh pr create --base main --head dev` | [ ] |
+| 4. Review changes | Manual review on GitHub | [ ] |
+| 5. Merge PR | `gh pr merge` or GitHub UI | [ ] |
+| 6. Post-merge verify | `git checkout main && pytest test/ -v` | [ ] |
+
+> **Rollback plan:** `git revert <commit>` if critical issues found
+
+---
+
+### Automation Scripts
+
+| Script | Purpose | Location |
+|--------|---------|----------|
+| `pre_release_check.sh` | Run linter, tests, venv check | `scripts/` |
+| `run_integration_test.sh` | Full pipeline test | `test/` |
+
+---
+
+### Quick Reference: What's Left
+
+```
+Phase 1: [x] Linting ✅, [x] Doc gaps ✅
+Phase 2: [x] Code review ✅ (PIPELINE_ARCHITECTURE.md created)
+Phase 3: [x] Pre-release checks ✅ (all pass)
+Phase 4: [ ] Push/merge (final step - ready when you are)
+```
+
+**Ready for Phase 4!** All checks pass. Next steps:
+```bash
+git tag -a v0.2.0 -m "Release v0.2.0"
+git push origin dev
+gh pr create --base main --head dev
+```
 

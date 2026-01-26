@@ -1,0 +1,76 @@
+# PAVprot Project Scripts Configuration Template
+# ==============================================
+#
+# Copy this file to config.yaml and edit the paths for your environment:
+#   cp config.yaml.template config.yaml
+#
+# Then run the pipeline:
+#   python run_pipeline.py --config config.yaml --all
+#
+# Created: 2026-01-26
+
+# -----------------------------------------------------------------------------
+# Base Directories
+# -----------------------------------------------------------------------------
+base:
+  # Working directory (usually where your project data is)
+  project_dir: "/path/to/your/project"
+
+  # Output directory for pipeline results
+  output_dir: "./pipeline_output"
+
+# -----------------------------------------------------------------------------
+# PAVprot Output Files (from previous pavprot.py run)
+# -----------------------------------------------------------------------------
+# Set to null to auto-detect from output/latest/
+pavprot_outputs:
+  transcript_level_tsv: null
+  gene_level_tsv: null
+
+# -----------------------------------------------------------------------------
+# External Tool Outputs (optional - tasks will skip if not found)
+# -----------------------------------------------------------------------------
+external_data:
+  # Psauron protein structure quality scores
+  psauron:
+    reference: null  # e.g., "/path/to/psauron/ref_all.csv"
+    query: null      # e.g., "/path/to/psauron/qry_all.csv"
+
+  # ProteinX / AlphaFold pLDDT scores
+  proteinx:
+    reference: null  # e.g., "/path/to/proteinx/ref_proteinx.tsv"
+    query: null      # e.g., "/path/to/proteinx/qry_proteinx.tsv"
+
+  # FungiDB data (for comparative analysis)
+  fungidb:
+    phytopathogen_list: null  # e.g., "/path/to/disease_research_supported.csv"
+    gene_stats: null          # e.g., "/path/to/fungidb_v68_gene_stats.tsv"
+
+# -----------------------------------------------------------------------------
+# Annotation Prefixes
+# -----------------------------------------------------------------------------
+# These identify your reference and query annotations
+prefixes:
+  reference: "GCF_013085055.1"      # New/reference annotation prefix
+  query: "FungiDB-68_Fo47"          # Old/query annotation prefix
+
+# -----------------------------------------------------------------------------
+# Plot Settings
+# -----------------------------------------------------------------------------
+plotting:
+  dpi: 150
+  format: "png"  # Options: png, pdf, svg
+  style: "whitegrid"  # Seaborn style
+
+# -----------------------------------------------------------------------------
+# Pipeline Behavior
+# -----------------------------------------------------------------------------
+options:
+  # Skip tasks if input files are missing (instead of failing)
+  skip_missing: true
+
+  # Verbose output
+  verbose: false
+
+  # Dry run (show what would be done without executing)
+  dry_run: false

@@ -334,4 +334,289 @@ git worktree prune
 
 ---
 
-*Generated: 2026-01-19*
+## Section 4: Running a Test Job (2026-01-21)
+
+### CLI Fix: mapping_multiplicity.py
+
+Added argparse support to `mapping_multiplicity.py` for proper `--help` handling:
+
+```python
+# Added import
+import argparse
+
+# Replaced sys.argv-based main() with:
+def main():
+    parser = argparse.ArgumentParser(
+        description='Detect multiple mapping genes (1-to-many and many-to-1 relationships)')
+    parser.add_argument('input_file',
+                        help='Path to synonym_mapping_liftover_gffcomp.tsv')
+    parser.add_argument('--output-prefix', '-o',
+                        help='Prefix for output files (default: input filename)')
+    args = parser.parse_args()
+    detect_multiple_mappings(args.input_file, args.output_prefix)
+```
+
+### Integration Test Wrapper Script
+
+Created `test/run_integration_test.sh` for automated testing with timestamped output:
+
+```bash
+#!/bin/bash
+# Run integration test with timestamped output directory
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+OUTPUT_DIR="test/output_${TIMESTAMP}"
+
+python pavprot.py \
+  --gff-comp test/data/gffcompare.tracking \
+  --gff test/data/gff_feature_table.gff3 \
+  --interproscan-out test/data/test_interproscan.tsv \
+  --output-dir "${OUTPUT_DIR}" \
+  --output-prefix integration_test \
+  2>&1 | tee "${OUTPUT_DIR}/test_run.log"
+```
+
+### Test Results
+
+```
+# Run unit tests
+python -m pytest test/ -v
+# Result: 47 passed, 2 skipped
+
+# Run integration test
+./test/run_integration_test.sh
+# Result: 3 gene pairs detected, all E (1:1 orthologs)
+```
+
+### Git Commands
+
+```bash
+# Commit CLI fix and test wrapper
+git add mapping_multiplicity.py test/run_integration_test.sh
+git commit -m "Add argparse to mapping_multiplicity.py and create integration test wrapper
+
+- Fix mapping_multiplicity.py CLI to support --help
+- Add test/run_integration_test.sh with timestamped output
+- All 47 tests pass, 2 skipped
+
+Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"
+```
+
+---
+
+---
+
+## Section 5: Pre-Release Automation (2026-01-26)
+
+### Created Automation Script
+
+```bash
+# Create scripts directory
+mkdir -p scripts
+
+# Create pre-release check script (see scripts/pre_release_check.sh)
+# Make executable
+chmod +x scripts/pre_release_check.sh
+```
+
+### Pre-Release Script Usage
+
+```bash
+# Quick check (linter + tests + CLI)
+./scripts/pre_release_check.sh
+
+# Full check (includes clean venv test)
+./scripts/pre_release_check.sh --full
+
+# Individual checks
+./scripts/pre_release_check.sh --lint   # Linting only
+./scripts/pre_release_check.sh --test   # Tests only
+./scripts/pre_release_check.sh --cli    # CLI help checks only
+
+# Show help
+./scripts/pre_release_check.sh --help
+```
+
+### What the Script Checks
+
+| Phase | Check | Command Used |
+|-------|-------|--------------|
+| 1.1 | Critical lint errors | `flake8 *.py plot/*.py --select=E9,F63,F7,F82` |
+| 1.1 | Style warnings | `flake8 *.py plot/*.py --max-line-length=120` |
+| 1.1 | Unit tests | `python -m pytest test/ -v --tb=short` |
+| 3 | CLI help | `python <module>.py --help` for each module |
+| 3 | Integration test | `./test/run_integration_test.sh` |
+| 3 | Clean venv | Creates temp venv, installs deps, runs tests |
+
+### Linting Commands Explained
+
+```bash
+# Install flake8 (if not installed)
+pip install flake8
+
+# Check for critical errors only (syntax errors, undefined names)
+flake8 *.py --select=E9,F63,F7,F82 --show-source
+
+# Full check with style warnings
+flake8 *.py --max-line-length=120 --statistics
+
+# Check specific directories
+flake8 *.py plot/*.py project_scripts/*.py
+```
+
+**Error codes:**
+- `E9xx`: Runtime/syntax errors (critical)
+- `F63`: Invalid `__future__` imports
+- `F7`: Syntax errors in type comments
+- `F82`: Undefined names (critical)
+- `E501`: Line too long (style)
+- `W503`: Line break before binary operator (style)
+
+---
+
+---
+
+## Section 6: Linting Fixes (2026-01-26)
+
+### Issue 1: Undefined Functions in `plot/plot_ipr_advanced.py`
+
+**Problem:** 5 functions were called but never defined (F821 errors)
+
+```bash
+# Identify the issue with flake8
+flake8 plot/plot_ipr_advanced.py --select=F821
+```
+
+**Output:**
+```
+plot/plot_ipr_advanced.py:220:5: F821 undefined name 'plot_bland_altman'
+plot/plot_ipr_advanced.py:222:5: F821 undefined name 'plot_delta_distribution'
+plot/plot_ipr_advanced.py:223:5: F821 undefined name 'plot_violin_comparison'
+plot/plot_ipr_advanced.py:224:5: F821 undefined name 'plot_cdf_comparison'
+plot/plot_ipr_advanced.py:227:5: F821 undefined name 'plot_contour_density'
+```
+
+**Fix:** Added 5 missing function implementations:
+
+| Function | Purpose | Lines Added |
+|----------|---------|-------------|
+| `plot_bland_altman()` | Method agreement analysis | ~35 |
+| `plot_delta_distribution()` | Histogram + boxplot of differences | ~45 |
+| `plot_violin_comparison()` | Violin plots query vs reference | ~50 |
+| `plot_cdf_comparison()` | CDF with KS test | ~40 |
+| `plot_contour_density()` | 2D density contour using KDE | ~50 |
+
+### Issue 2: CLI --help Not Working in `synonym_mapping_summary.py`
+
+**Problem:** Script used `sys.argv` directly instead of argparse
+
+```bash
+# Test CLI help
+python synonym_mapping_summary.py --help
+# Failed: showed usage error instead of help
+```
+
+**Fix:** Converted to argparse:
+
+```python
+# Before (sys.argv approach)
+if __name__ == '__main__':
+    if len(sys.argv) != 2:
+        print("Usage: ...")
+        sys.exit(1)
+    generate_summary_statistics(sys.argv[1])
+
+# After (argparse approach)
+def main():
+    parser = argparse.ArgumentParser(
+        description='Generate summary statistics...')
+    parser.add_argument('input_file', help='Path to TSV file')
+    args = parser.parse_args()
+    generate_summary_statistics(args.input_file)
+
+if __name__ == '__main__':
+    main()
+```
+
+### Verify Fixes
+
+```bash
+# Re-run pre-release check
+./scripts/pre_release_check.sh
+
+# Expected output:
+# ✓ No critical linting errors
+# ✓ All tests passed
+# ✓ All CLI modules pass --help check
+# ✓ All checks passed!
+```
+
+### Flake8 Error Codes Reference
+
+| Code | Severity | Description |
+|------|----------|-------------|
+| E9xx | Critical | Runtime/syntax errors |
+| F821 | Critical | Undefined name |
+| F401 | Warning | Imported but unused |
+| F841 | Warning | Variable assigned but never used |
+| E501 | Style | Line too long |
+| E731 | Style | Lambda assignment (use def instead) |
+| C901 | Style | Function too complex |
+
+---
+
+---
+
+## Section 7: Phases 1.2-3 Completion (2026-01-26)
+
+### Phase 1.2: Documentation Tasks
+
+```bash
+# Created config template for project_scripts
+# File: project_scripts/config.yaml.template
+
+# Updated project_scripts/README.md with configuration guide
+
+# Created CHANGELOG.md
+# File: CHANGELOG.md
+```
+
+### Phase 2: Code Review
+
+```bash
+# Generated comprehensive pipeline architecture documentation
+# File: docs/PIPELINE_ARCHITECTURE.md
+
+# Contents:
+# - Module summary table
+# - Data flow diagram
+# - Module dependency graph
+# - CLI options reference
+# - Output columns documentation
+```
+
+### Phase 3: Full Pre-Release Check
+
+```bash
+# Run full pre-release verification (including clean venv test)
+./scripts/pre_release_check.sh --full
+
+# Results:
+# ✓ No critical linting errors
+# ✓ 47 tests passed, 2 skipped
+# ✓ All 7 CLI modules pass --help
+# ✓ Tests pass in clean virtual environment
+# ✓ All checks passed!
+```
+
+### Files Created This Session
+
+| File | Purpose |
+|------|---------|
+| `scripts/pre_release_check.sh` | Automated pre-release verification |
+| `project_scripts/config.yaml.template` | Configuration template |
+| `CHANGELOG.md` | Version history |
+| `docs/PIPELINE_ARCHITECTURE.md` | Module documentation |
+
+---
+
+*Updated: 2026-01-26*

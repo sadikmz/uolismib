@@ -6,6 +6,7 @@ Detect multiple mapping genes in synonym_mapping_liftover_gffcomp.tsv
 """
 
 import sys
+import argparse
 import pandas as pd
 from pathlib import Path
 
@@ -202,18 +203,15 @@ def detect_multiple_mappings(input_file, output_prefix=None):
     return ref_output, qry_output
 
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: python3 mapping_multiplicity.py <synonym_mapping_liftover_gffcomp.tsv> [output_prefix]",
-              file=sys.stderr)
-        print("\nExample:", file=sys.stderr)
-        print("  python3 mapping_multiplicity.py synonym_mapping_liftover_gffcomp.tsv", file=sys.stderr)
-        print("  python3 mapping_multiplicity.py input.tsv my_output", file=sys.stderr)
-        sys.exit(1)
+    parser = argparse.ArgumentParser(
+        description='Detect multiple mapping genes (1-to-many and many-to-1 relationships)')
+    parser.add_argument('input_file',
+                        help='Path to synonym_mapping_liftover_gffcomp.tsv')
+    parser.add_argument('--output-prefix', '-o',
+                        help='Prefix for output files (default: input filename)')
 
-    input_file = sys.argv[1]
-    output_prefix = sys.argv[2] if len(sys.argv) > 2 else None
-
-    detect_multiple_mappings(input_file, output_prefix)
+    args = parser.parse_args()
+    detect_multiple_mappings(args.input_file, args.output_prefix)
 
 if __name__ == '__main__':
     main()
