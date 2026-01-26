@@ -800,3 +800,67 @@ git push origin dev
 gh pr create --base main --head dev
 ```
 
+---
+
+## Known Issues (2026-01-26)
+
+> **Source:** Manual verification of MANUAL_VERIFICATION_GUIDE.md
+> **Impact:** Non-blocking - pipeline core functionality works correctly
+
+### Issue 1: pairwise_align_prot.py - Biopython API Compatibility
+
+| Field | Value |
+|-------|-------|
+| **Module** | `pairwise_align_prot.py` |
+| **Error** | `ValueError: invalid match score` |
+| **Cause** | Biopython PairwiseAligner API change in Python 3.13 |
+| **Impact** | Low - pairwise alignment is optional functionality |
+| **Workaround** | Use Python 3.12 or wait for Biopython update |
+| **Status** | ⚠️ Known upstream issue |
+
+**Error details:**
+```
+ValueError: invalid match score
+Bio.Align.PairwiseAligner scoring parameter incompatibility
+```
+
+---
+
+### Issue 2: synonym_mapping_summary.py - Column Name Mismatch
+
+| Field | Value |
+|-------|-------|
+| **Module** | `synonym_mapping_summary.py` |
+| **Error** | Script looks for `class_type` but output has `class_type_transcript` |
+| **Impact** | Low - partial functionality works, some statistics skipped |
+| **Fix** | Update column name reference in script |
+| **Status** | ⚠️ Minor - non-blocking |
+
+**Affected output:**
+- Class type distribution stats not shown
+- Other summary statistics work correctly
+
+---
+
+### Issue 3: tools_runner.py - Missing Methods
+
+| Field | Value |
+|-------|-------|
+| **Module** | `tools_runner.py` |
+| **Missing** | `run_alphafold_plddt()`, `run_busco()` |
+| **Present** | 7/9 methods work (psauron, diamond, interproscan, gffcompare, liftoff, pairwise_alignment, detect_annotation_source) |
+| **Impact** | Low - these tools are optional/future features |
+| **Status** | ⏳ Not yet implemented |
+
+---
+
+### Summary Table
+
+| Issue | Module | Severity | Status |
+|-------|--------|----------|--------|
+| Biopython API | pairwise_align_prot.py | Low | ⚠️ Upstream |
+| Column mismatch | synonym_mapping_summary.py | Low | ⚠️ Minor |
+| Missing methods | tools_runner.py | Low | ⏳ Future |
+
+> **Note:** All 3 issues are non-blocking for the main pipeline. Core functionality (pavprot.py, gsmc.py, mapping_multiplicity.py) works correctly.
+
