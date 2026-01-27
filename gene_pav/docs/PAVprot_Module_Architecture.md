@@ -63,7 +63,7 @@ gene_pav/
 ┃                                                                                         ┃
 ┃   IMPORTS:                                                                              ┃
 ┃   ├── from parse_interproscan import InterProParser, run_interproscan                   ┃
-┃   ├── from detect_one2many_mappings import detect_multiple_mappings                     ┃
+┃   ├── from mapping_multiplicity import detect_multiple_mappings                         ┃
 ┃   └── from bidirectional_best_hits import BidirectionalBestHits, enrich_pavprot_with_bbh┃
 ┃                                                                                         ┃
 ┃   FUNCTIONS:                                                                            ┃
@@ -78,8 +78,8 @@ gene_pav/
           │                    │                    │                    │
           ▼                    ▼                    ▼                    ▼
 ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
-│ parse_           │ │ bidirectional_   │ │ detect_one2many_ │ │ utils/           │
-│ interproscan.py  │ │ best_hits.py     │ │ mappings.py      │ │ parse_liftover_  │
+│ parse_           │ │ bidirectional_   │ │ mapping_         │ │ utils/           │
+│ interproscan.py  │ │ best_hits.py     │ │ multiplicity.py  │ │ parse_liftover_  │
 │                  │ │                  │ │                  │ │ extra_copy_      │
 │ CALLED BY:       │ │ CALLED BY:       │ │ CALLED BY:       │ │ number.py        │
 │ pavprot.py       │ │ pavprot.py       │ │ pavprot.py       │ │                  │
@@ -165,7 +165,7 @@ gene_pav/
 |--------|-----------------|---------|----------------|
 | `parse_interproscan.py` | `from parse_interproscan import InterProParser, run_interproscan` | Parse InterProScan TSV, calculate IPR domain lengths with overlap merging | `--interproscan-out` or `--run-interproscan` |
 | `bidirectional_best_hits.py` | `from bidirectional_best_hits import BidirectionalBestHits, enrich_pavprot_with_bbh` | Find reciprocal best DIAMOND hits for ortholog confidence | `--run-diamond --run-bbh` |
-| `mapping_multiplicity.py` | `from detect_one2many_mappings import detect_multiple_mappings` | Generate 1:N and N:1 mapping summary reports | Always (called at end of pavprot) |
+| `mapping_multiplicity.py` | `from mapping_multiplicity import detect_multiple_mappings` | Generate 1:N and N:1 mapping summary reports | Always (called at end of pavprot) |
 
 ---
 

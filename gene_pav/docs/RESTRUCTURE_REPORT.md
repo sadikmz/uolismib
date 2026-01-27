@@ -137,17 +137,17 @@ gene_pav/
 ├─────────────────────────────────────────────────────────────────┤
 │  IMPORTS:                                                        │
 │  ├── from parse_interproscan import InterProParser, run_interproscan
-│  ├── from detect_one2many_mappings import detect_multiple_mappings
+│  ├── from mapping_multiplicity import detect_multiple_mappings
 │  ├── from bidirectional_best_hits import BidirectionalBestHits, enrich_pavprot_with_bbh
-│  └── from pariwise_align_prot import local_alignment_similarity, read_all_sequences
+│  └── from pairwise_align_prot import local_alignment_similarity, read_all_sequences
 └─────────────────────────────────────────────────────────────────┘
                               │
          ┌────────────────────┼────────────────────┐
          ▼                    ▼                    ▼
 ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
-│ parse_          │  │ bidirectional_  │  │ detect_         │
-│ interproscan.py │  │ best_hits.py    │  │ one2many_       │
-│                 │  │                 │  │ mappings.py     │
+│ parse_          │  │ bidirectional_  │  │ mapping_        │
+│ interproscan.py │  │ best_hits.py    │  │ multiplicity.py │
+│                 │  │                 │  │                 │
 │ STANDALONE: Yes │  │ STANDALONE: Yes │  │ STANDALONE: Yes │
 │ DEPENDENCIES:   │  │ DEPENDENCIES:   │  │ DEPENDENCIES:   │
 │ - pandas        │  │ - pandas        │  │ - pandas        │
@@ -156,7 +156,7 @@ gene_pav/
          │
          ▼
 ┌─────────────────┐
-│ pariwise_       │
+│ pairwise_       │
 │ align_prot.py   │
 │                 │
 │ STANDALONE: Yes │

@@ -5,25 +5,23 @@
 ```
 gene_pav/
 ├── pavprot.py                          # Main orchestrator
+├── tools_runner.py                     # Unified external tools interface (NEW)
 ├── parse_interproscan.py               # IPR domain parsing (imported by pavprot)
 ├── bidirectional_best_hits.py          # BBH analysis (imported by pavprot)
-├── mapping_multiplicity.py         # 1:N mapping detection (imported by pavprot)
+├── mapping_multiplicity.py             # 1:N mapping detection (imported by pavprot)
 ├── pairwise_align_prot.py              # Pairwise protein alignment
-│
+├── gsmc.py                             # Gene Scenario Mapping Classifier (scenarios)
 ├── analysis/                           # Downstream analysis scripts
 │   ├── gsmc.py    # Scenario classification (E,A,B,J,CDI,F,G,H)
 │   ├── inconsistent_genes_transcript_IPR_PAV.py  # IPR consistency analysis
 │   └── synonym_mapping_summary.py      # Statistics summary
-│
 ├── utils/                              # Standalone utilities
 │   ├── parse_liftover_extra_copy_number.py  # Liftoff pre-processing
 │   └── synonym_mapping_parse.py        # Query gene counting utility
-│
 ├── dev/                                # Development & legacy scripts
 │   ├── check_plot_logic.py             # Plot debugging utility
 │   ├── parse_interproscan_github_version.py  # Legacy IPR parser version
 │   └── standalone_bed_coverage_test.py # BED coverage testing
-│
 ├── plot/                               # Visualization scripts
 │   ├── plot_ipr_comparison.py          # IPR scatter plots
 │   ├── plot_ipr_gene_level.py          # Gene-level IPR analysis
@@ -31,7 +29,6 @@ gene_pav/
 │   ├── plot_ipr_shapes.py              # Domain shape plots
 │   ├── plot_ipr_proportional_bias.py   # Bias analysis
 │   └── plot_domain_comparison.py       # Domain comparison
-│
 └── test/                               # Test files
     ├── test_pavprot.py                 # PAVprot unit tests
     ├── test_bed_coverage.py            # BED coverage tests
@@ -62,7 +59,7 @@ gene_pav/
 ┃                              pavprot.py (MAIN ORCHESTRATOR)                             
 ┃   IMPORTS:                                                                              
 ┃   ├── from parse_interproscan import InterProParser, run_interproscan                   
-┃   ├── from detect_one2many_mappings import detect_multiple_mappings                     
+┃   ├── from mapping_multiplicity import detect_multiple_mappings                     
 ┃   └── from bidirectional_best_hits import BidirectionalBestHits,enrich_pavprot_with_bbh┃
 ┃                                                                                         
 ┃   FUNCTIONS:                                                                            
@@ -76,8 +73,8 @@ gene_pav/
           ┌────────────────────┼────────────────────┬────────────────────┐
           ▼                    ▼                    ▼                    ▼
 ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐ ┌──────────────────┐
-│ parse_           │ │ bidirectional_   │ │ detect_one2many_ │ │ utils/           │
-│ interproscan.py  │ │ best_hits.py     │ │ mappings.py      │ │ parse_liftover_  │
+│ parse_           │ │ bidirectional_   │ │ mapping_         │ │ utils/           │
+│ interproscan.py  │ │ best_hits.py     │ │ multiplicity.py  │ │ parse_liftover_  │
 │                  │ │                  │ │                  │ │ extra_copy_      │
 │ CALLED BY:       │ │ CALLED BY:       │ │ CALLED BY:       │ │ number.py        │
 │ pavprot.py       │ │ pavprot.py       │ │ pavprot.py       │ │                  │
@@ -106,8 +103,9 @@ gene_pav/
         ▼                               ▼                               ▼
 ┌───────────────────┐     ┌─────────────────────────┐     ┌─────────────────────────┐
 │ analysis/         │     │ analysis/               │     │ analysis/               │
-│ detect_advanced_  │     │ synonym_mapping_        │     │ inconsistent_genes_     │
-│ scenarios.py      │     │ summary.py              │     │ transcript_IPR_PAV.py   │
+│ gsmc.py           │     │ synonym_mapping_        │     │ inconsistent_genes_     │
+│ (Gene Scenario    │     │ summary.py              │     │ transcript_IPR_PAV.py   │
+│  Mapping Class.)  │
 │                   │     │                         │     │                         │
 │ DOWNSTREAM        │     │ STANDALONE              │     │ DOWNSTREAM              │
 │ ANALYSIS          │     │ UTILITY                 │     │ ANALYSIS                │
@@ -159,7 +157,7 @@ gene_pav/
 |--------|-----------------|---------|----------------|
 | `parse_interproscan.py` | `from parse_interproscan import InterProParser, run_interproscan` | Parse InterProScan TSV, calculate IPR domain lengths with overlap merging | `--interproscan-out` or `--run-interproscan` |
 | `bidirectional_best_hits.py` | `from bidirectional_best_hits import BidirectionalBestHits, enrich_pavprot_with_bbh` | Find reciprocal best DIAMOND hits for ortholog confidence | `--run-diamond --run-bbh` |
-| `mapping_multiplicity.py` | `from detect_one2many_mappings import detect_multiple_mappings` | Generate 1:N and N:1 mapping summary reports | Always (called at end of pavprot) |
+| `mapping_multiplicity.py` | `from mapping_multiplicity import detect_multiple_mappings` | Generate 1:N and N:1 mapping summary reports | Always (called at end of pavprot) |
 
 ---
 
@@ -356,8 +354,8 @@ transcript_id | gene_id | ipr_accession | ipr_description | start | end | length
 │                               pavprot.py                                                 
 │                          (CENTRAL PIPELINE)                                             
 │    ┌────────────────────┐ ┌────────────────────┐ ┌────────────────────┐                  
-│    │ parse_interproscan │ │ bidirectional_     │ │ detect_one2many_   │                  
-│    │ .py                │ │ best_hits.py       │ │ mappings.py        │                  
+│    │ parse_interproscan │ │ bidirectional_     │ │ mapping_           │
+│    │ .py                │ │ best_hits.py       │ │ multiplicity.py    │                  
 │    │ InterProParser     │ │ BidirectionalBest  │ │ detect_multiple_   │                  
 │    │ run_interproscan   │ │ Hits               │ │ mappings()         │                  
 │    │ total_ipr_length   │ │ enrich_pavprot_    │ │                    │                  
@@ -378,8 +376,9 @@ transcript_id | gene_id | ipr_accession | ipr_description | start | end | length
 │ SCENARIO DETECTION  │     │ STATISTICS & SUMMARIES  │     │ VISUALIZATION           │
 │ analysis/           │     │ analysis/               │     │ plot/                   │
 │                     │     │                         │     │                         │
-│ detect_advanced_    │     │ synonym_mapping_        │     │ plot_ipr_comparison.py  │
-│ scenarios.py        │     │ summary.py              │     │ plot_ipr_gene_level.py  │
+│ gsmc.py             │     │ synonym_mapping_        │     │ plot_ipr_comparison.py  │
+│ (Gene Scenario      │     │ summary.py              │     │ plot_ipr_gene_level.py  │
+│  Mapping Classifier)│
 │                     │     │                         │     │ plot_ipr_advanced.py    │
 │ ↓                   │     │ inconsistent_genes_     │     │ plot_ipr_shapes.py      │
 │                     │     │ transcript_IPR_PAV.py   │     │ ...                     │
@@ -448,3 +447,75 @@ python utils/parse_liftover_extra_copy_number.py --gff liftoff.gff3 --output ext
 python pavprot.py --gff-comp tracking.txt --gff ref.gff,query.gff \
     --liftoff-gff liftoff.gff3
 ```
+
+---
+
+## External Tools Integration (tools_runner.py)
+
+> **New in v0.2.0** - Unified interface for external bioinformatics tools
+
+### Overview
+
+`tools_runner.py` provides a unified `ToolsRunner` class for running external tools used in the PAVprot pipeline. This module centralizes tool execution, validation, and output parsing.
+
+### Available Methods
+
+| Method | External Tool | Purpose |
+|--------|---------------|---------|
+| `run_diamond()` | DIAMOND | BLAST-based protein alignment |
+| `run_diamond_makedb()` | DIAMOND | Create DIAMOND database |
+| `run_interproscan()` | InterProScan | Domain/motif detection |
+| `run_gffcompare()` | gffcompare | GFF annotation comparison |
+| `run_liftoff()` | Liftoff | Annotation liftover between genomes |
+| `run_psauron()` | Psauron | Protein structure quality scoring |
+| `run_BUSCO()` | BUSCO | Completeness assessment |
+| `run_pairwise_alignment()` | Biopython | Protein sequence alignment |
+| `detect_annotation_source()` | - | Auto-detect gene ID prefixes |
+
+### Usage Example
+
+```python
+from tools_runner import ToolsRunner
+
+# Initialize runner
+runner = ToolsRunner(output_dir="./output", dry_run=False)
+
+# Check which tools are installed
+status = runner.check_all_tools()
+
+# Run DIAMOND BLASTP
+runner.run_diamond(
+    query_fasta="query.faa",
+    database="ref_db",
+    output_prefix="blast_results"
+)
+
+# Run gffcompare
+runner.run_gffcompare(
+    query_gff="query.gff3",
+    reference_gff="ref.gff3",
+    output_prefix="comparison"
+)
+
+# Detect annotation source from gene ID
+info = runner.detect_annotation_source("GCF_013085055.1_gene001")
+# Returns: {"prefix": "GCF_", "source": "NCBI RefSeq", ...}
+```
+
+### CLI Usage
+
+```bash
+# Check which external tools are installed
+python tools_runner.py --check-tools
+
+# Dry run mode (prints commands without executing)
+python tools_runner.py --check-tools --dry-run
+```
+
+### Future Integration Plans
+
+The `ToolsRunner` class is designed for future integration with `pavprot.py` to enable:
+
+1. **Automated pipeline execution** - Run gffcompare, DIAMOND, InterProScan from a single command
+2. **Dynamic prefix detection** - Auto-detect annotation sources (e.g., NCBI vs FungiDB)
+3. **Input validation** - Verify external dependencies before pipeline execution

@@ -100,9 +100,10 @@ The file contains **two separate scripts concatenated together**:
 
 ```
 pavprot.py
-├── imports: detect_one2many_mappings
+├── imports: mapping_multiplicity (formerly detect_one2many_mappings)
 ├── imports: bidirectional_best_hits
-└── imports: pariwise_align_prot
+├── imports: pairwise_align_prot (formerly pariwise_align_prot)
+└── imports: gsmc (formerly detect_advanced_scenarios)
 ```
 
 All internal imports verified working.
@@ -330,7 +331,7 @@ gene_pav/
 | **P0** | README directory mismatch | ✅ DONE | Updated README.md |
 | **P1** | Test import paths | ✅ DONE | Added sys.path.insert(0, '..') to all test files |
 | **P1** | Hardcoded path in test | ✅ DONE | Fixed to relative path |
-| **P2** | Code duplication in plot/ | ⏳ PENDING | Create plot/utils.py |
+| **P2** | Code duplication in plot/ | ✅ DONE | Created plot/utils.py and plot/config.py |
 | **P2** | Filename typo | ✅ DONE | Renamed `pariwise_align_prot.py` → `pairwise_align_prot.py` |
 | **P3** | Missing requirements.txt | ✅ DONE | Created with pinned versions |
 | **P3** | pytest.ini configuration | ✅ DONE | Created pytest.ini |
@@ -360,8 +361,21 @@ gene_pav/
 
 | Item | Priority | Status |
 |------|----------|--------|
-| Create `plot/utils.py` | P2 | ⏳ PENDING |
-| Create `plot/config.py` | P2 | ⏳ PENDING |
+| Create `plot/utils.py` | P2 | ✅ DONE (2026-01-20) |
+| Create `plot/config.py` | P2 | ✅ DONE (2026-01-20) |
+| Create `tools_runner.py` | P2 | ✅ DONE (2026-01-20) |
+
+### 6.5 tools_runner.py (New Module)
+
+Created unified external tools interface with methods for:
+- DIAMOND BLASTP (`run_diamond()`)
+- InterProScan (`run_interproscan()`)
+- gffcompare (`run_gffcompare()`)
+- Liftoff (`run_liftoff()`)
+- Psauron (`run_psauron()`)
+- BUSCO (`run_BUSCO()`)
+- Pairwise alignment (`run_pairwise_alignment()`)
+- Annotation detection (`detect_annotation_source()`)
 
 ---
 
@@ -386,19 +400,20 @@ cd test && python3 -m unittest discover -v
 
 ---
 
-## 8. Summary (Updated 2026-01-21)
+## 8. Summary (Updated 2026-01-27)
 
 ### What's Working Well
 
 1. **Core pipeline (`pavprot.py`)** - 1,841 lines, imports correctly, main functionality solid
 2. **Scenario detection (`gsmc.py`)** - Comprehensive classification system (E, A, B, J, CDI, F, G, H)
-3. **Plotting modules** - Good variety of visualizations
+3. **Plotting modules** - Good variety of visualizations with shared utilities
 4. **Test suite** - 47 tests passing, 2 skipped; comprehensive coverage including edge cases
-5. **Documentation** - Extensive (26 docs), all updated with current file names
+5. **Documentation** - Extensive (30 docs), all updated with current file names
 6. **Hardcoded paths** - Correctly isolated in `project_scripts/`
 7. **Dependencies** - Pinned in `requirements.txt` with compatible release specifiers
+8. **External tools interface** - New `tools_runner.py` provides unified tool management
 
-### Completed Improvements (2026-01-20 to 2026-01-21)
+### Completed Improvements (2026-01-20 to 2026-01-27)
 
 1. ✅ Deleted broken `synonym_mapping_parse.py`
 2. ✅ Fixed test imports with sys.path configuration
@@ -407,11 +422,17 @@ cd test && python3 -m unittest discover -v
 5. ✅ Created `pytest.ini` configuration
 6. ✅ Added new test files for improved coverage
 7. ✅ Updated all documentation with renamed file references
+8. ✅ Created `plot/utils.py` with shared data loading functions
+9. ✅ Created `plot/config.py` with common plotting configuration
+10. ✅ Created `tools_runner.py` with unified external tools interface
+11. ✅ Created `config.yaml` for pipeline configuration
+12. ✅ Updated ARCHITECTURE.md with tools_runner.py documentation
+13. ✅ Updated IMPLEMENTATION_ROADMAP.md with integration plans
 
 ### Remaining Work
 
-1. **Code duplication in plot/** - Create `plot/utils.py` and `plot/config.py`
-2. **Quick start example** - Add to README
+1. **Push to remote** - Ready for v0.2.0 release
+2. **tools_runner.py integration** - Future: integrate with pavprot.py for automated pipelines
 
 ### Current Metrics
 
@@ -420,11 +441,20 @@ cd test && python3 -m unittest discover -v
 | Files with syntax errors | 0 |
 | Test results | 47 passed, 2 skipped |
 | Files with hardcoded user paths | 4 (all in project_scripts/) |
-| Duplicated functions | 1 (`load_data` in 4 plot files) |
-| Core scripts importable | 11/11 (100%) |
+| Duplicated functions | 0 (consolidated to plot/utils.py) |
+| Core scripts importable | 12/12 (100%) |
 | Documentation coverage | Excellent |
+| Pre-release checks | All passing |
+
+### Known Issues (Non-blocking)
+
+| Issue | Module | Severity | Status |
+|-------|--------|----------|--------|
+| Biopython API | pairwise_align_prot.py | Low | ⚠️ Upstream |
+| Column mismatch | synonym_mapping_summary.py | Low | ⚠️ Minor |
+| Missing methods | tools_runner.py | Low | ⏳ Future |
 
 ---
 
 *Report generated: 2026-01-19*
-*Last updated: 2026-01-21*
+*Last updated: 2026-01-27*

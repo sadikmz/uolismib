@@ -1,5 +1,41 @@
 # PAVprot Improvement Notes
 
+> **Last Updated:** 2026-01-27
+> **Version:** v0.2.0 (preparing for release)
+
+---
+
+## Recent Updates (v0.2.0)
+
+### Completed (2026-01-20 to 2026-01-26)
+
+| Task | Description | Status |
+|------|-------------|--------|
+| File Renaming | `detect_advanced_scenarios.py` → `gsmc.py` | ✅ Done |
+| File Renaming | `detect_one2many_mappings.py` → `mapping_multiplicity.py` | ✅ Done |
+| File Renaming | `pariwise_align_prot.py` → `pairwise_align_prot.py` | ✅ Done |
+| New Module | `tools_runner.py` - Unified external tools interface | ✅ Done |
+| New Module | `plot/config.py` and `plot/utils.py` - Shared plotting utilities | ✅ Done |
+| Config | `config.yaml` - Pipeline configuration | ✅ Done |
+| Tests | 47 tests passing, 2 skipped | ✅ Done |
+| CLI | All 7 modules have working `--help` | ✅ Done |
+
+### tools_runner.py Integration (Planned)
+
+The new `tools_runner.py` module provides a unified interface for external tools. Future integration will allow running the complete pipeline from preprocessing to analysis.
+
+**Available Methods:**
+- `run_diamond()`, `run_diamond_makedb()` - DIAMOND BLASTP
+- `run_interproscan()` - Domain detection
+- `run_gffcompare()` - GFF comparison
+- `run_liftoff()` - Annotation liftover
+- `run_psauron()` - Protein structure scoring
+- `run_BUSCO()` - Completeness assessment
+- `run_pairwise_alignment()` - Biopython alignment
+- `detect_annotation_source()` - Auto-detect gene ID prefixes
+
+---
+
 ## Current Limitations (Remaining)
 
 ### 1. Test Data Coverage
@@ -164,7 +200,7 @@ The new `ref_query_count` and `qry_ref_count` columns provide similar informatio
 
 ---
 
-## Future Suggestions (2025-12-19)
+## Future Suggestions (Updated 2026-01-27)
 
 ### High Priority
 
@@ -287,7 +323,7 @@ Future integration with `gene_split_merge` package located at:
 
 ### Current Status
 
-#### Standalone BBH Module (Completed 2025-12-19)
+#### Standalone BBH Module (Completed 2025-12-19, Updated 2026-01-27)
 Created `bidirectional_best_hits.py` - a standalone module for reciprocal best hit analysis:
 - Works with pavprot's DIAMOND output format
 - Designed for future integration with gene_split_merge
@@ -307,7 +343,7 @@ from bidirectional_best_hits import BidirectionalBestHits, enrich_pavprot_with_b
 
 ### Future Integration Tasks
 
-#### Phase 1: BBH Integration with pavprot (Completed 2025-12-19)
+#### Phase 1: BBH Integration with pavprot (Completed)
 - [x] Add `--run-bbh` flag to pavprot.py
 - [x] Run bidirectional DIAMOND (fwd: query->ref, rev: ref->query)
 - [x] Add BBH columns to main output: `is_bbh`, `bbh_avg_pident`, `bbh_avg_coverage`
@@ -345,7 +381,31 @@ Combine pavprot (GffCompare-based) and gene_split_merge (BLAST-based) for:
 | `utils.py` | Shared utilities |
 | `core.py` | Core data structures |
 
+#### Phase 4: tools_runner.py Integration (Planned)
+
+**Goal:** Use `tools_runner.py` to run external tools internally, enabling end-to-end automation.
+
+**Tasks:**
+- [ ] Add `--run-gffcompare` flag to run gffcompare from within pavprot
+- [ ] Add `--run-liftoff` flag for annotation liftover
+- [ ] Add `--run-full-pipeline` flag to run all steps
+- [ ] Implement `detect_annotation_source()` for dynamic prefix handling
+- [ ] Add `--prefix` CLI argument for manual annotation source specification
+
+**Example Future Usage:**
+```bash
+# Full automated pipeline (future)
+python pavprot.py \
+    --ref-genome ref.fasta --ref-gff ref.gff3 \
+    --query-genome query.fasta --query-gff query.gff3 \
+    --run-full-pipeline \
+    --output-dir results/
+```
+
+---
+
 ### Notes
 - gene_split_merge uses proper logging framework (something pavprot should adopt)
 - gene_split_merge has dataclasses for `Gene`, `BlastHit`, `GeneRelationship`
 - Both projects share similar GFF parsing needs - candidate for shared `bioutils` package
+- `tools_runner.py` provides foundation for external tool integration (NEW in v0.2.0)

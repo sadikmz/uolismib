@@ -43,13 +43,13 @@
 **Internal Imports:**
 ```python
 from parse_interproscan import InterProParser
-from mapping_multiplicity import mapping_multiplicity
+from mapping_multiplicity import detect_multiple_mappings
 from bidirectional_best_hits import identify_bbh
-from pairwise_align_prot import align_proteins  # TYPO in import
-from detect_advanced_scenarios import classify_scenarios
+from pairwise_align_prot import align_proteins
+from gsmc import classify_scenarios  # Renamed from detect_advanced_scenarios
 ```
 
-**Minor Issue:** Import uses typo `pairwise_align_prot` (see 1.5 below)
+**Note:** File names updated in v0.2.0 (see Section 1.5)
 
 **Assessment:** Well-structured main module with proper CLI, docstrings, and error handling.
 

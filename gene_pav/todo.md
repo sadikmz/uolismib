@@ -1,7 +1,7 @@
 # PAVprot Pipeline - Development Todo
 
 > **Branch:** dev
-> **Last Updated:** 2026-01-21
+> **Last Updated:** 2026-01-27
 
 ---
 
@@ -12,6 +12,7 @@
 - [x] Organize project scripts into `project_scripts/` subfolder
 - [x] **Completed Section 6 tasks (2026-01-20)** - See "Completed Tasks" below
 - [x] **Verified pipeline structure (2026-01-21)** - All modules functional
+- [x] **Updated documentation (2026-01-27)** - ARCHITECTURE.md, IMPLEMENTATION_ROADMAP.md, CODE_REVIEW_REPORT.md
 - [ ] In every section and action add Git, bash and other commands used and their descriptions, document suggessions on git and other command usage in in gene_pav/docs/SETUP_COMMANDS.md   
   - [ ] help document commands as I go for a personal reference guide
 
@@ -953,4 +954,33 @@ PART 10: Cleanup
 ### Conclusion
 
 **Pipeline is ready for release.** All core functionality works correctly. The 3 minor issues documented above are non-blocking and don't affect the main pipeline workflow.
+
+## Priority Tasks (2026-01-27)
+
+### Documentation Updates (Completed)
+
+- [x] Update all the documentations in docs including Architecture, implementation_roadmap
+- [x] Add tools_runner.py documentation to ARCHITECTURE.md
+- [x] Update IMPLEMENTATION_ROADMAP.md with Phase 4 (tools_runner integration plans)
+- [x] Update CODE_REVIEW_REPORT.md sections 6 and 8 with completion status
+- [x] Fix renamed file references across all docs (gsmc.py, mapping_multiplicity.py, pairwise_align_prot.py)
+
+**Files Updated:**
+- `docs/ARCHITECTURE.md` - Added tools_runner.py section, updated file names
+- `docs/IMPLEMENTATION_ROADMAP.md` - Added v0.2.0 updates, Phase 4 integration plans
+- `docs/CODE_REVIEW_REPORT.md` - Updated sections 6 and 8, added tools_runner.py
+- `docs/INDIVIDUAL_SCRIPT_ASSESSMENT.md` - Fixed import examples
+- `docs/PAVprot_Module_Architecture.md` - Updated import statements
+- `docs/RESTRUCTURE_REPORT.md` - Fixed old file names in diagrams
+
+### Future: tools_runner.py Integration
+
+Consider incorporating [tools_runner.py](tools_runner.py) to generate external inputs internally:
+- DIAMOND BLASTP
+- InterProScan
+- gffcompare
+- Liftoff
+- Psauron
+- Protein sequence alignment
+- BUSCO  
 
