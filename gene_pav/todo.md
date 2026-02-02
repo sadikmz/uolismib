@@ -15,7 +15,9 @@
 - [x] **Updated documentation (2026-01-27)** - ARCHITECTURE.md, IMPLEMENTATION_ROADMAP.md, CODE_REVIEW_REPORT.md
 - [x] **CLI refactoring (2026-02-02)** - Consolidated `--ref-faa`/`--qry-faa`/`--input-prots` into `--prot`
 - [x] **Terminology update (2026-02-02)** - Changed ref/query to old/new across 19 files (breaking change)
-- [ ] In every section and action add Git, bash and other commands used and their descriptions, document suggessions on git and other command usage in in gene_pav/docs/SETUP_COMMANDS.md   
+- [x] **Bug fix (2026-02-02)** - Fixed class code `=` filtering bug (was excluding 10,150 exact match entries)
+- [x] **Excel export (2026-02-02)** - Added `--output-excel` flag (default: True) to export all results to single Excel workbook
+- [ ] In every section and action add Git, bash and other commands used and their descriptions, document suggessions on git and other command usage in in gene_pav/docs/SETUP_COMMANDS.md
   - [ ] help document commands as I go for a personal reference guide
 
 
@@ -988,7 +990,7 @@ Consider incorporating [tools_runner.py](tools_runner.py) to generate external i
 
 ### Priority Tasks (2026-02-02)
 
-#### CLI Argument Refactoring
+#### 1. CLI Argument Refactoring
 
 **Goal:** Simplify and consolidate protein FASTA input arguments in `pavprot.py`
 
@@ -1125,3 +1127,82 @@ Project Scripts:
 **Test Results:** 47 passed, 2 skipped ✅
 
 **⚠️ Breaking Change:** Users parsing existing output files need to update column names
+
+#### 2. Pipeline testing ✅ COMPLETED (2026-02-02)
+
+- [x] Use the details in run_pavprot.sh
+- [x] Run run_pavprot.sh
+- [x] Debug pavprot.py using run_pavprot.sh
+- [x] Run the entire process without user prompt
+
+**Issues Fixed:**
+1. Shell tilde (`~`) expansion - Changed to `$HOME` variable with quotes
+2. Class-code `=` interpretation - Added quotes: `--class-code "=,c,k,m,n,j,e"`
+3. Missing `python pavprot.py` command in script
+
+**Pipeline Results (after bug fix):**
+| Metric | Before Fix | After Fix |
+|--------|------------|-----------|
+| Transcript-level entries | 11,707 | **21,857** |
+| Gene-level pairs | 7,693 | **15,816** |
+| E (1:1 orthologs) | 6,158 | **14,265** |
+| A (1:N) | 1,340 | **26** |
+| J (1:3+) | 180 | **0** |
+| B (N:1) | 12 | **1,522** |
+| CDI (complex) | 1 | **1** |
+
+> **Bug fixed:** Class code `=` was converted to `em` in data but not in filter set, causing all exact match entries to be excluded.
+
+**Known Issue - `--run-pairwise` disabled:**
+- The pairwise alignment feature requires mapping from mRNA IDs (`XM_*`) to protein IDs (`XP_*`)
+- GFFcompare outputs reference transcript IDs as `rna-XM_*` format
+- Protein FASTA has protein IDs as `XP_*` format
+- Query side works (both use `FOZG_*-t36_1` format)
+- **TODO:** Add XM→XP ID mapping using GFF3 CDS protein_id attribute
+
+**Current run_pavprot.sh status:**
+- DIAMOND: ✅ working
+- BBH: ✅ working
+- InterProScan: ✅ working
+- Excel export: ✅ working (11 sheets)
+- Pairwise: ⚠️ disabled (needs XM→XP mapping)
+- Filters: commented out (test without filters first)
+
+---
+
+#### 3. Excel Export Feature ✅ COMPLETED (2026-02-02)
+
+**Goal:** Export all TSV outputs to a single Excel workbook for easier data sharing and analysis
+
+**Implementation:**
+- Added `--output-excel` flag (default: `True`)
+- Added `--no-output-excel` to disable Excel export
+- Created `export_to_excel()` function in `pavprot.py`
+- Requires `openpyxl` package (added to dependencies)
+
+**Excel File:** `{main_output_basename}.xlsx`
+
+**Sheets (11 total):**
+
+| Sheet Name | Source | Rows |
+|------------|--------|------|
+| `transcript_level` | Main transcript-level mappings | 21,857 |
+| `gene_level` | Gene-level aggregation | 15,816 |
+| `old_to_multi_new` | Old genes → multiple new (summary) | 14 |
+| `old_to_multi_new_detail` | Old genes → multiple new (detailed) | 42 |
+| `new_to_multi_old` | New genes → multiple old (summary) | 729 |
+| `new_to_multi_old_detail` | New genes → multiple old (detailed) | 1,813 |
+| `summary` | Multiple mappings summary text | 46 |
+| `old_domain_dist` | Old annotation domain distribution | 211,971 |
+| `new_domain_dist` | New annotation domain distribution | 134,922 |
+| `ipr_length` | Combined old/new IPR lengths (with `source` column) | 25,664 |
+| `bbh_results` | Bidirectional best hits | 14,872 |
+
+**Combined `ipr_length` sheet format:**
+```
+source    gene_id                    total_iprdom_len
+old       FOZG_00001                 227
+new       gene-FOBCDRAFT_100165      368
+```
+
+**Commit:** e9bdb68
