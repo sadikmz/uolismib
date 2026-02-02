@@ -258,8 +258,8 @@ gene_pav/
 | `scenario_J_complex_1toN_mappings.tsv` | `gsmc.py` | One ref → 3+ queries |
 | `scenario_CDI_cross_mappings.tsv` | `gsmc.py` | Cross-mapping groups |
 | `scenario_F_positional_swaps.tsv` | `gsmc.py` | Adjacent gene order inversions |
-| `scenario_G_unmapped_ref_genes.tsv` | `gsmc.py` | Ref genes without query matches |
-| `scenario_H_unmapped_query_genes.tsv` | `gsmc.py` | Query genes without ref matches |
+| `scenario_G_unmapped_old_genes.tsv` | `gsmc.py` | Ref genes without query matches |
+| `scenario_H_unmapped_new_genes.tsv` | `gsmc.py` | Query genes without ref matches |
 | `detection_summary.txt` | `gsmc.py` | Scenario counts summary |
 
 ### Plot Output Files

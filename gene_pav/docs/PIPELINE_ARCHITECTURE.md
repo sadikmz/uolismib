@@ -237,8 +237,8 @@ Standalone:
 ### Alignment
 ```bash
 --run-diamond        # Run DIAMOND BLASTP
---ref-faa FILE       # Reference protein FASTA
---qry-faa FILE       # Query protein FASTA
+--prot FILE       # Reference protein FASTA
+--prot FILE       # Query protein FASTA
 --run-bbh            # Enable bidirectional best hit
 --run-pairwise       # Enable Biopython local alignment
 ```
@@ -261,10 +261,10 @@ Standalone:
 ## Output Columns
 
 ### Main Output (transcript-level)
-- `ref_gene`, `ref_transcript`, `query_gene`, `query_transcript`
+- `old_gene`, `old_transcript`, `new_gene`, `new_transcript`
 - `class_code`, `exons`, `class_type_transcript`, `class_type_gene`
 - `emckmnj`, `emckmnje` - Binary class code flags
-- `ref_multi_query`, `qry_multi_ref` - Mapping multiplicity
+- `old_multi_new`, `new_multi_old` - Mapping multiplicity
 
 ### Optional (DIAMOND)
 - `pident`, `qcovhsp`, `scovhsp`
@@ -274,14 +274,14 @@ Standalone:
 - `is_bbh`, `bbh_avg_pident`, `bbh_avg_coverage`
 
 ### Optional (Pairwise)
-- `pairwise_identity`, `pairwise_coverage_ref`, `pairwise_coverage_query`
+- `pairwise_identity`, `pairwise_coverage_old`, `pairwise_coverage_new`
 
 ### Optional (InterProScan)
 - `query_total_ipr_domain_length`, `ref_total_ipr_domain_length`
 
 ### Gene-Level Output
 - All above plus: `scenario`, `mapping_type`
-- `ref_transcripts`, `query_transcripts` (comma-separated)
+- `old_transcripts`, `new_transcripts` (comma-separated)
 
 ---
 

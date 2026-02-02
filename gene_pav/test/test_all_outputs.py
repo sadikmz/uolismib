@@ -159,10 +159,10 @@ def main():
 
         # Create mock PAVprot data
         pavprot_data = {
-            'ref_gene': ['Gene_A', 'Gene_B', 'Gene_C', 'Gene_D'],
-            'ref_transcript': ['Protein1', 'Protein2', 'Protein3', 'Protein4'],
-            'query_gene': ['QueryA', 'QueryB', 'QueryC', 'QueryD'],
-            'query_transcript': ['QProtein1', 'QProtein2', 'QProtein3', 'QProtein4'],
+            'old_gene': ['Gene_A', 'Gene_B', 'Gene_C', 'Gene_D'],
+            'old_transcript': ['Protein1', 'Protein2', 'Protein3', 'Protein4'],
+            'new_gene': ['QueryA', 'QueryB', 'QueryC', 'QueryD'],
+            'new_transcript': ['QProtein1', 'QProtein2', 'QProtein3', 'QProtein4'],
             'class_code': ['em', 'em', 'c', 'j'],
         }
 
@@ -170,16 +170,16 @@ def main():
 
         # Add IPR domain lengths (simulated as if from load_interproscan_data)
         ref_ipr_lengths = total_lengths
-        pavprot_df['ref_total_ipr_domain_length'] = pavprot_df['ref_gene'].map(ref_ipr_lengths)
+        pavprot_df['ref_total_ipr_domain_length'] = pavprot_df['old_gene'].map(ref_ipr_lengths)
 
         # Simulate query lengths (in real scenario, would come from query InterProScan)
         query_ipr_lengths = {'QueryA': 190, 'QueryB': 105, 'QueryC': 98, 'QueryD': 125}
-        pavprot_df['query_total_ipr_domain_length'] = pavprot_df['query_gene'].map(query_ipr_lengths)
+        pavprot_df['query_total_ipr_domain_length'] = pavprot_df['new_gene'].map(query_ipr_lengths)
 
         pavprot_file = os.path.join(tmpdir, "test_synonym_mapping.tsv")
         pavprot_df.to_csv(pavprot_file, sep='\t', index=False)
 
-        print(pavprot_df[['ref_gene', 'query_gene', 'ref_total_ipr_domain_length',
+        print(pavprot_df[['old_gene', 'new_gene', 'ref_total_ipr_domain_length',
                           'query_total_ipr_domain_length']].to_string(index=False))
 
         print("\n🔍 Note:")

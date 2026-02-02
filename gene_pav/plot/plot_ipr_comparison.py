@@ -241,7 +241,7 @@ def plot_four_quadrants(df,output_prefix, ref_genome_prefix, qry_genome_prefix):
                 df_plot['ref_total_ipr_domain_length'].isna(), 'quadrant'] = 'Query only'
 
     # Keep all transcript pairs (include transcript IDs in selection)
-    df_plot = df_plot[["ref_gene", "ref_transcript", "query_gene", "query_transcript",
+    df_plot = df_plot[["old_gene", "old_transcript", "new_gene", "new_transcript",
                        "class_type", "query_total_ipr_domain_length",
                        "ref_total_ipr_domain_length", "quadrant"]].drop_duplicates()
 
@@ -311,7 +311,7 @@ def plot_four_quadrants_gene_level(df, output_prefix, ref_genome_prefix, qry_gen
     # Aggregate data at gene level
     # For each gene pair, take the maximum IPR domain length across all transcripts
     # This represents the most complete isoform
-    df_gene_level = df.groupby(['ref_gene', 'query_gene']).agg({
+    df_gene_level = df.groupby(['old_gene', 'new_gene']).agg({
         'query_total_ipr_domain_length': 'max',
         'ref_total_ipr_domain_length': 'max',
         'class_type': 'first'  # Take first class_type for the gene pair
@@ -341,8 +341,8 @@ def plot_four_quadrants_gene_level(df, output_prefix, ref_genome_prefix, qry_gen
     print(f"\nGene-level quadrant distribution (unique gene counts):", file=sys.stderr)
     for quad in ['Present in both', 'Absent in both', 'Ref only', 'Query only']:
         subset = df_plot[df_plot['quadrant'] == quad]
-        unique_ref = subset['ref_gene'].nunique()
-        unique_query = subset['query_gene'].nunique()
+        unique_ref = subset['old_gene'].nunique()
+        unique_query = subset['new_gene'].nunique()
         total_unique = unique_ref + unique_query
         print(f"  {quad}:", file=sys.stderr)
         print(f"    - Unique {ref_genome_prefix} genes: {unique_ref}", file=sys.stderr)
@@ -360,8 +360,8 @@ def plot_four_quadrants_gene_level(df, output_prefix, ref_genome_prefix, qry_gen
     quadrant_labels = {}
     for quad in quadrant_colors.keys():
         subset = df_plot[df_plot['quadrant'] == quad]
-        unique_ref = subset['ref_gene'].nunique()
-        unique_query = subset['query_gene'].nunique()
+        unique_ref = subset['old_gene'].nunique()
+        unique_query = subset['new_gene'].nunique()
         total_unique_genes = unique_ref + unique_query
         quadrant_labels[quad] = f"{quad}\n(genes: {total_unique_genes}, pairs: {len(subset)})"
 
@@ -429,7 +429,7 @@ def analyze_inconsistent_genes(df, output_prefix, ref_genome_prefix, qry_genome_
                     df_analysis['ref_total_ipr_domain_length'].isna(), 'quadrant'] = 'Query only'
 
     # Find gene pairs with multiple quadrants
-    gene_pair_quadrants = df_analysis.groupby(['ref_gene', 'query_gene'])['quadrant'].apply(
+    gene_pair_quadrants = df_analysis.groupby(['old_gene', 'new_gene'])['quadrant'].apply(
         lambda x: list(x.unique())
     ).reset_index()
     gene_pair_quadrants['num_quadrants'] = gene_pair_quadrants['quadrant'].apply(len)
@@ -449,10 +449,10 @@ def analyze_inconsistent_genes(df, output_prefix, ref_genome_prefix, qry_genome_
     # Get detailed information for these genes - keep ALL original columns
     inconsistent_details = []
     for _, row in inconsistent_gene_pairs.iterrows():
-        ref_g = row['ref_gene']
-        qry_g = row['query_gene']
+        ref_g = row['old_gene']
+        qry_g = row['new_gene']
         # Get data from original df to preserve all columns, then add quadrant
-        subset_original = df[(df['ref_gene'] == ref_g) & (df['query_gene'] == qry_g)].copy()
+        subset_original = df[(df['old_gene'] == ref_g) & (df['new_gene'] == qry_g)].copy()
 
         # Add quadrant assignments
         subset_original['quadrant'] = 'Present in both'
@@ -468,7 +468,7 @@ def analyze_inconsistent_genes(df, output_prefix, ref_genome_prefix, qry_genome_
     df_inconsistent = pd.concat(inconsistent_details, ignore_index=True)
 
     # Sort by gene pairs and quadrant for easier reading
-    df_inconsistent = df_inconsistent.sort_values(['ref_gene', 'query_gene', 'quadrant'])
+    df_inconsistent = df_inconsistent.sort_values(['old_gene', 'new_gene', 'quadrant'])
 
     # Export to TSV with ALL original columns
     output_file = f"{output_prefix}_inconsistent_genes.tsv"
@@ -478,18 +478,18 @@ def analyze_inconsistent_genes(df, output_prefix, ref_genome_prefix, qry_genome_
     # Create summary by quadrant combinations
     summary_data = []
     for _, row in inconsistent_gene_pairs.iterrows():
-        ref_g = row['ref_gene']
-        qry_g = row['query_gene']
+        ref_g = row['old_gene']
+        qry_g = row['new_gene']
         quadrants = sorted(row['quadrant'])
 
-        subset = df_analysis[(df_analysis['ref_gene'] == ref_g) &
-                            (df_analysis['query_gene'] == qry_g)]
+        subset = df_analysis[(df_analysis['old_gene'] == ref_g) &
+                            (df_analysis['new_gene'] == qry_g)]
 
         quadrant_counts = subset['quadrant'].value_counts().to_dict()
 
         summary_data.append({
-            'ref_gene': ref_g,
-            'query_gene': qry_g,
+            'old_gene': ref_g,
+            'new_gene': qry_g,
             'num_transcripts': len(subset),
             'quadrants': ', '.join(quadrants),
             **{f'count_{q.replace(" ", "_")}': quadrant_counts.get(q, 0)
@@ -508,12 +508,12 @@ def analyze_inconsistent_genes(df, output_prefix, ref_genome_prefix, qry_genome_
         print(f"  {combo}: {count} gene pairs", file=sys.stderr)
 
     # Identify unique genes involved
-    unique_ref_genes = df_inconsistent['ref_gene'].nunique()
-    unique_qry_genes = df_inconsistent['query_gene'].nunique()
+    unique_old_genes = df_inconsistent['old_gene'].nunique()
+    unique_qry_genes = df_inconsistent['new_gene'].nunique()
     print(f"\nUnique genes with inconsistent transcripts:", file=sys.stderr)
-    print(f"  {ref_genome_prefix} genes: {unique_ref_genes}", file=sys.stderr)
+    print(f"  {ref_genome_prefix} genes: {unique_old_genes}", file=sys.stderr)
     print(f"  {qry_genome_prefix} genes: {unique_qry_genes}", file=sys.stderr)
-    print(f"  Total: {unique_ref_genes + unique_qry_genes}", file=sys.stderr)
+    print(f"  Total: {unique_old_genes + unique_qry_genes}", file=sys.stderr)
 
     # Create visualization
     plot_inconsistent_genes(df_summary, output_prefix, ref_genome_prefix, qry_genome_prefix)
@@ -589,8 +589,8 @@ def plot_inconsistent_genes(df_summary, output_prefix, ref_genome_prefix, qry_ge
     # Create labels for gene pairs (abbreviated)
     gene_pair_labels = []
     for _, row in top_gene_pairs.iterrows():
-        ref_short = row['ref_gene'].split('-')[-1].split('_')[0][-8:]  # Last 8 chars of gene ID
-        qry_short = row['query_gene'].split('_')[0][-8:]  # Last 8 chars of gene ID
+        ref_short = row['old_gene'].split('-')[-1].split('_')[0][-8:]  # Last 8 chars of gene ID
+        qry_short = row['new_gene'].split('_')[0][-8:]  # Last 8 chars of gene ID
         gene_pair_labels.append(f"{ref_short}\nvs\n{qry_short}")
 
     # Create stacked bar chart for each gene pair
@@ -648,8 +648,8 @@ def extract_genome_prefix(gene_name):
 def auto_detect_prefixes(df):
     """Automatically detect reference and query genome prefixes from data"""
     # Get the most common prefix for reference genes
-    ref_prefixes = df['ref_gene'].dropna().apply(extract_genome_prefix).value_counts()
-    query_prefixes = df['query_gene'].dropna().apply(extract_genome_prefix).value_counts()
+    ref_prefixes = df['old_gene'].dropna().apply(extract_genome_prefix).value_counts()
+    query_prefixes = df['new_gene'].dropna().apply(extract_genome_prefix).value_counts()
 
     if len(ref_prefixes) == 0 or len(query_prefixes) == 0:
         return "Reference", "Query"
@@ -674,12 +674,12 @@ def print_summary_stats(df, ref_genome_prefix, qry_genome_prefix):
     print(f"{'─'*80}", file=sys.stderr)
 
     total_transcripts = len(df)
-    unique_ref_genes = df['ref_gene'].nunique()
-    unique_qry_genes = df['query_gene'].nunique()
-    unique_gene_pairs = df[['ref_gene', 'query_gene']].drop_duplicates().shape[0]
+    unique_old_genes = df['old_gene'].nunique()
+    unique_qry_genes = df['new_gene'].nunique()
+    unique_gene_pairs = df[['old_gene', 'new_gene']].drop_duplicates().shape[0]
 
     print(f"Total transcript pairs: {total_transcripts:,}", file=sys.stderr)
-    print(f"Unique {ref_genome_prefix} genes: {unique_ref_genes:,}", file=sys.stderr)
+    print(f"Unique {ref_genome_prefix} genes: {unique_old_genes:,}", file=sys.stderr)
     print(f"Unique {qry_genome_prefix} genes: {unique_qry_genes:,}", file=sys.stderr)
     print(f"Unique gene pairs: {unique_gene_pairs:,}", file=sys.stderr)
     print(f"Average transcripts per gene pair: {total_transcripts/unique_gene_pairs:.2f}", file=sys.stderr)
@@ -711,7 +711,7 @@ def print_summary_stats(df, ref_genome_prefix, qry_genome_prefix):
     print(f"{'─'*80}", file=sys.stderr)
 
     # Aggregate at gene level
-    df_gene_level = df.groupby(['ref_gene', 'query_gene']).agg({
+    df_gene_level = df.groupby(['old_gene', 'new_gene']).agg({
         'query_total_ipr_domain_length': 'max',
         'ref_total_ipr_domain_length': 'max'
     }).reset_index()
@@ -726,8 +726,8 @@ def print_summary_stats(df, ref_genome_prefix, qry_genome_prefix):
 
     for quadrant in ['Present in both', 'Absent in both', 'Ref only', 'Query only']:
         subset = df_gene_level[df_gene_level['quadrant'] == quadrant]
-        unique_ref = subset['ref_gene'].nunique()
-        unique_qry = subset['query_gene'].nunique()
+        unique_ref = subset['old_gene'].nunique()
+        unique_qry = subset['new_gene'].nunique()
         total_unique = unique_ref + unique_qry
 
         print(f"  {quadrant}:", file=sys.stderr)

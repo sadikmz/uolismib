@@ -15,10 +15,10 @@ from typing import List, Optional
 
 # Default column names - can be overridden via CLI or config
 DEFAULT_COLUMN_NAMES = [
-    "ref_gene",
-    "ref_transcript",
-    "query_gene",
-    "query_transcript",
+    "old_gene",
+    "old_transcript",
+    "new_gene",
+    "new_transcript",
     "gffcompare_class_code",
     "exons",
     "class_code_multi",
@@ -52,9 +52,9 @@ def parse_synonym_mapping(input_file: Path,
     return df
 
 
-def count_unique_query_genes(df: pd.DataFrame,
-                             ref_col: str = 'ref_gene',
-                             query_col: str = 'query_gene') -> pd.DataFrame:
+def count_unique_new_genes(df: pd.DataFrame,
+                             ref_col: str = 'old_gene',
+                             query_col: str = 'new_gene') -> pd.DataFrame:
     """
     Count unique query genes for each reference gene.
 
@@ -67,13 +67,13 @@ def count_unique_query_genes(df: pd.DataFrame,
         DataFrame with counts per reference gene
     """
     result = df.groupby(ref_col)[query_col].nunique().reset_index()
-    result.columns = [ref_col, 'unique_query_gene_count']
+    result.columns = [ref_col, 'unique_new_gene_count']
     result = result.sort_values(ref_col)
     return result
 
 
 def print_summary_statistics(counts_df: pd.DataFrame,
-                             count_col: str = 'unique_query_gene_count') -> None:
+                             count_col: str = 'unique_new_gene_count') -> None:
     """
     Print summary statistics for query gene counts.
 
@@ -107,7 +107,7 @@ def main(args):
 
     if args.count_unique:
         # Count unique query genes per reference gene
-        counts = count_unique_query_genes(
+        counts = count_unique_new_genes(
             df,
             ref_col=args.ref_col,
             query_col=args.query_col
@@ -151,16 +151,16 @@ def parse_args():
 
     parser.add_argument(
         "--ref-col",
-        default="ref_gene",
+        default="old_gene",
         dest="ref_col",
-        help="Reference gene column name (default: ref_gene)"
+        help="Reference gene column name (default: old_gene)"
     )
 
     parser.add_argument(
         "--query-col",
-        default="query_gene",
+        default="new_gene",
         dest="query_col",
-        help="Query gene column name (default: query_gene)"
+        help="Query gene column name (default: new_gene)"
     )
 
     return parser.parse_args()

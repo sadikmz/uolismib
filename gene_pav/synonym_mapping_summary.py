@@ -25,10 +25,10 @@ def generate_summary_statistics(input_file):
     # Basic counts
     print(f"\n## BASIC COUNTS")
     print(f"Total records: {len(df)}")
-    print(f"Unique reference genes: {df['ref_gene'].nunique()}")
-    print(f"Unique reference transcripts: {df['ref_transcript'].nunique()}")
-    print(f"Unique query genes: {df['query_gene'].nunique()}")
-    print(f"Unique query transcripts: {df['query_transcript'].nunique()}")
+    print(f"Unique reference genes: {df['old_gene'].nunique()}")
+    print(f"Unique reference transcripts: {df['old_transcript'].nunique()}")
+    print(f"Unique query genes: {df['new_gene'].nunique()}")
+    print(f"Unique query transcripts: {df['new_transcript'].nunique()}")
 
     # Class code distribution
     print(f"\n## CLASS CODE DISTRIBUTION")
@@ -59,7 +59,7 @@ def generate_summary_statistics(input_file):
 
     # Query genes per reference gene
     print(f"\n## QUERY GENES PER REFERENCE GENE")
-    qry_per_ref = df.groupby('ref_gene')['query_gene'].nunique()
+    qry_per_ref = df.groupby('old_gene')['new_gene'].nunique()
     print(f"Min query genes per ref gene: {qry_per_ref.min()}")
     print(f"Max query genes per ref gene: {qry_per_ref.max()}")
     print(f"Average query genes per ref gene: {qry_per_ref.mean():.2f}")
@@ -71,7 +71,7 @@ def generate_summary_statistics(input_file):
 
     # Reference genes per query gene
     print(f"\n## REFERENCE GENES PER QUERY GENE")
-    ref_per_qry = df.groupby('query_gene')['ref_gene'].nunique()
+    ref_per_qry = df.groupby('new_gene')['old_gene'].nunique()
     print(f"Min reference genes per query gene: {ref_per_qry.min()}")
     print(f"Max reference genes per query gene: {ref_per_qry.max()}")
     print(f"Average reference genes per query gene: {ref_per_qry.mean():.2f}")

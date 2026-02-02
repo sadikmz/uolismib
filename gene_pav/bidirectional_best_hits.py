@@ -360,8 +360,8 @@ class BidirectionalBestHits:
 
 def enrich_pavprot_with_bbh(pavprot_data: dict,
                             bbh_df: pd.DataFrame,
-                            ref_col: str = 'ref_transcript',
-                            query_col: str = 'query_transcript') -> dict:
+                            ref_col: str = 'old_transcript',
+                            query_col: str = 'new_transcript') -> dict:
     """
     Enrich pavprot data dictionary with BBH information.
 
@@ -372,11 +372,11 @@ def enrich_pavprot_with_bbh(pavprot_data: dict,
 
     Note on column mapping:
         BBH forward DIAMOND runs query→ref, so:
-        - bbh_df['ref_id'] = query_transcript in pavprot
-        - bbh_df['query_id'] = ref_transcript in pavprot
+        - bbh_df['ref_id'] = new_transcript in pavprot
+        - bbh_df['query_id'] = old_transcript in pavprot
 
     Args:
-        pavprot_data: PAVprot data dictionary (ref_gene -> list of entries)
+        pavprot_data: PAVprot data dictionary (old_gene -> list of entries)
         bbh_df: DataFrame from BidirectionalBestHits.find_bbh()
         ref_col: Column name in pavprot entries for reference ID
         query_col: Column name in pavprot entries for query ID
@@ -394,11 +394,11 @@ def enrich_pavprot_with_bbh(pavprot_data: dict,
         return pavprot_data
 
     # Create lookup set for fast BBH checking
-    # Note: BBH ref_id = pavprot query_transcript, BBH query_id = pavprot ref_transcript
-    # So we key by (query_transcript, ref_transcript) to match (ref_id, query_id)
+    # Note: BBH ref_id = pavprot new_transcript, BBH query_id = pavprot old_transcript
+    # So we key by (new_transcript, old_transcript) to match (ref_id, query_id)
     bbh_lookup = {}
     for _, row in bbh_df.iterrows():
-        # Key: (pavprot_query_transcript, pavprot_ref_transcript)
+        # Key: (pavprot_new_transcript, pavprot_old_transcript)
         key = (row['ref_id'], row['query_id'])
         bbh_lookup[key] = {
             'avg_pident': row['avg_pident'],
@@ -412,7 +412,7 @@ def enrich_pavprot_with_bbh(pavprot_data: dict,
             ref_id = entry.get(ref_col, '')
             query_id = entry.get(query_col, '')
 
-            # Match pavprot (query_transcript, ref_transcript) to BBH (ref_id, query_id)
+            # Match pavprot (new_transcript, old_transcript) to BBH (ref_id, query_id)
             key = (query_id, ref_id)
             if key in bbh_lookup:
                 entry['is_bbh'] = 1

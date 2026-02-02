@@ -72,24 +72,24 @@ def main():
 
     # Merge ref pLDDT with transcript data to get gene mapping
     ref_trans_plddt = proteinx_ref[['transcript_id', 'residue_plddt_mean']].merge(
-        trans_df[['ref_transcript', 'ref_gene', 'query_gene']].rename(
-            columns={'ref_transcript': 'transcript_id'}),
+        trans_df[['old_transcript', 'old_gene', 'new_gene']].rename(
+            columns={'old_transcript': 'transcript_id'}),
         on='transcript_id', how='inner'
     )
 
     # Merge query pLDDT with transcript data
     qry_trans_plddt = proteinx_qry[['transcript_id', 'residue_plddt_mean']].merge(
-        trans_df[['query_transcript', 'ref_gene', 'query_gene']].rename(
-            columns={'query_transcript': 'transcript_id'}),
+        trans_df[['new_transcript', 'old_gene', 'new_gene']].rename(
+            columns={'new_transcript': 'transcript_id'}),
         on='transcript_id', how='inner'
     )
 
     # Aggregate pLDDT to gene level (mean of transcript pLDDT per gene pair)
-    ref_gene_plddt = ref_trans_plddt.groupby(['ref_gene', 'query_gene']).agg({
+    old_gene_plddt = ref_trans_plddt.groupby(['old_gene', 'new_gene']).agg({
         'residue_plddt_mean': 'mean'
     }).reset_index().rename(columns={'residue_plddt_mean': 'ref_plddt_mean'})
 
-    qry_gene_plddt = qry_trans_plddt.groupby(['ref_gene', 'query_gene']).agg({
+    qry_gene_plddt = qry_trans_plddt.groupby(['old_gene', 'new_gene']).agg({
         'residue_plddt_mean': 'mean'
     }).reset_index().rename(columns={'residue_plddt_mean': 'qry_plddt_mean'})
 
@@ -97,10 +97,10 @@ def main():
     ref_col = 'ref_psauron_score_mean'
     qry_col = 'qry_psauron_score_mean'
 
-    combined = gene_df[['ref_gene', 'query_gene', ref_col, qry_col,
+    combined = gene_df[['old_gene', 'new_gene', ref_col, qry_col,
                         'mapping_type', 'class_type_gene']].copy()
-    combined = combined.merge(ref_gene_plddt, on=['ref_gene', 'query_gene'], how='left')
-    combined = combined.merge(qry_gene_plddt, on=['ref_gene', 'query_gene'], how='left')
+    combined = combined.merge(old_gene_plddt, on=['old_gene', 'new_gene'], how='left')
+    combined = combined.merge(qry_gene_plddt, on=['old_gene', 'new_gene'], how='left')
 
     # Filter to gene pairs with all scores
     valid_pairs = combined.dropna(subset=[ref_col, qry_col, 'ref_plddt_mean', 'qry_plddt_mean'])

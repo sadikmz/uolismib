@@ -1,7 +1,7 @@
 # PAVprot Pipeline - Development Todo
 
 > **Branch:** dev
-> **Last Updated:** 2026-01-27
+> **Last Updated:** 2026-02-02
 
 ---
 
@@ -13,6 +13,8 @@
 - [x] **Completed Section 6 tasks (2026-01-20)** - See "Completed Tasks" below
 - [x] **Verified pipeline structure (2026-01-21)** - All modules functional
 - [x] **Updated documentation (2026-01-27)** - ARCHITECTURE.md, IMPLEMENTATION_ROADMAP.md, CODE_REVIEW_REPORT.md
+- [x] **CLI refactoring (2026-02-02)** - Consolidated `--ref-faa`/`--qry-faa`/`--input-prots` into `--prot`
+- [x] **Terminology update (2026-02-02)** - Changed ref/query to old/new across 19 files (breaking change)
 - [ ] In every section and action add Git, bash and other commands used and their descriptions, document suggessions on git and other command usage in in gene_pav/docs/SETUP_COMMANDS.md   
   - [ ] help document commands as I go for a personal reference guide
 
@@ -984,3 +986,142 @@ Consider incorporating [tools_runner.py](tools_runner.py) to generate external i
 - Protein sequence alignment
 - BUSCO  
 
+### Priority Tasks (2026-02-02)
+
+#### CLI Argument Refactoring
+
+**Goal:** Simplify and consolidate protein FASTA input arguments in `pavprot.py`
+
+**Current State (Redundant):**
+
+| Argument | Description | Issue |
+|----------|-------------|-------|
+| `--ref-faa` | Reference proteins FASTA | Redundant |
+| `--qry-faa` | Query proteins FASTA | Redundant |
+| `--input-prots` | Comma-separated protein FASTA(s) | Overlaps with above |
+| `--gff` | Comma-separated GFF file(s) | ✅ Keep as-is |
+
+**Proposed Changes:**
+
+1. [x] **Rename** `--input-prots` → `--prot` ✅ **DONE (2026-02-02)**
+   - Shorter, cleaner naming
+   - Accepts 1 or 2 comma-separated protein FASTA files
+   - Order must match `--gff` input order
+
+2. [x] **Remove** `--ref-faa` and `--qry-faa` ✅ **DONE (2026-02-02)**
+   - Replaced by comma-separated `--prot`
+   - Reduces argument redundancy
+
+3. [x] **Keep** `--gff` unchanged ✅ **No changes needed**
+   - Already supports comma-separated input
+   - Order: `old_annotation.gff,new_annotation.gff`
+
+**Target State (Clean):**
+
+| Argument | Format | Example |
+|----------|--------|---------|
+| `--gff` | Single or comma-separated | `old.gff` or `old.gff,new.gff` |
+| `--prot` | Single or comma-separated | `old.faa` or `old.faa,new.faa` |
+
+**Input Order Convention:**
+
+```
+Position 1: Old annotation
+Position 2: New annotation
+```
+
+**Example Usage (After):**
+```bash
+# Single annotation
+python pavprot.py --gff-comp tracking.txt --gff ref.gff --prot ref.faa
+
+# Two annotations (old, new)
+python pavprot.py --gff-comp tracking.txt \
+  --gff old.gff,new.gff \
+  --prot old.faa,new.faa
+```
+
+**Implementation Steps:**
+
+1. [x] Update argparse in `pavprot.py`: ✅ **DONE (2026-02-02)**
+   - Renamed `--input-prots` to `--prot`
+   - Removed `--ref-faa` and `--qry-faa`
+   - `--prot` is parsed into `args.ref_faa` and `args.qry_faa` internally
+
+2. [x] Update all code references: ✅ **DONE (2026-02-02)**
+   - `args.input_prots` → `args.prot`
+   - `args.ref_faa` / `args.qry_faa` → parsed from `args.prot` in `validate_inputs()`
+
+3. [x] Update documentation: ✅ **DONE (2026-02-02)**
+   - README.md - updated CLI examples
+   - docs/PIPELINE_ARCHITECTURE.md - updated column names
+   - All 30 markdown files updated with old/new terminology
+
+4. [x] Update tests: ✅ **No changes needed**
+   - `test/run_integration_test.sh` - didn't use old arguments
+   - All 49 tests pass (47 passed, 2 skipped)
+
+---
+
+#### Terminology Update: ref/query → old/new ✅ **DONE (2026-02-02)**
+
+**Goal:** Standardize terminology across CLI, output columns, and internal code
+
+**Rationale:**
+- "old/new" is more intuitive for annotation comparison workflows
+- Consistent with input argument naming (`--gff old.gff,new.gff`)
+- Clearer semantics: comparing old annotation against new annotation
+
+**Column Name Changes:**
+
+| Before | After |
+|--------|-------|
+| `ref_gene` | `old_gene` |
+| `query_gene` | `new_gene` |
+| `ref_transcript` | `old_transcript` |
+| `query_transcript` | `new_transcript` |
+| `ref_multi_query` | `old_multi_new` |
+| `qry_multi_ref` | `new_multi_old` |
+| `pairwise_coverage_ref` | `pairwise_coverage_old` |
+| `pairwise_coverage_query` | `pairwise_coverage_new` |
+
+**Files Updated (19 total):**
+
+Core Scripts:
+- [x] `pavprot.py`
+- [x] `gsmc.py`
+- [x] `mapping_multiplicity.py`
+- [x] `synonym_mapping_summary.py`
+- [x] `synonym_mapping_parse.py`
+- [x] `bidirectional_best_hits.py`
+- [x] `inconsistent_genes_transcript_IPR_PAV.py`
+- [x] `parse_liftover_extra_copy_number.py`
+
+Test Files:
+- [x] `test/test_edge_cases.py`
+- [x] `test/test_gsmc.py`
+- [x] `test/test_mapping_multiplicity.py`
+- [x] `test/test_pavprot.py`
+- [x] `test/test_all_outputs.py`
+- [x] `test/test_inconsistent_genes.py`
+
+Plot Scripts:
+- [x] `plot/plot_ipr_gene_level.py`
+- [x] `plot/plot_ipr_proportional_bias.py`
+- [x] `plot/plot_ipr_comparison.py`
+
+Project Scripts:
+- [x] `project_scripts/run_pipeline.py`
+- [x] `project_scripts/run_emckmnje1_analysis.py`
+- [x] `project_scripts/plot_oldvsnew_psauron_plddt.py`
+
+**CLI Help Updated:**
+- `--gff`: `'old.gff,new.gff'`
+- `--prot`: `'old.faa,new.faa'`
+- `--interproscan-out`: `'old_interpro.tsv,new_interpro.tsv'`
+- `--run-pairwise`: columns `pairwise_coverage_old`, `pairwise_coverage_new`
+- `--filter-exclusive-1to1`: `old_multi_new=0 AND new_multi_old=0`
+
+**Test Results:** 47 passed, 2 skipped ✅
+
+**⚠️ Breaking Change:** Users parsing existing output files need to update column names

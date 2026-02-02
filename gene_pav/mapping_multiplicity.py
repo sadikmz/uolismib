@@ -36,36 +36,36 @@ def detect_multiple_mappings(input_file, output_prefix=None):
     # 1. Detect ref genes mapping to multiple query genes (1-to-many)
     # ========================================================================
     print("\nAnalyzing ref genes mapping to multiple query genes...")
-    ref_to_qry = df.groupby('ref_gene').agg({
-        'query_gene': lambda x: list(x.unique()),
-        'ref_transcript': lambda x: list(x.unique()),
-        'query_transcript': 'count',
+    ref_to_qry = df.groupby('old_gene').agg({
+        'new_gene': lambda x: list(x.unique()),
+        'old_transcript': lambda x: list(x.unique()),
+        'new_transcript': 'count',
         'class_code': lambda x: ';'.join(sorted(set(x)))
     }).reset_index()
 
     # Add count of unique query genes
-    ref_to_qry['num_query_genes'] = ref_to_qry['query_gene'].apply(len)
-    ref_to_qry['num_ref_transcripts'] = ref_to_qry['ref_transcript'].apply(len)
+    ref_to_qry['num_new_genes'] = ref_to_qry['new_gene'].apply(len)
+    ref_to_qry['num_old_transcripts'] = ref_to_qry['old_transcript'].apply(len)
 
     # Filter for multiple mappings
-    ref_multi = ref_to_qry[ref_to_qry['num_query_genes'] > 1].copy()
-    ref_multi = ref_multi.sort_values('num_query_genes', ascending=False)
+    ref_multi = ref_to_qry[ref_to_qry['num_new_genes'] > 1].copy()
+    ref_multi = ref_multi.sort_values('num_new_genes', ascending=False)
 
-    # Format query_gene list as string
-    ref_multi['query_genes_list'] = ref_multi['query_gene'].apply(lambda x: ';'.join(x))
-    ref_multi['ref_transcripts_list'] = ref_multi['ref_transcript'].apply(lambda x: ';'.join(x))
+    # Format new_gene list as string
+    ref_multi['new_genes_list'] = ref_multi['new_gene'].apply(lambda x: ';'.join(x))
+    ref_multi['old_transcripts_list'] = ref_multi['old_transcript'].apply(lambda x: ';'.join(x))
 
     # Select and rename columns for output
     ref_output = ref_multi[[
-        'ref_gene',
-        'num_ref_transcripts',
-        'num_query_genes',
-        'query_genes_list',
-        'ref_transcripts_list',
-        'query_transcript',
+        'old_gene',
+        'num_old_transcripts',
+        'num_new_genes',
+        'new_genes_list',
+        'old_transcripts_list',
+        'new_transcript',
         'class_code'
     ]].rename(columns={
-        'query_transcript': 'num_mappings',
+        'new_transcript': 'num_mappings',
         'class_code': 'class_codes'
     })
 
@@ -77,9 +77,9 @@ def detect_multiple_mappings(input_file, output_prefix=None):
 
     # Create detailed output with one row per mapping
     print("  Generating detailed output...")
-    ref_multi_genes = set(ref_multi['ref_gene'])
-    ref_detailed = df[df['ref_gene'].isin(ref_multi_genes)].copy()
-    ref_detailed = ref_detailed.sort_values(['ref_gene', 'query_gene', 'ref_transcript', 'query_transcript'])
+    ref_multi_genes = set(ref_multi['old_gene'])
+    ref_detailed = df[df['old_gene'].isin(ref_multi_genes)].copy()
+    ref_detailed = ref_detailed.sort_values(['old_gene', 'new_gene', 'old_transcript', 'new_transcript'])
 
     # Select relevant columns for detailed output (use all available columns from input)
     ref_detailed_output = ref_detailed.copy()
@@ -92,36 +92,36 @@ def detect_multiple_mappings(input_file, output_prefix=None):
     # 2. Detect query genes mapping to multiple ref genes (many-to-1)
     # ========================================================================
     print("\nAnalyzing query genes mapping to multiple ref genes...")
-    qry_to_ref = df.groupby('query_gene').agg({
-        'ref_gene': lambda x: list(x.unique()),
-        'query_transcript': lambda x: list(x.unique()),
-        'ref_transcript': 'count',
+    qry_to_ref = df.groupby('new_gene').agg({
+        'old_gene': lambda x: list(x.unique()),
+        'new_transcript': lambda x: list(x.unique()),
+        'old_transcript': 'count',
         'class_code': lambda x: ';'.join(sorted(set(x)))
     }).reset_index()
 
     # Add count of unique ref genes
-    qry_to_ref['num_ref_genes'] = qry_to_ref['ref_gene'].apply(len)
-    qry_to_ref['num_query_transcripts'] = qry_to_ref['query_transcript'].apply(len)
+    qry_to_ref['num_old_genes'] = qry_to_ref['old_gene'].apply(len)
+    qry_to_ref['num_new_transcripts'] = qry_to_ref['new_transcript'].apply(len)
 
     # Filter for multiple mappings
-    qry_multi = qry_to_ref[qry_to_ref['num_ref_genes'] > 1].copy()
-    qry_multi = qry_multi.sort_values('num_ref_genes', ascending=False)
+    qry_multi = qry_to_ref[qry_to_ref['num_old_genes'] > 1].copy()
+    qry_multi = qry_multi.sort_values('num_old_genes', ascending=False)
 
-    # Format ref_gene list as string
-    qry_multi['ref_genes_list'] = qry_multi['ref_gene'].apply(lambda x: ';'.join(x))
-    qry_multi['query_transcripts_list'] = qry_multi['query_transcript'].apply(lambda x: ';'.join(x))
+    # Format old_gene list as string
+    qry_multi['old_genes_list'] = qry_multi['old_gene'].apply(lambda x: ';'.join(x))
+    qry_multi['new_transcripts_list'] = qry_multi['new_transcript'].apply(lambda x: ';'.join(x))
 
     # Select and rename columns for output
     qry_output = qry_multi[[
-        'query_gene',
-        'num_query_transcripts',
-        'num_ref_genes',
-        'ref_genes_list',
-        'query_transcripts_list',
-        'ref_transcript',
+        'new_gene',
+        'num_new_transcripts',
+        'num_old_genes',
+        'old_genes_list',
+        'new_transcripts_list',
+        'old_transcript',
         'class_code'
     ]].rename(columns={
-        'ref_transcript': 'num_mappings',
+        'old_transcript': 'num_mappings',
         'class_code': 'class_codes'
     })
 
@@ -133,9 +133,9 @@ def detect_multiple_mappings(input_file, output_prefix=None):
 
     # Create detailed output with one row per mapping
     print("  Generating detailed output...")
-    qry_multi_genes = set(qry_multi['query_gene'])
-    qry_detailed = df[df['query_gene'].isin(qry_multi_genes)].copy()
-    qry_detailed = qry_detailed.sort_values(['query_gene', 'ref_gene', 'query_transcript', 'ref_transcript'])
+    qry_multi_genes = set(qry_multi['new_gene'])
+    qry_detailed = df[df['new_gene'].isin(qry_multi_genes)].copy()
+    qry_detailed = qry_detailed.sort_values(['new_gene', 'old_gene', 'new_transcript', 'old_transcript'])
 
     # Select relevant columns for detailed output (use all available columns from input)
     qry_detailed_output = qry_detailed.copy()
@@ -157,34 +157,34 @@ def detect_multiple_mappings(input_file, output_prefix=None):
 
         f.write(f"Input file: {input_file}\n")
         f.write(f"Total mappings: {len(df)}\n")
-        f.write(f"Unique ref genes: {df['ref_gene'].nunique()}\n")
-        f.write(f"Unique query genes: {df['query_gene'].nunique()}\n\n")
+        f.write(f"Unique ref genes: {df['old_gene'].nunique()}\n")
+        f.write(f"Unique query genes: {df['new_gene'].nunique()}\n\n")
 
         f.write("=" * 80 + "\n")
         f.write("REF GENES MAPPING TO MULTIPLE QUERY GENES (1-to-many)\n")
         f.write("=" * 80 + "\n")
         f.write(f"Total ref genes with multiple mappings: {len(ref_output)}\n")
         if len(ref_output) > 0:
-            f.write(f"Max query genes per ref: {ref_output['num_query_genes'].max()}\n")
-            f.write(f"Average query genes per ref: {ref_output['num_query_genes'].mean():.2f}\n\n")
+            f.write(f"Max query genes per ref: {ref_output['num_new_genes'].max()}\n")
+            f.write(f"Average query genes per ref: {ref_output['num_new_genes'].mean():.2f}\n\n")
 
             f.write("Top 10 ref genes by number of query genes:\n")
-            top_ref = ref_output.nlargest(10, 'num_query_genes')
+            top_ref = ref_output.nlargest(10, 'num_new_genes')
             for _, row in top_ref.iterrows():
-                f.write(f"  {row['ref_gene']}: {row['num_query_genes']} query genes\n")
+                f.write(f"  {row['old_gene']}: {row['num_new_genes']} query genes\n")
 
         f.write("\n" + "=" * 80 + "\n")
         f.write("QUERY GENES MAPPING TO MULTIPLE REF GENES (many-to-1)\n")
         f.write("=" * 80 + "\n")
         f.write(f"Total query genes with multiple mappings: {len(qry_output)}\n")
         if len(qry_output) > 0:
-            f.write(f"Max ref genes per query: {qry_output['num_ref_genes'].max()}\n")
-            f.write(f"Average ref genes per query: {qry_output['num_ref_genes'].mean():.2f}\n\n")
+            f.write(f"Max ref genes per query: {qry_output['num_old_genes'].max()}\n")
+            f.write(f"Average ref genes per query: {qry_output['num_old_genes'].mean():.2f}\n\n")
 
             f.write("Top 10 query genes by number of ref genes:\n")
-            top_qry = qry_output.nlargest(10, 'num_ref_genes')
+            top_qry = qry_output.nlargest(10, 'num_old_genes')
             for _, row in top_qry.iterrows():
-                f.write(f"  {row['query_gene']}: {row['num_ref_genes']} ref genes\n")
+                f.write(f"  {row['new_gene']}: {row['num_old_genes']} ref genes\n")
 
         f.write("\n" + "=" * 80 + "\n")
 

@@ -118,8 +118,8 @@ def load_and_filter_data():
     print(f"  Removed pairs: {len(gene_df) - len(gene_df_filtered):,}")
 
     # Get list of valid genes for transcript filtering
-    valid_ref_genes = set(gene_df_filtered['ref_gene'].dropna())
-    valid_query_genes = set(gene_df_filtered['query_gene'].dropna())
+    valid_old_genes = set(gene_df_filtered['old_gene'].dropna())
+    valid_new_genes = set(gene_df_filtered['new_gene'].dropna())
 
     # Load and filter transcript-level data
     transcript_df_filtered = None
@@ -128,10 +128,10 @@ def load_and_filter_data():
         transcript_df = pd.read_csv(transcript_file, sep='\t')
         print(f"  Total transcript pairs: {len(transcript_df):,}")
 
-        # Filter transcripts where both ref_gene and query_gene are in valid set
+        # Filter transcripts where both old_gene and new_gene are in valid set
         mask = (
-            transcript_df['ref_gene'].isin(valid_ref_genes) &
-            transcript_df['query_gene'].isin(valid_query_genes)
+            transcript_df['old_gene'].isin(valid_old_genes) &
+            transcript_df['new_gene'].isin(valid_new_genes)
         )
         transcript_df_filtered = transcript_df[mask].copy()
         print(f"  Filtered transcript pairs: {len(transcript_df_filtered):,}")
@@ -179,15 +179,15 @@ def integrate_quality_metrics(gene_df, transcript_df):
         psauron_qry['gene_id'] = psauron_qry['protein_id'].apply(extract_gene_id)
 
         # Aggregate to gene level (mean score per gene)
-        ref_gene_scores = psauron_ref.groupby('gene_id')['psauron_score'].mean().reset_index()
-        ref_gene_scores.columns = ['ref_gene', 'ref_psauron']
+        old_gene_scores = psauron_ref.groupby('gene_id')['psauron_score'].mean().reset_index()
+        old_gene_scores.columns = ['old_gene', 'ref_psauron']
 
         qry_gene_scores = psauron_qry.groupby('gene_id')['psauron_score'].mean().reset_index()
-        qry_gene_scores.columns = ['query_gene', 'query_psauron']
+        qry_gene_scores.columns = ['new_gene', 'query_psauron']
 
         # Merge with gene dataframe
-        gene_df = gene_df.merge(ref_gene_scores, on='ref_gene', how='left')
-        gene_df = gene_df.merge(qry_gene_scores, on='query_gene', how='left')
+        gene_df = gene_df.merge(old_gene_scores, on='old_gene', how='left')
+        gene_df = gene_df.merge(qry_gene_scores, on='new_gene', how='left')
 
         print(f"  Psauron data merged: {gene_df['ref_psauron'].notna().sum():,} ref, {gene_df['query_psauron'].notna().sum():,} query")
     else:
@@ -228,14 +228,14 @@ def integrate_quality_metrics(gene_df, transcript_df):
         if plddt_col:
             # Aggregate to gene level
             ref_plddt = proteinx_ref.groupby('gene_id')[plddt_col].mean().reset_index()
-            ref_plddt.columns = ['ref_gene', 'ref_plddt']
+            ref_plddt.columns = ['old_gene', 'ref_plddt']
 
             qry_plddt = proteinx_qry.groupby('gene_id')[plddt_col].mean().reset_index()
-            qry_plddt.columns = ['query_gene', 'query_plddt']
+            qry_plddt.columns = ['new_gene', 'query_plddt']
 
             # Merge
-            gene_df = gene_df.merge(ref_plddt, on='ref_gene', how='left')
-            gene_df = gene_df.merge(qry_plddt, on='query_gene', how='left')
+            gene_df = gene_df.merge(ref_plddt, on='old_gene', how='left')
+            gene_df = gene_df.merge(qry_plddt, on='new_gene', how='left')
 
             print(f"  pLDDT data merged: {gene_df['ref_plddt'].notna().sum():,} ref, {gene_df['query_plddt'].notna().sum():,} query")
     else:

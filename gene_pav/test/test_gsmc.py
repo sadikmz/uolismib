@@ -40,14 +40,14 @@ class TestScenarioE(unittest.TestCase):
         """Test detection of exclusive 1:1 orthologs."""
         # Create test data with all required columns
         data = {
-            'ref_gene': ['ref1', 'ref2', 'ref3', 'ref4'],
-            'query_gene': ['qry1', 'qry2', 'qry3', 'qry3'],  # ref4 shares qry3 with ref3
-            'ref_transcript': ['ref1_t1', 'ref2_t1', 'ref3_t1', 'ref4_t1'],
-            'query_transcript': ['qry1_t1', 'qry2_t1', 'qry3_t1', 'qry3_t1'],
+            'old_gene': ['ref1', 'ref2', 'ref3', 'ref4'],
+            'new_gene': ['qry1', 'qry2', 'qry3', 'qry3'],  # ref4 shares qry3 with ref3
+            'old_transcript': ['ref1_t1', 'ref2_t1', 'ref3_t1', 'ref4_t1'],
+            'new_transcript': ['qry1_t1', 'qry2_t1', 'qry3_t1', 'qry3_t1'],
             'ref_query_count': [1, 1, 1, 1],
             'qry_ref_count': [1, 1, 2, 2],  # qry3 maps to 2 refs
-            'ref_multi_query': [0, 0, 0, 0],
-            'qry_multi_ref': [0, 0, 1, 1],  # qry3 has multi-ref
+            'old_multi_new': [0, 0, 0, 0],
+            'new_multi_old': [0, 0, 1, 1],  # qry3 has multi-ref
         }
         df = pd.DataFrame(data)
 
@@ -55,22 +55,22 @@ class TestScenarioE(unittest.TestCase):
 
         # Only ref1->qry1 and ref2->qry2 should be 1:1 orthologs
         self.assertEqual(len(result), 2)
-        self.assertIn('ref1', result['ref_gene'].values)
-        self.assertIn('ref2', result['ref_gene'].values)
-        self.assertNotIn('ref3', result['ref_gene'].values)
-        self.assertNotIn('ref4', result['ref_gene'].values)
+        self.assertIn('ref1', result['old_gene'].values)
+        self.assertIn('ref2', result['old_gene'].values)
+        self.assertNotIn('ref3', result['old_gene'].values)
+        self.assertNotIn('ref4', result['old_gene'].values)
 
     def test_scenario_column_added(self):
         """Test that scenario column is added with value 'E'."""
         data = {
-            'ref_gene': ['ref1'],
-            'query_gene': ['qry1'],
-            'ref_transcript': ['ref1_t1'],
-            'query_transcript': ['qry1_t1'],
+            'old_gene': ['ref1'],
+            'new_gene': ['qry1'],
+            'old_transcript': ['ref1_t1'],
+            'new_transcript': ['qry1_t1'],
             'ref_query_count': [1],
             'qry_ref_count': [1],
-            'ref_multi_query': [0],
-            'qry_multi_ref': [0],
+            'old_multi_new': [0],
+            'new_multi_old': [0],
         }
         df = pd.DataFrame(data)
 
@@ -86,14 +86,14 @@ class TestScenarioAJ(unittest.TestCase):
     def test_one_to_two_detection(self):
         """Test detection of 1:2 mappings (Scenario A)."""
         data = {
-            'ref_gene': ['ref1', 'ref1', 'ref2'],
-            'query_gene': ['qry1', 'qry2', 'qry3'],
-            'ref_transcript': ['ref1_t1', 'ref1_t1', 'ref2_t1'],
-            'query_transcript': ['qry1_t1', 'qry2_t1', 'qry3_t1'],
+            'old_gene': ['ref1', 'ref1', 'ref2'],
+            'new_gene': ['qry1', 'qry2', 'qry3'],
+            'old_transcript': ['ref1_t1', 'ref1_t1', 'ref2_t1'],
+            'new_transcript': ['qry1_t1', 'qry2_t1', 'qry3_t1'],
             'ref_query_count': [2, 2, 1],
             'qry_ref_count': [1, 1, 1],
-            'ref_multi_query': [1, 1, 0],
-            'qry_multi_ref': [0, 0, 0],
+            'old_multi_new': [1, 1, 0],
+            'new_multi_old': [0, 0, 0],
         }
         df = pd.DataFrame(data)
 
@@ -109,14 +109,14 @@ class TestScenarioAJ(unittest.TestCase):
     def test_one_to_three_plus_detection(self):
         """Test detection of 1:3+ mappings (Scenario J) using detect_complex_one_to_many."""
         data = {
-            'ref_gene': ['ref1', 'ref1', 'ref1', 'ref2'],
-            'query_gene': ['qry1', 'qry2', 'qry3', 'qry4'],
-            'ref_transcript': ['ref1_t1', 'ref1_t1', 'ref1_t1', 'ref2_t1'],
-            'query_transcript': ['qry1_t1', 'qry2_t1', 'qry3_t1', 'qry4_t1'],
+            'old_gene': ['ref1', 'ref1', 'ref1', 'ref2'],
+            'new_gene': ['qry1', 'qry2', 'qry3', 'qry4'],
+            'old_transcript': ['ref1_t1', 'ref1_t1', 'ref1_t1', 'ref2_t1'],
+            'new_transcript': ['qry1_t1', 'qry2_t1', 'qry3_t1', 'qry4_t1'],
             'ref_query_count': [3, 3, 3, 1],
             'qry_ref_count': [1, 1, 1, 1],
-            'ref_multi_query': [1, 1, 1, 0],
-            'qry_multi_ref': [0, 0, 0, 0],
+            'old_multi_new': [1, 1, 1, 0],
+            'new_multi_old': [0, 0, 0, 0],
         }
         df = pd.DataFrame(data)
 
@@ -141,14 +141,14 @@ class TestScenarioB(unittest.TestCase):
     def test_many_to_one_detection(self):
         """Test detection of many:1 mappings."""
         data = {
-            'ref_gene': ['ref1', 'ref2', 'ref3'],
-            'query_gene': ['qry1', 'qry1', 'qry2'],
-            'ref_transcript': ['ref1_t1', 'ref2_t1', 'ref3_t1'],
-            'query_transcript': ['qry1_t1', 'qry1_t1', 'qry2_t1'],
+            'old_gene': ['ref1', 'ref2', 'ref3'],
+            'new_gene': ['qry1', 'qry1', 'qry2'],
+            'old_transcript': ['ref1_t1', 'ref2_t1', 'ref3_t1'],
+            'new_transcript': ['qry1_t1', 'qry1_t1', 'qry2_t1'],
             'ref_query_count': [1, 1, 1],
             'qry_ref_count': [2, 2, 1],  # qry1 maps to 2 refs
-            'ref_multi_query': [0, 0, 0],
-            'qry_multi_ref': [1, 1, 0],  # qry1 has multi-ref
+            'old_multi_new': [0, 0, 0],
+            'new_multi_old': [1, 1, 0],  # qry1 has multi-ref
         }
         df = pd.DataFrame(data)
 
@@ -168,10 +168,10 @@ class TestCDIDetection(unittest.TestCase):
     def test_cdi_gene_detection(self):
         """Test detection of CDI pattern genes."""
         data = {
-            'ref_gene': ['ref1', 'ref1', 'ref2', 'ref2'],
-            'query_gene': ['qry1', 'qry2', 'qry1', 'qry2'],
-            'ref_multi_query': [1, 1, 1, 1],  # Both refs have multi-query
-            'qry_multi_ref': [1, 1, 1, 1],    # Both queries have multi-ref
+            'old_gene': ['ref1', 'ref1', 'ref2', 'ref2'],
+            'new_gene': ['qry1', 'qry2', 'qry1', 'qry2'],
+            'old_multi_new': [1, 1, 1, 1],  # Both refs have multi-query
+            'new_multi_old': [1, 1, 1, 1],    # Both queries have multi-ref
         }
         df = pd.DataFrame(data)
 
@@ -186,10 +186,10 @@ class TestCDIDetection(unittest.TestCase):
     def test_no_cdi_in_simple_mapping(self):
         """Test that simple mappings don't produce CDI genes."""
         data = {
-            'ref_gene': ['ref1', 'ref2'],
-            'query_gene': ['qry1', 'qry2'],
-            'ref_multi_query': [0, 0],
-            'qry_multi_ref': [0, 0],
+            'old_gene': ['ref1', 'ref2'],
+            'new_gene': ['qry1', 'qry2'],
+            'old_multi_new': [0, 0],
+            'new_multi_old': [0, 0],
         }
         df = pd.DataFrame(data)
 
@@ -259,10 +259,10 @@ class TestTranscriptLookup(unittest.TestCase):
     def test_build_lookup(self):
         """Test building transcript lookup dictionaries."""
         data = {
-            'ref_gene': ['ref1', 'ref1', 'ref2'],
-            'query_gene': ['qry1', 'qry2', 'qry3'],
-            'ref_transcript': ['ref1_t1', 'ref1_t1', 'ref2_t1'],
-            'query_transcript': ['qry1_t1', 'qry2_t1', 'qry3_t1'],
+            'old_gene': ['ref1', 'ref1', 'ref2'],
+            'new_gene': ['qry1', 'qry2', 'qry3'],
+            'old_transcript': ['ref1_t1', 'ref1_t1', 'ref2_t1'],
+            'new_transcript': ['qry1_t1', 'qry2_t1', 'qry3_t1'],
         }
         df = pd.DataFrame(data)
 

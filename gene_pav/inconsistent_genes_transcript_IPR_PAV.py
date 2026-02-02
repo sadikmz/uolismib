@@ -64,7 +64,7 @@ def filter_inconsistent_genes(df):
         df = assign_quadrants(df)
 
     # Find gene pairs with multiple quadrants
-    gene_pair_quadrants = df.groupby(['ref_gene', 'query_gene'])['quadrant'].apply(
+    gene_pair_quadrants = df.groupby(['old_gene', 'new_gene'])['quadrant'].apply(
         lambda x: list(x.unique())
     ).reset_index()
     gene_pair_quadrants['num_quadrants'] = gene_pair_quadrants['quadrant'].apply(len)
@@ -78,13 +78,13 @@ def filter_inconsistent_genes(df):
     # Get detailed information for these genes
     inconsistent_details = []
     for _, row in inconsistent_gene_pairs.iterrows():
-        ref_g = row['ref_gene']
-        qry_g = row['query_gene']
-        subset = df[(df['ref_gene'] == ref_g) & (df['query_gene'] == qry_g)]
+        ref_g = row['old_gene']
+        qry_g = row['new_gene']
+        subset = df[(df['old_gene'] == ref_g) & (df['new_gene'] == qry_g)]
         inconsistent_details.append(subset)
 
     df_inconsistent = pd.concat(inconsistent_details, ignore_index=True)
-    df_inconsistent = df_inconsistent.sort_values(['ref_gene', 'query_gene', 'quadrant'])
+    df_inconsistent = df_inconsistent.sort_values(['old_gene', 'new_gene', 'quadrant'])
 
     return df_inconsistent, inconsistent_gene_pairs
 
@@ -93,7 +93,7 @@ def create_summary_table(df_inconsistent):
     """Create summary table with quadrant combinations"""
 
     # Group by gene pairs
-    gene_pairs = df_inconsistent.groupby(['ref_gene', 'query_gene'])
+    gene_pairs = df_inconsistent.groupby(['old_gene', 'new_gene'])
 
     summary_data = []
     for (ref_g, qry_g), group in gene_pairs:
@@ -101,8 +101,8 @@ def create_summary_table(df_inconsistent):
         quadrant_counts = group['quadrant'].value_counts().to_dict()
 
         summary_data.append({
-            'ref_gene': ref_g,
-            'query_gene': qry_g,
+            'old_gene': ref_g,
+            'new_gene': qry_g,
             'num_transcripts': len(group),
             'quadrants': ', '.join(quadrants),
             'count_Present_in_both': quadrant_counts.get('Present in both', 0),
@@ -126,8 +126,8 @@ def print_statistics(df_inconsistent, df_summary, ref_prefix, qry_prefix):
     print(f"Total transcript pairs: {len(df_inconsistent)}", file=sys.stderr)
 
     # Unique genes
-    unique_ref = df_inconsistent['ref_gene'].nunique()
-    unique_qry = df_inconsistent['query_gene'].nunique()
+    unique_ref = df_inconsistent['old_gene'].nunique()
+    unique_qry = df_inconsistent['new_gene'].nunique()
     print(f"\nUnique genes involved:", file=sys.stderr)
     print(f"  {ref_prefix} genes: {unique_ref}", file=sys.stderr)
     print(f"  {qry_prefix} genes: {unique_qry}", file=sys.stderr)
@@ -219,8 +219,8 @@ def plot_comprehensive_analysis(df_inconsistent, df_summary, output_prefix, ref_
     # Create labels
     gene_pair_labels = []
     for _, row in top_gene_pairs.iterrows():
-        ref_short = row['ref_gene'].split('-')[-1].split('_')[0][-10:]
-        qry_short = row['query_gene'].split('_')[0][-10:]
+        ref_short = row['old_gene'].split('-')[-1].split('_')[0][-10:]
+        qry_short = row['new_gene'].split('_')[0][-10:]
         gene_pair_labels.append(f"{ref_short}\nvs\n{qry_short}")
 
     # Stacked bar chart
@@ -283,12 +283,12 @@ def plot_gene_level_details(df_inconsistent, df_summary, output_prefix, ref_pref
 
         ax = axes[idx]
 
-        ref_g = row['ref_gene']
-        qry_g = row['query_gene']
+        ref_g = row['old_gene']
+        qry_g = row['new_gene']
 
         # Get transcripts for this gene pair
-        subset = df_inconsistent[(df_inconsistent['ref_gene'] == ref_g) &
-                                 (df_inconsistent['query_gene'] == qry_g)]
+        subset = df_inconsistent[(df_inconsistent['old_gene'] == ref_g) &
+                                 (df_inconsistent['new_gene'] == qry_g)]
 
         # Plot each transcript
         for i, (_, transcript) in enumerate(subset.iterrows()):
@@ -360,8 +360,8 @@ def auto_detect_prefixes(df):
             return gene_str.split('-')[0]
         return gene_str[:10]
 
-    ref_prefixes = df['ref_gene'].dropna().apply(extract_prefix).value_counts()
-    query_prefixes = df['query_gene'].dropna().apply(extract_prefix).value_counts()
+    ref_prefixes = df['old_gene'].dropna().apply(extract_prefix).value_counts()
+    query_prefixes = df['new_gene'].dropna().apply(extract_prefix).value_counts()
 
     if len(ref_prefixes) == 0 or len(query_prefixes) == 0:
         return "Reference", "Query"

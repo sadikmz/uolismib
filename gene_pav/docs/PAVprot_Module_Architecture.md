@@ -68,7 +68,7 @@ gene_pav/
 ┃                                                                                         ┃
 ┃   FUNCTIONS:                                                                            ┃
 ┃   1. parse_tracking()      → Extract ref/query gene pairs + class codes                 ┃
-┃   2. compute_all_metrics() → ref_multi_query, qry_multi_ref, exact_match                ┃
+┃   2. compute_all_metrics() → old_multi_new, new_multi_old, exact_match                ┃
 ┃   3. DiamondRunner         → Run DIAMOND BLASTP (optional)                              ┃
 ┃   4. BBH analysis          → Bidirectional best hits (optional)                         ┃
 ┃   5. InterProScan          → Domain annotation enrichment (optional)                    ┃
@@ -95,9 +95,9 @@ gene_pav/
 │                              PRIMARY OUTPUT (TSV)                                       │
 │                                                                                         │
 │   synonym_mapping_liftover_gffcomp.tsv                                                  │
-│   ├── ref_gene, query_gene, ref_transcript, query_transcript                            │
+│   ├── old_gene, new_gene, old_transcript, new_transcript                            │
 │   ├── class_code, class_type_transcript, class_type_gene                                │
-│   ├── ref_multi_query, qry_multi_ref, exact_match                                       │
+│   ├── old_multi_new, new_multi_old, exact_match                                       │
 │   ├── pident, qcovhsp, scovhsp (if --run-diamond)                                       │
 │   ├── is_bbh, bbh_avg_pident, bbh_avg_coverage (if --run-bbh)                           │
 │   └── query_total_ipr_domain_length, ref_total_ipr_domain_length (if --interproscan)   │
@@ -133,8 +133,8 @@ gene_pav/
 │   scenario_J_complex_1toN_mappings.tsv→ One ref → 3+ queries                            │
 │   scenario_CDI_cross_mappings.tsv     → Cross-mapping classification                    │
 │   scenario_F_positional_swaps.tsv     → Adjacent gene order inversions                  │
-│   scenario_G_unmapped_ref_genes.tsv   → Ref genes without query matches                 │
-│   scenario_H_unmapped_query_genes.tsv → Query genes without ref matches                 │
+│   scenario_G_unmapped_old_genes.tsv   → Ref genes without query matches                 │
+│   scenario_H_unmapped_new_genes.tsv → Query genes without ref matches                 │
 └─────────────────────────────────────────────────────────────────────────────────────────┘
                                         │
                                         ▼
@@ -266,7 +266,7 @@ gene_pav/
 
 | pavprot.py Flag | Module Activated | Columns Added to Output |
 |-----------------|-----------------|------------------------|
-| (none) | Core parsing only | ref_gene, query_gene, class_code, ref_multi_query, qry_multi_ref, exact_match |
+| (none) | Core parsing only | old_gene, new_gene, class_code, old_multi_new, new_multi_old, exact_match |
 | `--run-diamond` | DiamondRunner | pident, qcovhsp, scovhsp, identical_aa, mismatched_aa, indels_aa |
 | `--run-diamond --run-bbh` | BidirectionalBestHits | is_bbh, bbh_avg_pident, bbh_avg_coverage |
 | `--interproscan-out` | InterProParser | query_total_ipr_domain_length, ref_total_ipr_domain_length |
@@ -286,7 +286,7 @@ python analysis/synonym_mapping_summary.py pavprot_out/synonym_mapping_liftover_
 ### Workflow 2: Full Analysis with DIAMOND + BBH
 ```bash
 python pavprot.py --gff-comp tracking.txt --gff ref.gff,query.gff \
-    --ref-faa ref.faa --qry-faa query.faa \
+    --prot ref.faa --prot query.faa \
     --run-diamond --run-bbh
 
 python analysis/gsmc.py \
@@ -297,7 +297,7 @@ python analysis/gsmc.py \
 ### Workflow 3: Full Analysis with InterProScan
 ```bash
 python pavprot.py --gff-comp tracking.txt --gff ref.gff,query.gff \
-    --ref-faa ref.faa --qry-faa query.faa \
+    --prot ref.faa --prot query.faa \
     --run-diamond --run-bbh \
     --interproscan-out ref_interpro.tsv,query_interpro.tsv
 

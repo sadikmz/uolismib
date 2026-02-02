@@ -7,10 +7,10 @@ The InterProScan functionality has been **fully integrated** into `pavprot.py`. 
 ## Output Columns
 
 ### Standard PAVprot Columns (always present):
-- `ref_gene` - Reference gene ID
-- `ref_transcript` - Reference transcript ID
-- `query_gene` - Query gene ID
-- `query_transcript` - Query transcript ID
+- `old_gene` - Reference gene ID
+- `old_transcript` - Reference transcript ID
+- `new_gene` - Query gene ID
+- `new_transcript` - Query transcript ID
 - `class_code` - Gffcompare class code
 - `exons` - Number of exons
 - `class_code_multi` - Multi-transcript class codes
@@ -25,7 +25,7 @@ The InterProScan functionality has been **fully integrated** into `pavprot.py`. 
 ## Example Output (with InterProScan data):
 
 ```
-ref_gene	ref_transcript	query_gene	query_transcript	class_code	exons	class_code_multi	class_type	emckmnj	emckmnje	query_total_ipr_domain_length	ref_total_ipr_domain_length
+old_gene	old_transcript	new_gene	new_transcript	class_code	exons	class_code_multi	class_type	emckmnj	emckmnje	query_total_ipr_domain_length	ref_total_ipr_domain_length
 gene-FOBCDRAFT_266382	XM_031180388.3	FOZG_02279	FOZG_02279-t36_1	j	4	j;m	1	1	1	450	520
 gene-FOBCDRAFT_266382	XM_031180388.3	FOZG_02279	FOZG_02279-t36_2	m	3	j;m	1	1	1	450	520
 gene-FOBCDRAFT_430	XM_031180643.3	FOZG_02018	FOZG_02018-t36_1	j	6	em;j;n	1	1	1	680	720

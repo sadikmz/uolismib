@@ -26,14 +26,14 @@ pwd
 
 **Expected:** `/Users/sadik/projects/github_prj/uolismib/gene_pav`
 
-- [ ] Correct directory
+- [x] Correct directory
 
 ---
 
 ### 1.2 Check Python Version
 
 ```bash
-python --version
+python3 --version
 ```
 
 **Expected:** Python 3.8 or higher
@@ -45,7 +45,7 @@ python --version
 ### 1.3 Verify Dependencies
 
 ```bash
-python -c "
+python3 -c "
 import pandas as pd
 import numpy as np
 import matplotlib
@@ -75,7 +75,7 @@ echo "=== Test Data Files ===" && ls -la test/data/ && echo "" && echo "File cou
 
 **Expected:** ~11 files including `.tracking`, `.gff3`, `.tsv`, `.faa` files
 
-- [ ] Test data present
+- [x] Test data present
 
 ---
 
@@ -84,7 +84,7 @@ echo "=== Test Data Files ===" && ls -la test/data/ && echo "" && echo "File cou
 ### 2.1 Main Pipeline (pavprot.py)
 
 ```bash
-python pavprot.py --help 2>&1 | head -20
+python3 pavprot.py --help 2>&1 | head -20
 ```
 
 **Expected:** Shows usage, description, and arguments starting with `--gff-comp`
@@ -96,31 +96,31 @@ python pavprot.py --help 2>&1 | head -20
 ### 2.2 Scenario Classification (gsmc.py)
 
 ```bash
-python gsmc.py --help 2>&1 | head -15
+python3 gsmc.py --help 2>&1 | head -15
 ```
 
 **Expected:** Shows "Gene Synteny Mapping Classifier" description
 
-- [ ] gsmc.py --help works
+- [x] gsmc.py --help works
 
 ---
 
 ### 2.3 Mapping Multiplicity
 
 ```bash
-python mapping_multiplicity.py --help 2>&1 | head -15
+python3 mapping_multiplicity.py --help 2>&1 | head -15
 ```
 
 **Expected:** Shows "Detect multiple mapping genes" description
 
-- [ ] mapping_multiplicity.py --help works
+- [x] mapping_multiplicity.py --help works
 
 ---
 
 ### 2.4 BBH Analysis
 
 ```bash
-python bidirectional_best_hits.py --help 2>&1 | head -15
+python3 bidirectional_best_hits.py --help 2>&1 | head -15
 ```
 
 **Expected:** Shows bidirectional best hits description
@@ -132,36 +132,36 @@ python bidirectional_best_hits.py --help 2>&1 | head -15
 ### 2.5 Pairwise Alignment
 
 ```bash
-python pairwise_align_prot.py --help 2>&1 | head -15
+python3 pairwise_align_prot.py --help 2>&1 | head -15
 ```
 
 **Expected:** Shows pairwise alignment description
 
-- [ ] pairwise_align_prot.py --help works
+- [x] pairwise_align_prot.py --help works
 
 ---
 
 ### 2.6 InterProScan Parser
 
 ```bash
-python parse_interproscan.py --help 2>&1 | head -15
+python3 parse_interproscan.py --help 2>&1 | head -15
 ```
 
 **Expected:** Shows InterProScan parsing description
 
-- [ ] parse_interproscan.py --help works
+- [x] parse_interproscan.py --help works
 
 ---
 
 ### 2.7 Summary Statistics
 
 ```bash
-python synonym_mapping_summary.py --help 2>&1 | head -15
+python3 synonym_mapping_summary.py --help 2>&1 | head -15
 ```
 
 **Expected:** Shows summary statistics description
 
-- [ ] synonym_mapping_summary.py --help works
+- [x] synonym_mapping_summary.py --help works
 
 ---
 
@@ -170,7 +170,7 @@ python synonym_mapping_summary.py --help 2>&1 | head -15
 ### 3.1 Run All Tests
 
 ```bash
-python -m pytest test/ -v --tb=short 2>&1 | tail -20
+python3 -m pytest test/ -v --tb=short 2>&1 | tail -20
 ```
 
 **Expected:** `47 passed, 2 skipped` (or similar)
@@ -182,10 +182,12 @@ python -m pytest test/ -v --tb=short 2>&1 | tail -20
 ### 3.2 Check Test Summary
 
 ```bash
-python -m pytest test/ -v 2>&1 | grep -E "(PASSED|FAILED|SKIPPED|ERROR)" | wc -l
+python3 -m pytest test/ -v 2>&1 | grep -E "(PASSED|FAILED|SKIPPED|ERROR)" | wc -l
 ```
 
 **Expected:** 49 (47 passed + 2 skipped)
+
+**Found:** 47 passed, 2 skipped, 4 warnings in 0.39s
 
 - [ ] Test count correct
 
@@ -203,14 +205,14 @@ echo "Test output directory: $TEST_DIR"
 
 **Expected:** Directory path printed
 
-- [ ] Directory created
+- [x] Directory created
 
 ---
 
 ### 4.2 Run Minimal Pipeline (Tracking Only)
 
 ```bash
-python pavprot.py \
+python3 pavprot.py \
   --gff-comp test/data/gffcompare.tracking \
   --output-dir "$TEST_DIR" \
   --output-prefix test1_minimal \
@@ -218,15 +220,15 @@ python pavprot.py \
 
 echo "---"
 echo "Output files:"
-ls -la "$TEST_DIR"/test1_minimal*
+ls -la "$TEST_DIR"/liftoff_gffcomp_mapping_test1_minimal*
 ```
 
 **Expected:**
 - No errors
 - At least 2 output files: `*_gffcomp.tsv` and `*_gene_level.tsv`
 
-- [ ] Minimal pipeline runs
-- [ ] Output files created
+- [x] Minimal pipeline runs
+- [x] Output files created
 
 ---
 
@@ -234,26 +236,26 @@ ls -la "$TEST_DIR"/test1_minimal*
 
 ```bash
 echo "=== Columns in transcript-level output ==="
-head -1 "$TEST_DIR"/test1_minimal_gffcomp.tsv | tr '\t' '\n' | nl
+head -1 "$TEST_DIR"/liftoff_gffcomp_mapping_test1_minimal.tsv | tr '\t' '\n' | nl
 
 echo ""
 echo "=== Record count ==="
-wc -l "$TEST_DIR"/test1_minimal_gffcomp.tsv
+wc -l "$TEST_DIR"/liftoff_gffcomp_mapping_test1_minimal.tsv.tsv
 ```
 
 **Expected:**
-- Multiple columns including: ref_gene, ref_transcript, query_gene, query_transcript, class_code
+- Multiple columns including: old_gene, old_transcript, new_gene, new_transcript, class_code
 - At least 2 lines (header + data)
 
-- [ ] Columns present
-- [ ] Data rows exist
+- [x] Columns present
+- [x] Data rows exist
 
 ---
 
 ### 4.4 Run Pipeline with GFF
 
 ```bash
-python pavprot.py \
+python3 pavprot.py \
   --gff-comp test/data/gffcompare.tracking \
   --gff test/data/gff_feature_table.gff3 \
   --output-dir "$TEST_DIR" \
@@ -261,19 +263,19 @@ python pavprot.py \
   2>&1
 
 echo "---"
-ls -la "$TEST_DIR"/test2_with_gff*
+ls -la "$TEST_DIR"/liftoff_gffcomp_mapping_test2_with_gff*
 ```
 
 **Expected:** Output files created without errors
 
-- [ ] Pipeline with GFF runs
+- [x] Pipeline with GFF runs
 
 ---
 
 ### 4.5 Run Pipeline with InterProScan
 
 ```bash
-python pavprot.py \
+python3 pavprot.py \
   --gff-comp test/data/gffcompare.tracking \
   --gff test/data/gff_feature_table.gff3 \
   --interproscan-out test/data/test_interproscan.tsv \
@@ -282,12 +284,13 @@ python pavprot.py \
   2>&1
 
 echo "---"
-ls -la "$TEST_DIR"/test3_with_ipr*
+ls -la "$TEST_DIR"/test_interproscan_liftoff_gffcomp_mapping_test3_with_ipr*
 ```
 
 **Expected:** Output files created, may include IPR columns
 
-- [ ] Pipeline with InterProScan runs
+- [x] Pipeline with InterProScan runs
+- [ ] ipr length is missing in the output tables
 
 ---
 
@@ -295,12 +298,12 @@ ls -la "$TEST_DIR"/test3_with_ipr*
 
 ```bash
 echo "=== Gene-level output columns ==="
-head -1 "$TEST_DIR"/test1_minimal_gene_level.tsv | tr '\t' '\n' | nl | tail -10
+head -1 "$TEST_DIR"/liftoff_gffcomp_mapping_test1_minimal_gene_level.tsv | tr '\t' '\n' | nl | tail -10
 
 echo ""
 echo "=== Scenario distribution ==="
-if head -1 "$TEST_DIR"/test1_minimal_gene_level.tsv | grep -q "scenario"; then
-  awk -F'\t' 'NR==1 {for(i=1;i<=NF;i++) if($i=="scenario") col=i} NR>1 {print $col}' "$TEST_DIR"/test1_minimal_gene_level.tsv | sort | uniq -c
+if head -1 "$TEST_DIR"/liftoff_gffcomp_mapping_test1_minimal_gene_level.tsv | grep -q "scenario"; then
+  awk -F'\t' 'NR==1 {for(i=1;i<=NF;i++) if($i=="scenario") col=i} NR>1 {print $col}' "$TEST_DIR"/liftoff_gffcomp_mapping_test1_minimal_gene_level.tsv | sort | uniq -c
 else
   echo "No scenario column found (may be expected for minimal test data)"
 fi
@@ -308,16 +311,16 @@ fi
 
 **Expected:** Shows scenario column (E, A, B, J, CDI, etc.) or message about no scenario column
 
-- [ ] Gene-level output verified
+- [x] Gene-level output verified
 
 ---
 
-## PART 5: Individual Module Testing
+## >>> PART 5: Individual Module Testing <<<
 
 ### 5.1 Test mapping_multiplicity.py
 
 ```bash
-python mapping_multiplicity.py \
+python3 mapping_multiplicity.py \
   "$TEST_DIR"/test1_minimal_gffcomp.tsv \
   --output-prefix "$TEST_DIR"/mapping_test \
   2>&1
@@ -336,7 +339,7 @@ ls -la "$TEST_DIR"/mapping_test* 2>/dev/null || echo "No output files (may be ex
 ### 5.2 Test synonym_mapping_summary.py
 
 ```bash
-python synonym_mapping_summary.py "$TEST_DIR"/test1_minimal_gffcomp.tsv 2>&1 | head -30
+python3 synonym_mapping_summary.py "$TEST_DIR"/test1_minimal_gffcomp.tsv 2>&1 | head -30
 ```
 
 **Expected:** Summary statistics with counts for records, genes, transcripts
@@ -348,7 +351,7 @@ python synonym_mapping_summary.py "$TEST_DIR"/test1_minimal_gffcomp.tsv 2>&1 | h
 ### 5.3 Test Pairwise Alignment Function
 
 ```bash
-python -c "
+python3 -c "
 from pairwise_align_prot import local_alignment_similarity
 
 # Test sequences (hemoglobin-like)
@@ -379,7 +382,7 @@ print('✓ Pairwise alignment works')
 ### 5.4 Test InterProScan Parser
 
 ```bash
-python -c "
+python3 -c "
 from parse_interproscan import InterProParser
 
 parser = InterProParser()
@@ -404,7 +407,7 @@ print('✓ InterProScan parser works')
 ### 5.5 Test BBH Class
 
 ```bash
-python -c "
+python3 -c "
 from bidirectional_best_hits import BidirectionalBestHits, BlastHit
 
 print('BBH Module Test')
@@ -425,7 +428,7 @@ print('✓ BBH module loads correctly')
 ### 5.6 Test GSMC Functions
 
 ```bash
-python -c "
+python3 -c "
 from gsmc import (
     get_cdi_genes,
     detect_one_to_one_orthologs,
@@ -458,7 +461,7 @@ print('✓ GSMC module loads correctly')
 ### 6.1 Test Plot Config
 
 ```bash
-python -c "
+python3 -c "
 from plot.config import setup_plotting, CLASS_TYPE_PALETTE, SCENARIO_PALETTE, MARKER_STYLES
 
 print('Plot Config Test')
@@ -482,7 +485,7 @@ print('✓ Plot config loads correctly')
 ### 6.2 Test Plot Utils
 
 ```bash
-python -c "
+python3 -c "
 from plot.utils import load_data, load_pavprot_data, filter_by_class_type, add_ipr_status_column
 
 print('Plot Utils Test')
@@ -506,7 +509,7 @@ print('✓ Plot utils loads correctly')
 ### 6.3 Test New Plot Functions (plot_ipr_advanced.py)
 
 ```bash
-python -c "
+python3 -c "
 from plot.plot_ipr_advanced import (
     load_data,
     plot_log_scale,
@@ -543,7 +546,7 @@ print('✓ All 9 plot functions available')
 ### 7.1 Test Tools Runner
 
 ```bash
-python -c "
+python3 -c "
 from tools_runner import ToolsRunner
 
 print('Tools Runner Test')
@@ -619,7 +622,7 @@ file scripts/pre_release_check.sh
 ### 9.1 Validate Output TSV Structure
 
 ```bash
-python -c "
+python3 -c "
 import pandas as pd
 import sys
 
@@ -630,7 +633,7 @@ print('=' * 40)
 df = pd.read_csv('$TEST_DIR/test1_minimal_gffcomp.tsv', sep='\t')
 
 # Required columns
-required = ['ref_gene', 'ref_transcript', 'query_gene', 'query_transcript', 'class_code']
+required = ['old_gene', 'old_transcript', 'new_gene', 'new_transcript', 'class_code']
 missing = [c for c in required if c not in df.columns]
 
 if missing:
@@ -641,8 +644,8 @@ else:
 
 print(f'Total columns: {len(df.columns)}')
 print(f'Total records: {len(df)}')
-print(f'Unique ref genes: {df[\"ref_gene\"].nunique()}')
-print(f'Unique query genes: {df[\"query_gene\"].nunique()}')
+print(f'Unique ref genes: {df[\"old_gene\"].nunique()}')
+print(f'Unique query genes: {df[\"new_gene\"].nunique()}')
 
 # Check for NaN in key columns
 nan_counts = df[required].isna().sum()
@@ -765,10 +768,10 @@ TOTAL: ___/31 checks passed
 
 ```bash
 # Check module is importable
-python -c "import <module_name>"
+python3 -c "import <module_name>"
 
 # Check Python path
-python -c "import sys; print('\n'.join(sys.path))"
+python3 -c "import sys; print('\n'.join(sys.path))"
 ```
 
 ### Test Data Missing
@@ -791,7 +794,7 @@ chmod +x scripts/pre_release_check.sh
 
 ```bash
 # Reinstall dependencies
-pip install -r requirements.txt
+pip3 install -r requirements.txt
 ```
 
 ---

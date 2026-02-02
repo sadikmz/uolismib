@@ -1,8 +1,8 @@
 # Gene-Level IPR Domain Aggregation
 
-## Important: How ref_gene_total_iprdom_len is Calculated
+## Important: How old_gene_total_iprdom_len is Calculated
 
-The `ref_gene_total_iprdom_len` (and `query_gene_total_iprdom_len`) columns represent the **total sum of ALL IPR domain lengths across ALL transcripts of a gene**.
+The `old_gene_total_iprdom_len` (and `new_gene_total_iprdom_len`) columns represent the **total sum of ALL IPR domain lengths across ALL transcripts of a gene**.
 
 ### What It IS
 
@@ -15,7 +15,7 @@ Gene: FOZG_00001
   Transcript 1: Domain A (100bp) + Domain B (50bp)  = 150 bp
   Transcript 2: Domain A (100bp) + Domain C (75bp)  = 175 bp
 
-  → ref_gene_total_iprdom_len = 100 + 50 + 100 + 75 = 325 bp
+  → old_gene_total_iprdom_len = 100 + 50 + 100 + 75 = 325 bp
 ```
 
 **Note:** Even if the same domain (Domain A) appears in multiple transcripts, each occurrence is counted. This is biologically accurate because each transcript is a real molecular entity with its own domain structure.
@@ -105,7 +105,7 @@ Number of transcripts: 1
       - IPR004165: 231 bp
       - IPR012791: 208 bp
 
-ref_gene_total_iprdom_len = 2802 bp
+old_gene_total_iprdom_len = 2802 bp
 (Sum of ALL 11 domains)
 ```
 
@@ -118,7 +118,7 @@ Number of transcripts: 1
       - IPR029058: 295 bp
       - IPR000073: 277 bp
 
-ref_gene_total_iprdom_len = 914 bp
+old_gene_total_iprdom_len = 914 bp
 (Sum of ALL 3 domains)
 ```
 
@@ -135,12 +135,12 @@ ref_gene_total_iprdom_len = 914 bp
 ## PAVprot Output Format
 
 ```
-ref_gene  ref_transcript  query_gene  query_transcript  ...  query_gene_total_iprdom_len  ref_gene_total_iprdom_len
+old_gene  old_transcript  new_gene  new_transcript  ...  new_gene_total_iprdom_len  old_gene_total_iprdom_len
 FOZG_001  FOZG_001-t1     gene-XYZ    XP_123.1         ...  448                          329
 FOZG_001  FOZG_001-t2     gene-XYZ    XP_123.1         ...  448                          329
 ```
 
-**Note:** If a ref_gene has multiple transcripts (rows), all rows for that gene will have the **same** `ref_gene_total_iprdom_len` value because it's calculated at the gene level.
+**Note:** If a old_gene has multiple transcripts (rows), all rows for that gene will have the **same** `old_gene_total_iprdom_len` value because it's calculated at the gene level.
 
 ## Verification
 
@@ -157,8 +157,8 @@ This will show:
 
 ## Summary
 
-✓ `ref_gene_total_iprdom_len` = **Sum of ALL IPR domain lengths from ALL transcripts of the ref_gene**
+✓ `old_gene_total_iprdom_len` = **Sum of ALL IPR domain lengths from ALL transcripts of the old_gene**
 
-✓ `query_gene_total_iprdom_len` = **Sum of ALL IPR domain lengths from ALL transcripts of the query_gene**
+✓ `new_gene_total_iprdom_len` = **Sum of ALL IPR domain lengths from ALL transcripts of the new_gene**
 
 This provides a comprehensive measure of IPR domain content at the gene level, which is appropriate for gene-level comparative analysis in PAVprot.

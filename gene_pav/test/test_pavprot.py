@@ -78,7 +78,7 @@ class TestPAVprot(unittest.TestCase):
         self.assertIn("gene1", full_dict)
         self.assertEqual(len(full_dict["gene1"]), 1)
         self.assertEqual(full_dict["gene1"][0]["class_code"], "em")
-        self.assertEqual(full_dict["gene1"][0]["query_gene"], "geneA")
+        self.assertEqual(full_dict["gene1"][0]["new_gene"], "geneA")
         
         # Test filtering
         _, filtered_j = PAVprot.parse_tracking(tracking_path, filter_codes={'j'})
@@ -109,7 +109,7 @@ class TestPAVprot(unittest.TestCase):
     def test_filter_extra_copy_transcripts(self):
         """Test adding extra copy numbers to data."""
         test_data = {
-            "ref_gene1": [{"query_transcript": "q_trans1"}]
+            "old_gene1": [{"new_transcript": "q_trans1"}]
         }
         liftoff_gff_content = 'chr1\tliftoff\tmRNA\t1\t100\t.\t+\t.\tID=q_trans1;extra_copy_number=3\n'
         gff_path = os.path.join(self.test_dir, "liftoff.gff")
@@ -117,7 +117,7 @@ class TestPAVprot(unittest.TestCase):
             f.write(liftoff_gff_content)
 
         result = PAVprot.filter_extra_copy_transcripts(test_data, gff_path)
-        self.assertEqual(result["ref_gene1"][0]["extra_copy_number"], 3)
+        self.assertEqual(result["old_gene1"][0]["extra_copy_number"], 3)
 
     def test_load_interproscan_data_raw(self):
         """Test loading raw InterProScan TSV data."""
@@ -160,24 +160,24 @@ class TestPAVprot(unittest.TestCase):
     def test_enrich_interproscan_data(self):
         """Test enriching data with InterProScan information."""
         test_data = {
-            "ref_gene1": [{"ref_gene": "RG1", "query_gene": "QG1"}]
+            "old_gene1": [{"old_gene": "RG1", "new_gene": "QG1"}]
         }
         qry_map = {"QG1": 150}
         ref_map = {"RG1": 200}
 
         result = PAVprot.enrich_interproscan_data(test_data, qry_map, ref_map)
-        entry = result["ref_gene1"][0]
-        self.assertEqual(entry["query_gene_total_iprdom_len"], 150)
-        self.assertEqual(entry["ref_gene_total_iprdom_len"], 200)
+        entry = result["old_gene1"][0]
+        self.assertEqual(entry["new_gene_total_iprdom_len"], 150)
+        self.assertEqual(entry["old_gene_total_iprdom_len"], 200)
         
         # Test with missing keys
         test_data_missing = {
-            "ref_gene1": [{"ref_gene": "RG2", "query_gene": "QG2"}]
+            "old_gene1": [{"old_gene": "RG2", "new_gene": "QG2"}]
         }
         result_missing = PAVprot.enrich_interproscan_data(test_data_missing, qry_map, ref_map)
-        entry_missing = result_missing["ref_gene1"][0]
-        self.assertEqual(entry_missing["query_gene_total_iprdom_len"], 0)
-        self.assertEqual(entry_missing["ref_gene_total_iprdom_len"], 0)
+        entry_missing = result_missing["old_gene1"][0]
+        self.assertEqual(entry_missing["new_gene_total_iprdom_len"], 0)
+        self.assertEqual(entry_missing["old_gene_total_iprdom_len"], 0)
 
 class TestDiamondRunner(unittest.TestCase):
 
@@ -261,21 +261,21 @@ class TestDiamondRunner(unittest.TestCase):
             f.write(diamond_output_content)
 
         data = {
-            "ref_gene1": [
-                {"query_transcript": "q_trans1"},
-                {"query_transcript": "q_trans2"},
-                {"query_transcript": "q_trans3"},
-                {"query_transcript": "q_trans_nohit"}
+            "old_gene1": [
+                {"new_transcript": "q_trans1"},
+                {"new_transcript": "q_trans2"},
+                {"new_transcript": "q_trans3"},
+                {"new_transcript": "q_trans_nohit"}
             ]
         }
 
         enriched_data = self.runner.enrich_blastp(data, tsv_gz_path)
         
-        entries = enriched_data["ref_gene1"]
-        entry_q1 = next(e for e in entries if e['query_transcript'] == 'q_trans1')
-        entry_q2 = next(e for e in entries if e['query_transcript'] == 'q_trans2')
-        entry_q3 = next(e for e in entries if e['query_transcript'] == 'q_trans3')
-        entry_nohit = next(e for e in entries if e['query_transcript'] == 'q_trans_nohit')
+        entries = enriched_data["old_gene1"]
+        entry_q1 = next(e for e in entries if e['new_transcript'] == 'q_trans1')
+        entry_q2 = next(e for e in entries if e['new_transcript'] == 'q_trans2')
+        entry_q3 = next(e for e in entries if e['new_transcript'] == 'q_trans3')
+        entry_nohit = next(e for e in entries if e['new_transcript'] == 'q_trans_nohit')
 
         # Test that the best hit was chosen for q_trans1 (bitscore 200.0 > 180.0)
         self.assertIsNotNone(entry_q1["diamond"])

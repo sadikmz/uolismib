@@ -40,12 +40,12 @@ class TestMappingMultiplicity(unittest.TestCase):
 
     def test_one_to_many_detection(self):
         """Test detection of one ref gene mapping to multiple query genes."""
-        # Create test data: ref_gene1 maps to query_gene1 and query_gene2
+        # Create test data: old_gene1 maps to new_gene1 and new_gene2
         data = {
-            'ref_gene': ['ref_gene1', 'ref_gene1', 'ref_gene2'],
-            'ref_transcript': ['ref_t1', 'ref_t1', 'ref_t2'],
-            'query_gene': ['query_gene1', 'query_gene2', 'query_gene3'],
-            'query_transcript': ['query_t1', 'query_t2', 'query_t3'],
+            'old_gene': ['old_gene1', 'old_gene1', 'old_gene2'],
+            'old_transcript': ['ref_t1', 'ref_t1', 'ref_t2'],
+            'new_gene': ['new_gene1', 'new_gene2', 'new_gene3'],
+            'new_transcript': ['query_t1', 'query_t2', 'query_t3'],
             'class_code': ['=', 'j', '=']
         }
         filepath = self._create_test_tsv(data)
@@ -59,18 +59,18 @@ class TestMappingMultiplicity(unittest.TestCase):
 
         # Read and verify content
         df = pd.read_csv(ref_multi_file, sep='\t')
-        self.assertEqual(len(df), 1)  # Only ref_gene1 has multiple queries
-        self.assertEqual(df.iloc[0]['ref_gene'], 'ref_gene1')
-        self.assertEqual(df.iloc[0]['num_query_genes'], 2)
+        self.assertEqual(len(df), 1)  # Only old_gene1 has multiple queries
+        self.assertEqual(df.iloc[0]['old_gene'], 'old_gene1')
+        self.assertEqual(df.iloc[0]['num_new_genes'], 2)
 
     def test_many_to_one_detection(self):
         """Test detection of multiple ref genes mapping to one query gene."""
-        # Create test data: ref_gene1 and ref_gene2 both map to query_gene1
+        # Create test data: old_gene1 and old_gene2 both map to new_gene1
         data = {
-            'ref_gene': ['ref_gene1', 'ref_gene2', 'ref_gene3'],
-            'ref_transcript': ['ref_t1', 'ref_t2', 'ref_t3'],
-            'query_gene': ['query_gene1', 'query_gene1', 'query_gene2'],
-            'query_transcript': ['query_t1', 'query_t1', 'query_t2'],
+            'old_gene': ['old_gene1', 'old_gene2', 'old_gene3'],
+            'old_transcript': ['ref_t1', 'ref_t2', 'ref_t3'],
+            'new_gene': ['new_gene1', 'new_gene1', 'new_gene2'],
+            'new_transcript': ['query_t1', 'query_t1', 'query_t2'],
             'class_code': ['=', 'j', '=']
         }
         filepath = self._create_test_tsv(data)
@@ -84,18 +84,18 @@ class TestMappingMultiplicity(unittest.TestCase):
 
         # Read and verify content
         df = pd.read_csv(qry_multi_file, sep='\t')
-        self.assertEqual(len(df), 1)  # Only query_gene1 has multiple refs
-        self.assertEqual(df.iloc[0]['query_gene'], 'query_gene1')
-        self.assertEqual(df.iloc[0]['num_ref_genes'], 2)
+        self.assertEqual(len(df), 1)  # Only new_gene1 has multiple refs
+        self.assertEqual(df.iloc[0]['new_gene'], 'new_gene1')
+        self.assertEqual(df.iloc[0]['num_old_genes'], 2)
 
     def test_no_multiple_mappings(self):
         """Test with data that has no multiple mappings."""
         # Create test data with 1:1 mappings only
         data = {
-            'ref_gene': ['ref_gene1', 'ref_gene2', 'ref_gene3'],
-            'ref_transcript': ['ref_t1', 'ref_t2', 'ref_t3'],
-            'query_gene': ['query_gene1', 'query_gene2', 'query_gene3'],
-            'query_transcript': ['query_t1', 'query_t2', 'query_t3'],
+            'old_gene': ['old_gene1', 'old_gene2', 'old_gene3'],
+            'old_transcript': ['ref_t1', 'ref_t2', 'ref_t3'],
+            'new_gene': ['new_gene1', 'new_gene2', 'new_gene3'],
+            'new_transcript': ['query_t1', 'query_t2', 'query_t3'],
             'class_code': ['=', '=', '=']
         }
         filepath = self._create_test_tsv(data)
@@ -119,10 +119,10 @@ class TestMappingMultiplicity(unittest.TestCase):
     def test_default_output_prefix(self):
         """Test that default output prefix is derived from input filename."""
         data = {
-            'ref_gene': ['ref_gene1'],
-            'ref_transcript': ['ref_t1'],
-            'query_gene': ['query_gene1'],
-            'query_transcript': ['query_t1'],
+            'old_gene': ['old_gene1'],
+            'old_transcript': ['ref_t1'],
+            'new_gene': ['new_gene1'],
+            'new_transcript': ['query_t1'],
             'class_code': ['=']
         }
         filepath = self._create_test_tsv(data, "my_mapping_file.tsv")

@@ -3,7 +3,7 @@
 ## Current Limitations (Remaining)
 
 ### 1. Test Data Coverage
-The current test data only has 1:1 gene mappings, so we can't fully verify the `ref_multi_query=1/2` and `qry_multi_ref=1/2` cases with real data.
+The current test data only has 1:1 gene mappings, so we can't fully verify the `old_multi_new=1/2` and `new_multi_old=1/2` cases with real data.
 
 ### 2. No Proportion Information
 For a gene pair with `class_code_pair="em;j"`, we don't know if it's 90% 'em' + 10% 'j' or 50/50.
@@ -23,9 +23,9 @@ For a gene pair with `class_code_pair="em;j"`, we don't know if it's 90% 'em' + 
 **Priority**: Medium
 
 ### 2. Gene-Level Summary Output
-A separate file with one row per (ref_gene, query_gene) pair:
+A separate file with one row per (old_gene, new_gene) pair:
 ```
-ref_gene  query_gene  transcript_count  exact_match_pct  class_code_pair  ref_query_count  qry_ref_count
+old_gene  new_gene  transcript_count  exact_match_pct  class_code_pair  ref_query_count  qry_ref_count
 GeneA     QryX        4                 25.0             em;j;m;n         2                1
 GeneA     QryY        1                 100.0            em               2                1
 ```
@@ -75,36 +75,36 @@ The new `ref_query_count` and `qry_ref_count` columns provide similar informatio
 ### Transcript-Level Columns
 | Column | Description |
 |--------|-------------|
-| `ref_gene` | Reference gene ID |
-| `ref_transcript` | Reference transcript ID |
-| `query_gene` | Query gene ID |
-| `query_transcript` | Query transcript ID |
+| `old_gene` | Reference gene ID |
+| `old_transcript` | Reference transcript ID |
+| `new_gene` | Query gene ID |
+| `new_transcript` | Query transcript ID |
 | `class_code` | GffCompare class code for this transcript pair |
 | `exons` | Number of exons |
 
 ### Query-Gene Aggregated Columns
 | Column | Description |
 |--------|-------------|
-| `class_code_multi_query` | Aggregated class codes for query_gene (across all ref genes) |
-| `class_type_transcript` | Class type based on query_gene aggregation |
+| `class_code_multi_query` | Aggregated class codes for new_gene (across all ref genes) |
+| `class_type_transcript` | Class type based on new_gene aggregation |
 | `emckmnj` | 1 if any code in {em,c,k,m,n,j}, else 0 |
 | `emckmnje` | 1 if any code in {em,c,k,m,n,j,e}, else 0 |
 
 ### Ref-Gene Aggregated Columns
 | Column | Description |
 |--------|-------------|
-| `class_code_multi_ref` | Aggregated class codes for ref_gene (across all query genes) |
+| `class_code_multi_ref` | Aggregated class codes for old_gene (across all query genes) |
 
 ### Gene-Pair Level Columns
 | Column | Description |
 |--------|-------------|
-| `class_code_pair` | Aggregated class codes for (ref_gene, query_gene) pair |
+| `class_code_pair` | Aggregated class codes for (old_gene, new_gene) pair |
 | `class_type_gene` | Class type at gene-pair level |
 | `exact_match` | 1 if ALL transcripts in pair are 'em', else 0 |
-| `ref_multi_transcript` | 1 if ref_gene has >1 transcripts globally |
-| `qry_multi_transcript` | 1 if query_gene has >1 transcripts globally |
-| `ref_multi_query` | 0=exclusive 1:1, 1=ref→multi query, 2=partner has others |
-| `qry_multi_ref` | 0=exclusive 1:1, 1=query→multi ref, 2=partner has others |
+| `ref_multi_transcript` | 1 if old_gene has >1 transcripts globally |
+| `qry_multi_transcript` | 1 if new_gene has >1 transcripts globally |
+| `old_multi_new` | 0=exclusive 1:1, 1=ref→multi query, 2=partner has others |
+| `new_multi_old` | 0=exclusive 1:1, 1=query→multi ref, 2=partner has others |
 | `ref_query_count` | Number of query genes this ref gene maps to |
 | `qry_ref_count` | Number of ref genes this query gene maps to |
 
@@ -126,7 +126,7 @@ The new `ref_query_count` and `qry_ref_count` columns provide similar informatio
 | `bbh_avg_pident` | Average pident from forward and reverse BBH |
 | `bbh_avg_coverage` | Average coverage from forward and reverse BBH |
 
-### Encoding for ref_multi_query / qry_multi_ref
+### Encoding for old_multi_new / new_multi_old
 - **0** = Exclusive 1:1 mapping (both sides map only to each other)
 - **1** = This gene maps to multiple partners
 - **2** = This gene maps to one partner, but that partner has other mappings
@@ -139,7 +139,7 @@ The new `ref_query_count` and `qry_ref_count` columns provide similar informatio
 # Only output gene pairs with exact_match=1 (all transcripts are em)
 --filter-exact-match
 
-# Only output exclusive 1:1 mappings (ref_multi_query=0 AND qry_multi_ref=0)
+# Only output exclusive 1:1 mappings (old_multi_new=0 AND new_multi_old=0)
 --filter-exclusive-1to1
 
 # Only output gene pairs with specified class_type_gene
@@ -208,7 +208,7 @@ def write_gene_summary(data: dict, output_file: str):
     gene_pairs = defaultdict(list)
     for entries in data.values():
         for e in entries:
-            gene_pairs[(e['ref_gene'], e['query_gene'])].append(e)
+            gene_pairs[(e['old_gene'], e['new_gene'])].append(e)
     # One row per gene pair with summary stats
 ```
 **Status**: Pending
@@ -262,10 +262,10 @@ Generate summary report:
 def generate_qc_summary(data: dict) -> dict:
     return {
         'total_entries': sum(len(v) for v in data.values()),
-        'unique_ref_genes': len(set(e['ref_gene'] for v in data.values() for e in v)),
-        'unique_query_genes': len(set(e['query_gene'] for v in data.values() for e in v)),
+        'unique_old_genes': len(set(e['old_gene'] for v in data.values() for e in v)),
+        'unique_new_genes': len(set(e['new_gene'] for v in data.values() for e in v)),
         'exact_match_count': sum(1 for v in data.values() for e in v if e.get('exact_match')),
-        'one_to_many_count': sum(1 for v in data.values() for e in v if e.get('ref_multi_query') == 1),
+        'one_to_many_count': sum(1 for v in data.values() for e in v if e.get('old_multi_new') == 1),
     }
 ```
 **Status**: Pending

@@ -145,7 +145,7 @@ def parse_tracking(filepath, feature_table=None, filter_codes=None):
     Parse gffcompare tracking file to extract class codes for query transcripts
     (Borrowed from pavprot.py)
 
-    Returns: dict mapping query_transcript -> class_code
+    Returns: dict mapping new_transcript -> class_code
     """
     transcript_to_class = {}
 

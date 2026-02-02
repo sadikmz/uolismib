@@ -59,7 +59,7 @@ All scenarios are **mutually exclusive** - a gene pair belongs to exactly one sc
 | A | ✅ | `ref_query_count = 2` AND NOT in CDI | Yes |
 | J | ✅ | `ref_query_count >= 3` AND NOT in CDI | Yes |
 | B | ✅ | `qry_ref_count >= 2` AND NOT in CDI | Yes |
-| CDI | ✅ | `ref_multi_query >= 1` AND `qry_multi_ref >= 1` | Yes |
+| CDI | ✅ | `old_multi_new >= 1` AND `new_multi_old >= 1` | Yes |
 | G | ✅ | ref genes NOT in pavprot output | Yes |
 | H | ✅ | query genes NOT in pavprot output | Yes |
 | F | ⏸️ | Positional analysis | **DISABLED** |
@@ -74,8 +74,8 @@ All missing scenarios can be implemented using **existing pavprot inputs**:
 |----------------|---------------|-------------------|
 | `--gff-comp` | GffCompare tracking file | A, B, C, D, E, I, J (mapping relationships) |
 | `--gff ref.gff,query.gff` | Genomic coordinates, full gene lists | F (positions), G/H (complete gene sets) |
-| `--ref-faa` | Reference protein FASTA | G (complete ref protein/gene list) |
-| `--qry-faa` | Query protein FASTA | H (complete query protein/gene list) |
+| `--prot` | Reference protein FASTA | G (complete ref protein/gene list) |
+| `--prot` | Query protein FASTA | H (complete query protein/gene list) |
 | `--interproscan-out` | Domain annotations | Domain analysis for all scenarios |
 
 **Key insight:** No new input files are required. The GFF files and protein FASTAs already passed to pavprot contain all information needed.
@@ -101,14 +101,14 @@ All missing scenarios can be implemented using **existing pavprot inputs**:
 
 ```
 1. For each gene-pair mapping, store genomic positions:
-   - ref_gene_position (chromosome, start, end)
-   - query_gene_position (chromosome, start, end)
+   - old_gene_position (chromosome, start, end)
+   - new_gene_position (chromosome, start, end)
 
 2. Find pairs where:
-   - ref_gene_A maps to query_gene_B
-   - ref_gene_B maps to query_gene_A
-   - ref_gene_A.position < ref_gene_B.position (adjacent/nearby on ref)
-   - query_gene_A.position > query_gene_B.position (order reversed on query)
+   - old_gene_A maps to new_gene_B
+   - old_gene_B maps to new_gene_A
+   - old_gene_A.position < old_gene_B.position (adjacent/nearby on ref)
+   - new_gene_A.position > new_gene_B.position (order reversed on query)
 
 3. Flag as Scenario F when positional order is inverted
 ```
@@ -126,7 +126,7 @@ All missing scenarios can be implemented using **existing pavprot inputs**:
 **Pattern:** Reference gene exists but has no mapping to any query gene
 
 ### Required Data
-- Complete list of ALL reference genes → `--gff ref.gff` or `--ref-faa`
+- Complete list of ALL reference genes → `--gff ref.gff` or `--prot`
 - Current tracking file only contains genes WITH mappings → `--gff-comp`
 
 ### Logic
@@ -136,7 +136,7 @@ All missing scenarios can be implemented using **existing pavprot inputs**:
 
 2. From pavprot output, get set of ref genes that HAVE mappings
 
-3. Scenario G genes = ALL_ref_genes - mapped_ref_genes
+3. Scenario G genes = ALL_old_genes - mapped_old_genes
 
 4. For each unmapped ref gene:
    - Check if region exists in query assembly (optional: BLAST/alignment)
@@ -155,7 +155,7 @@ All missing scenarios can be implemented using **existing pavprot inputs**:
 **Pattern:** Query gene exists but has no mapping from any reference gene
 
 ### Required Data
-- Complete list of ALL query genes → `--gff query.gff` or `--qry-faa`
+- Complete list of ALL query genes → `--gff query.gff` or `--prot`
 - Current tracking file only contains genes WITH mappings → `--gff-comp`
 
 ### Logic
@@ -165,7 +165,7 @@ All missing scenarios can be implemented using **existing pavprot inputs**:
 
 2. From pavprot output, get set of query genes that HAVE mappings
 
-3. Scenario H genes = ALL_query_genes - mapped_query_genes
+3. Scenario H genes = ALL_new_genes - mapped_new_genes
 
 4. For each unmapped query gene:
    - Check if region exists in reference assembly
@@ -181,7 +181,7 @@ All missing scenarios can be implemented using **existing pavprot inputs**:
 
 ## Distinguishing C, D, I
 
-**Current Problem:** All three scenarios have `ref_multi_query=1` AND `qry_multi_ref=1`, but they represent different mapping patterns.
+**Current Problem:** All three scenarios have `old_multi_new=1` AND `new_multi_old=1`, but they represent different mapping patterns.
 
 ### Mapping Patterns
 
@@ -205,7 +205,7 @@ Scenario I:
 1. Identify "cross-mapping groups":
    - Find all ref genes that share at least one query gene
    - Find all query genes that share at least one ref gene
-   - Build connected components of (ref_genes, query_genes)
+   - Build connected components of (old_genes, new_genes)
 
 2. For each group with 2 ref genes (R1, R2) and 2 query genes (Q1, Q2):
 
@@ -243,8 +243,8 @@ Scenario I:
 
 ### For Scenario F
 ```
-swapped_with_ref_gene    - ID of the ref gene this was swapped with
-swapped_with_query_gene  - ID of the query gene this was swapped with
+swapped_with_old_gene    - ID of the ref gene this was swapped with
+swapped_with_new_gene  - ID of the query gene this was swapped with
 is_positional_swap       - 1 if detected as Scenario F
 ```
 
@@ -254,8 +254,8 @@ mapping_status           - 'mapped' | 'ref_only' | 'query_only'
 ```
 
 Or create separate output files:
-- `*_unmapped_ref_genes.tsv` (Scenario G)
-- `*_unmapped_query_genes.tsv` (Scenario H)
+- `*_unmapped_old_genes.tsv` (Scenario G)
+- `*_unmapped_new_genes.tsv` (Scenario H)
 
 ### For C, D, I Distinction
 ```
@@ -286,13 +286,13 @@ def detect_unmapped_genes(pavprot_output, ref_faa, qry_faa, ref_gff=None, query_
 
     Args:
         pavprot_output: Path to pavprot TSV output
-        ref_faa: Path to reference protein FASTA (--ref-faa)
-        qry_faa: Path to query protein FASTA (--qry-faa)
+        ref_faa: Path to reference protein FASTA (--prot)
+        qry_faa: Path to query protein FASTA (--prot)
         ref_gff: Optional path to reference GFF3 (--gff first file)
         query_gff: Optional path to query GFF3 (--gff second file)
 
     Returns:
-        Tuple of (unmapped_ref_genes_df, unmapped_query_genes_df)
+        Tuple of (unmapped_old_genes_df, unmapped_new_genes_df)
     """
     pass
 
@@ -327,7 +327,7 @@ def classify_cross_mappings(pavprot_output):
 
 Add new arguments to pavprot:
 ```
---detect-unmapped      Detect scenarios G and H (requires --ref-faa and --qry-faa)
+--detect-unmapped      Detect scenarios G and H (requires --prot and --prot)
 --detect-swaps         Detect scenario F (requires --gff with 2 files)
 --classify-cross       Classify cross-mappings into C, D, I
 ```
@@ -336,8 +336,8 @@ Or run as standalone after pavprot completes:
 ```bash
 python gsmc.py \
     --pavprot-output pavprot_out/synonym_mapping_liftover_gffcomp.tsv \
-    --ref-faa ref.faa \
-    --qry-faa query.faa \
+    --prot ref.faa \
+    --prot query.faa \
     --gff ref.gff,query.gff
 ```
 

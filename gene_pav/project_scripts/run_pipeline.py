@@ -901,27 +901,27 @@ class PipelineRunner:
             qry_df['transcript_id'] = qry_df['gene_name'].str.replace(r'_sample_\d+$', '', regex=True)
 
             # Get PAVprot data with mapping and class info
-            pavprot_df = self.transcript_df[['ref_transcript', 'query_transcript',
+            pavprot_df = self.transcript_df[['old_transcript', 'new_transcript',
                                              'class_type_gene', 'class_type_transcript']].copy()
 
             # Add mapping_type from gene_df if available
             if self.gene_df is not None and 'mapping_type' in self.gene_df.columns:
-                gene_mapping = self.gene_df[['ref_gene', 'query_gene', 'mapping_type']].drop_duplicates()
-                # Get ref_gene and query_gene from transcript data
-                if 'ref_gene' in self.transcript_df.columns:
-                    pavprot_df['ref_gene'] = self.transcript_df['ref_gene']
-                    pavprot_df['query_gene'] = self.transcript_df['query_gene']
-                    pavprot_df = pavprot_df.merge(gene_mapping, on=['ref_gene', 'query_gene'], how='left')
+                gene_mapping = self.gene_df[['old_gene', 'new_gene', 'mapping_type']].drop_duplicates()
+                # Get old_gene and new_gene from transcript data
+                if 'old_gene' in self.transcript_df.columns:
+                    pavprot_df['old_gene'] = self.transcript_df['old_gene']
+                    pavprot_df['new_gene'] = self.transcript_df['new_gene']
+                    pavprot_df = pavprot_df.merge(gene_mapping, on=['old_gene', 'new_gene'], how='left')
 
             # Merge ref pLDDT with PAVprot data
             ref_merged = ref_df[['transcript_id', 'residue_plddt_mean']].merge(
-                pavprot_df.rename(columns={'ref_transcript': 'transcript_id'}),
+                pavprot_df.rename(columns={'old_transcript': 'transcript_id'}),
                 on='transcript_id', how='inner'
             )
 
             # Merge query pLDDT with PAVprot data
             qry_merged = qry_df[['transcript_id', 'residue_plddt_mean']].merge(
-                pavprot_df.rename(columns={'query_transcript': 'transcript_id'}),
+                pavprot_df.rename(columns={'new_transcript': 'transcript_id'}),
                 on='transcript_id', how='inner'
             )
 
@@ -1099,12 +1099,12 @@ class PipelineRunner:
 
         # Rename columns for clarity
         psauron_ref = psauron_ref.rename(columns={
-            'description': 'ref_transcript',
+            'description': 'old_transcript',
             'psauron_is_protein': 'ref_psauron_is_protein',
             'in-frame_score': 'ref_psauron_score'
         })
         psauron_qry = psauron_qry.rename(columns={
-            'description': 'query_transcript',
+            'description': 'new_transcript',
             'psauron_is_protein': 'qry_psauron_is_protein',
             'in-frame_score': 'qry_psauron_score'
         })
@@ -1117,13 +1117,13 @@ class PipelineRunner:
         # Merge psauron scores with transcript-level data
         # Left join to keep all original records
         merged_df = transcript_df.merge(
-            psauron_ref[['ref_transcript', 'ref_psauron_is_protein', 'ref_psauron_score']],
-            on='ref_transcript',
+            psauron_ref[['old_transcript', 'ref_psauron_is_protein', 'ref_psauron_score']],
+            on='old_transcript',
             how='left'
         )
         merged_df = merged_df.merge(
-            psauron_qry[['query_transcript', 'qry_psauron_is_protein', 'qry_psauron_score']],
-            on='query_transcript',
+            psauron_qry[['new_transcript', 'qry_psauron_is_protein', 'qry_psauron_score']],
+            on='new_transcript',
             how='left'
         )
 
@@ -1133,7 +1133,7 @@ class PipelineRunner:
         print(f"  [DONE] Saved transcript-level: {transcript_out}")
 
         # Calculate gene-level aggregation (mean of transcript scores)
-        gene_agg = merged_df.groupby(['ref_gene', 'query_gene']).agg({
+        gene_agg = merged_df.groupby(['old_gene', 'new_gene']).agg({
             'ref_psauron_score': 'mean',
             'qry_psauron_score': 'mean',
             'ref_psauron_is_protein': lambda x: x.mode().iloc[0] if len(x.mode()) > 0 else None,
@@ -1150,7 +1150,7 @@ class PipelineRunner:
             gene_df = pd.read_csv(self.gene_tsv, sep='\t')
             gene_merged = gene_df.merge(
                 gene_agg,
-                on=['ref_gene', 'query_gene'],
+                on=['old_gene', 'new_gene'],
                 how='left'
             )
 
@@ -1326,34 +1326,34 @@ class PipelineRunner:
 
                 # Merge ref pLDDT with transcript data to get gene mapping
                 ref_trans_plddt = proteinx_ref[['transcript_id', 'residue_plddt_mean']].merge(
-                    psauron_trans_df[['ref_transcript', 'ref_gene', 'query_gene']].rename(
-                        columns={'ref_transcript': 'transcript_id'}),
+                    psauron_trans_df[['old_transcript', 'old_gene', 'new_gene']].rename(
+                        columns={'old_transcript': 'transcript_id'}),
                     on='transcript_id', how='inner'
                 )
 
                 # Merge query pLDDT with transcript data
                 qry_trans_plddt = proteinx_qry[['transcript_id', 'residue_plddt_mean']].merge(
-                    psauron_trans_df[['query_transcript', 'ref_gene', 'query_gene']].rename(
-                        columns={'query_transcript': 'transcript_id'}),
+                    psauron_trans_df[['new_transcript', 'old_gene', 'new_gene']].rename(
+                        columns={'new_transcript': 'transcript_id'}),
                     on='transcript_id', how='inner'
                 )
 
                 # Aggregate pLDDT to gene level (mean of transcript pLDDT per gene pair)
-                ref_gene_plddt = ref_trans_plddt.groupby(['ref_gene', 'query_gene']).agg({
+                old_gene_plddt = ref_trans_plddt.groupby(['old_gene', 'new_gene']).agg({
                     'residue_plddt_mean': 'mean'
                 }).reset_index().rename(columns={'residue_plddt_mean': 'ref_plddt_mean'})
 
-                qry_gene_plddt = qry_trans_plddt.groupby(['ref_gene', 'query_gene']).agg({
+                qry_gene_plddt = qry_trans_plddt.groupby(['old_gene', 'new_gene']).agg({
                     'residue_plddt_mean': 'mean'
                 }).reset_index().rename(columns={'residue_plddt_mean': 'qry_plddt_mean'})
 
                 # Start with gene-level Psauron data (already has mean scores)
-                gene_combined = df[['ref_gene', 'query_gene', ref_col, qry_col,
+                gene_combined = df[['old_gene', 'new_gene', ref_col, qry_col,
                                    'mapping_type', 'class_type_gene']].copy()
 
                 # Merge pLDDT scores
-                gene_combined = gene_combined.merge(ref_gene_plddt, on=['ref_gene', 'query_gene'], how='left')
-                gene_combined = gene_combined.merge(qry_gene_plddt, on=['ref_gene', 'query_gene'], how='left')
+                gene_combined = gene_combined.merge(old_gene_plddt, on=['old_gene', 'new_gene'], how='left')
+                gene_combined = gene_combined.merge(qry_gene_plddt, on=['old_gene', 'new_gene'], how='left')
 
                 # Filter to gene pairs with all scores
                 valid_pairs = gene_combined.dropna(subset=[ref_col, qry_col, 'ref_plddt_mean', 'qry_plddt_mean'])

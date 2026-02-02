@@ -384,7 +384,7 @@ def plot_outlier_analysis(df, output_prefix):
 
     # Save outlier list
     outlier_file = f"{output_prefix}_outliers.tsv"
-    df_outliers_save = df_outliers[['ref_gene', 'query_gene', 'class_code', 'class_type',
+    df_outliers_save = df_outliers[['old_gene', 'new_gene', 'class_code', 'class_type',
                                      'query_total_ipr_domain_length', 'ref_total_ipr_domain_length',
                                      'diff', 'abs_diff', 'ratio']].sort_values('abs_diff', ascending=False)
     df_outliers_save.to_csv(outlier_file, sep='\t', index=False, float_format='%.2f')
@@ -465,7 +465,7 @@ def plot_outlier_analysis(df, output_prefix):
 
     print(f"\n  Top 5 outliers:", file=sys.stderr)
     for i, row in df_outliers_save.head(5).iterrows():
-        print(f"    {row['query_gene']} vs {row['ref_gene']}: "
+        print(f"    {row['new_gene']} vs {row['old_gene']}: "
               f"Δ={row['diff']:+.0f} aa (Q={row['query_total_ipr_domain_length']:.0f}, "
               f"R={row['ref_total_ipr_domain_length']:.0f}, code={row['class_code']})",
               file=sys.stderr)

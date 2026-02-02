@@ -35,17 +35,17 @@ New:  ◄────┤  Gene 1 ├─────┤  Gene 2 ├────�
 - Annotation artifact
 - Assembly difference
 
-**PAVprot indicators:** `ref_multi_query = 1`
+**PAVprot indicators:** `old_multi_new = 1`
 
 **Logic to investigate this scenario:**
 ```
-1. Filter pavprot output where ref_multi_query = 1
-2. Group by ref_gene to get all associated query_genes
+1. Filter pavprot output where old_multi_new = 1
+2. Group by old_gene to get all associated new_genes
 3. For each group:
    - Check genomic coordinates of query genes (adjacent? same chromosome?)
    - Compare class_codes (are mappings consistent quality?)
    - Check InterProScan domains (shared domains between query genes?)
-4. Output: ref_gene, query_genes_list, query_genes_coordinates, domain_overlap
+4. Output: old_gene, new_genes_list, new_genes_coordinates, domain_overlap
 ```
 
 ---
@@ -77,17 +77,17 @@ New:    ◄─────────────┤  Gene 1 ├─────
 - Assembly difference
 - Tandem duplicates merged
 
-**PAVprot indicators:** `qry_multi_ref = 1`
+**PAVprot indicators:** `new_multi_old = 1`
 
 **Logic to investigate this scenario:**
 ```
-1. Filter pavprot output where qry_multi_ref = 1
-2. Group by query_gene to get all associated ref_genes
+1. Filter pavprot output where new_multi_old = 1
+2. Group by new_gene to get all associated old_genes
 3. For each group:
    - Check genomic coordinates of ref genes (adjacent? tandem duplicates?)
    - Compare ref gene lengths and structures
    - Check if ref genes share InterProScan domains
-4. Output: query_gene, ref_genes_list, ref_genes_coordinates, merged_or_fused
+4. Output: new_gene, old_genes_list, old_genes_coordinates, merged_or_fused
 ```
 
 ---
@@ -128,11 +128,11 @@ New:    ◄─────────────┤  Gene 1 ├─────
 - Domain shuffling
 - Annotation boundary issues
 
-**PAVprot indicators:** `ref_multi_query = 1` AND `qry_multi_ref = 1` (partial)
+**PAVprot indicators:** `old_multi_new = 1` AND `new_multi_old = 1` (partial)
 
 **Logic to investigate this scenario:**
 ```
-1. Find gene groups where BOTH ref_multi_query = 1 AND qry_multi_ref = 1
+1. Find gene groups where BOTH old_multi_new = 1 AND new_multi_old = 1
 2. Build mapping matrix for each group:
    - R1_maps_to = set of query genes R1 maps to
    - R2_maps_to = set of query genes R2 maps to
@@ -183,11 +183,11 @@ New:    ◄─────────────┤  Gene 1 ├─────
 - High sequence similarity between gene pairs
 - Paralogous gene families
 
-**PAVprot indicators:** `ref_multi_query = 1` AND `qry_multi_ref = 1` (complete)
+**PAVprot indicators:** `old_multi_new = 1` AND `new_multi_old = 1` (complete)
 
 **Logic to investigate this scenario:**
 ```
-1. Find gene groups where BOTH ref_multi_query = 1 AND qry_multi_ref = 1
+1. Find gene groups where BOTH old_multi_new = 1 AND new_multi_old = 1
 2. Build mapping matrix for each group:
    - R1_maps_to = set of query genes R1 maps to
    - R2_maps_to = set of query genes R2 maps to
@@ -233,11 +233,11 @@ New:    ◄─────────────┤  Gene 1 ├─────
 - True orthologous relationship
 - Stable genomic region
 
-**PAVprot indicators:** `ref_multi_query = 0` AND `qry_multi_ref = 0`
+**PAVprot indicators:** `old_multi_new = 0` AND `new_multi_old = 0`
 
 **Logic to investigate this scenario:**
 ```
-1. Filter pavprot output where ref_multi_query = 0 AND qry_multi_ref = 0
+1. Filter pavprot output where old_multi_new = 0 AND new_multi_old = 0
 2. These are true 1:1 ortholog candidates
 3. For validation:
    - Check exact_match = 1 (strongest evidence)
@@ -292,13 +292,13 @@ New:    ◄─────────────┤  Gene 1 ├─────
    - ref_positions = {gene_id: (chrom, start, end, strand)}
    - query_positions = {gene_id: (chrom, start, end, strand)}
 
-2. For each 1:1 mapping pair (ref_multi_query=0, qry_multi_ref=0):
+2. For each 1:1 mapping pair (old_multi_new=0, new_multi_old=0):
    - Get ref gene position and query gene position
    - Find neighboring genes in both genomes
 
 3. Detect swap pattern:
-   - If ref_gene_A at position P1 maps to query_gene at position Q2
-   - AND ref_gene_B at position P2 maps to query_gene at position Q1
+   - If old_gene_A at position P1 maps to new_gene at position Q2
+   - AND old_gene_B at position P2 maps to new_gene at position Q1
    - Where P1 < P2 but Q1 > Q2 (or vice versa)
    - Flag as positional swap
 
@@ -345,21 +345,21 @@ New:    ◄─────────────┤  Gene 1 ├─────
 **Logic to investigate this scenario:**
 ```
 1. Get complete set of reference genes from ref GFF3:
-   - all_ref_genes = parse_gff3(ref_gff) → set of gene IDs
+   - all_old_genes = parse_gff3(ref_gff) → set of gene IDs
 
 2. Get set of reference genes that have mappings in pavprot output:
-   - mapped_ref_genes = set(pavprot_df['ref_gene'].unique())
+   - mapped_old_genes = set(pavprot_df['old_gene'].unique())
 
 3. Calculate unmapped reference genes:
-   - unmapped_ref = all_ref_genes - mapped_ref_genes
+   - unmapped_ref = all_old_genes - mapped_old_genes
 
 4. For each unmapped ref gene:
    - Get genomic coordinates from GFF3
    - Run DIAMOND blastp against query proteome to check if sequence exists
    - Check for assembly gaps at corresponding query position
 
-5. Output: unmapped_ref_genes.tsv with columns:
-   - ref_gene, ref_chrom, ref_start, ref_end, blast_hit_in_query, possible_cause
+5. Output: unmapped_old_genes.tsv with columns:
+   - old_gene, ref_chrom, ref_start, ref_end, blast_hit_in_query, possible_cause
 ```
 
 ---
@@ -402,21 +402,21 @@ New:    ◄─────────────┤  Gene 1 ├─────
 **Logic to investigate this scenario:**
 ```
 1. Get complete set of query genes from query GFF3:
-   - all_query_genes = parse_gff3(query_gff) → set of gene IDs
+   - all_new_genes = parse_gff3(query_gff) → set of gene IDs
 
 2. Get set of query genes that have mappings in pavprot output:
-   - mapped_query_genes = set(pavprot_df['query_gene'].unique())
+   - mapped_new_genes = set(pavprot_df['new_gene'].unique())
 
 3. Calculate unmapped query genes:
-   - unmapped_query = all_query_genes - mapped_query_genes
+   - unmapped_query = all_new_genes - mapped_new_genes
 
 4. For each unmapped query gene:
    - Get genomic coordinates from GFF3
    - Run DIAMOND blastp against ref proteome to check if sequence exists
    - Check InterProScan for known domains (novel vs orphan gene)
 
-5. Output: unmapped_query_genes.tsv with columns:
-   - query_gene, query_chrom, query_start, query_end, blast_hit_in_ref, has_known_domains
+5. Output: unmapped_new_genes.tsv with columns:
+   - new_gene, query_chrom, query_start, query_end, blast_hit_in_ref, has_known_domains
 ```
 
 ---
@@ -457,11 +457,11 @@ New:    ◄─────────────┤  Gene 1 ├─────
 - Shared domains between old new Gene 2 and old genes
 - Annotation boundary differences
 
-**PAVprot indicators:** `ref_multi_query = 1` AND `qry_multi_ref = 1` (partial)
+**PAVprot indicators:** `old_multi_new = 1` AND `new_multi_old = 1` (partial)
 
 **Logic to investigate this scenario:**
 ```
-1. Find gene groups where BOTH ref_multi_query = 1 AND qry_multi_ref = 1
+1. Find gene groups where BOTH old_multi_new = 1 AND new_multi_old = 1
 2. Build mapping matrix for each group:
    - R1_maps_to = set of query genes R1 maps to
    - R2_maps_to = set of query genes R2 maps to
@@ -513,7 +513,7 @@ New:  ◄─┤  Gene 1 ├────┤  Gene 2 ├────┤  Gene 3 �
 **Logic to investigate this scenario:**
 ```
 1. Filter pavprot output where ref_query_count >= 3
-2. Group by ref_gene to get all associated query_genes
+2. Group by old_gene to get all associated new_genes
 3. For each group:
    - Get genomic coordinates of all query genes
    - Check if query genes are tandemly arranged (adjacent on chromosome)
@@ -523,7 +523,7 @@ New:  ◄─┤  Gene 1 ├────┤  Gene 2 ├────┤  Gene 3 �
    - Tandem duplication: query genes adjacent, high similarity
    - Dispersed duplication: query genes on different chromosomes
    - Assembly fragmentation: query genes very short, incomplete
-5. Output: ref_gene, query_count, expansion_type, query_coordinates, similarity_matrix
+5. Output: old_gene, query_count, expansion_type, query_coordinates, similarity_matrix
 ```
 
 ---
@@ -549,8 +549,8 @@ New:  ◄─┤  Gene 1 ├────┤  Gene 2 ├────┤  Gene 3 �
 
 | Column | Description |
 |--------|-------------|
-| `ref_multi_query` | 0=exclusive 1:1, 1=one-to-many, 2=partner has others |
-| `qry_multi_ref` | 0=exclusive 1:1, 1=many-to-one, 2=partner has others |
+| `old_multi_new` | 0=exclusive 1:1, 1=one-to-many, 2=partner has others |
+| `new_multi_old` | 0=exclusive 1:1, 1=many-to-one, 2=partner has others |
 | `ref_query_count` | Number of query genes this ref maps to |
 | `qry_ref_count` | Number of ref genes this query maps to |
 | `exact_match` | 1 if all transcripts are 'em' class code |
@@ -562,14 +562,14 @@ New:  ◄─┤  Gene 1 ├────┤  Gene 2 ├────┤  Gene 3 �
 
 | Scenario | Currently Detected | Data Source Needed |
 |----------|-------------------|-------------------|
-| A | ✓ `ref_multi_query = 1` | Pavprot output |
-| B | ✓ `qry_multi_ref = 1` | Pavprot output |
+| A | ✓ `old_multi_new = 1` | Pavprot output |
+| B | ✓ `new_multi_old = 1` | Pavprot output |
 | C | ⚠️ Lumped with D, I | Pavprot output (mapping matrix) |
 | D | ⚠️ Lumped with C, I | Pavprot output (mapping matrix) |
 | E | ✓ Both flags = 0 | Pavprot output |
 | F | ✗ Not implemented | `--gff` (genomic positions) |
-| G | ✗ Not implemented | `--ref-faa` or `--gff` (full gene list) |
-| H | ✗ Not implemented | `--qry-faa` or `--gff` (full gene list) |
+| G | ✗ Not implemented | `--prot` or `--gff` (full gene list) |
+| H | ✗ Not implemented | `--prot` or `--gff` (full gene list) |
 | I | ⚠️ Lumped with C, D | Pavprot output (mapping matrix) |
 | J | ✓ `ref_query_count >= 3` | Pavprot output |
 
@@ -583,8 +583,8 @@ All scenarios can be implemented using existing pavprot inputs:
 |-------|----------|----------|
 | `--gff-comp` | GffCompare tracking file | All mapping scenarios (A-E, I, J) |
 | `--gff ref.gff,query.gff` | Genomic positions, full gene lists | F (positions), G/H (complete gene sets) |
-| `--ref-faa` | Reference protein sequences | G (complete ref protein list) |
-| `--qry-faa` | Query protein sequences | H (complete query protein list) |
+| `--prot` | Reference protein sequences | G (complete ref protein list) |
+| `--prot` | Query protein sequences | H (complete query protein list) |
 | `--interproscan-out` | Domain annotations | Domain overlap analysis for A, B, J |
 
 ---
@@ -595,8 +595,8 @@ All scenarios can be implemented using existing pavprot inputs:
 |----------|-------------|
 | C, D, I | `*_cross_mapping_classified.tsv` |
 | F | `*_positional_swaps.tsv` |
-| G | `*_unmapped_ref_genes.tsv` |
-| H | `*_unmapped_query_genes.tsv` |
+| G | `*_unmapped_old_genes.tsv` |
+| H | `*_unmapped_new_genes.tsv` |
 
 ---
 

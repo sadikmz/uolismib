@@ -61,8 +61,8 @@ python gene_pav/pavprot.py \
   --interproscan-out GCF_013085055.1_interpro.tsv,foc67_v68_interpro.tsv \
   --liftoff-gff liftoff_foc67.gff3 \
   --class-code em,j \
-  --ref-faa GCF_013085055.1.prot.faa \
-  --qry-faa foc67_v68.prot.faa \
+  --prot GCF_013085055.1.prot.faa \
+  --prot foc67_v68.prot.faa \
   --run-diamond \
   --diamond-threads 40 \
   --output-prefix foc67_vs_GCF013085055
@@ -72,10 +72,10 @@ python gene_pav/pavprot.py \
 
 ### Standard Output (no InterProScan)
 ```
-ref_gene
-ref_transcript
-query_gene
-query_transcript
+old_gene
+old_transcript
+new_gene
+new_transcript
 class_code
 exons
 class_code_multi
@@ -88,10 +88,10 @@ emckmnje
 
 ### With InterProScan
 ```
-ref_gene
-ref_transcript
-query_gene
-query_transcript
+old_gene
+old_transcript
+new_gene
+new_transcript
 class_code
 exons
 class_code_multi
@@ -229,8 +229,8 @@ python gene_pav/pavprot.py \
   --interproscan-out ref_interpro.tsv,qry_interpro.tsv \
   --liftoff-gff liftoff_output.gff3 \
   --class-code em,j \
-  --ref-faa reference.prot.faa \
-  --qry-faa query.prot.faa \
+  --prot reference.prot.faa \
+  --prot query.prot.faa \
   --run-diamond \
   --diamond-threads 40 \
   --output-prefix my_comparison

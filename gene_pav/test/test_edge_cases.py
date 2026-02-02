@@ -132,13 +132,13 @@ class TestMissingColumns(unittest.TestCase):
         if os.path.exists(self.test_dir):
             shutil.rmtree(self.test_dir)
 
-    def test_mapping_tsv_missing_ref_gene(self):
-        """Test mapping TSV missing ref_gene column."""
-        # Missing ref_gene column
+    def test_mapping_tsv_missing_old_gene(self):
+        """Test mapping TSV missing old_gene column."""
+        # Missing old_gene column
         data = {
-            'ref_transcript': ['t1', 't2'],
-            'query_gene': ['q1', 'q2'],
-            'query_transcript': ['qt1', 'qt2'],
+            'old_transcript': ['t1', 't2'],
+            'new_gene': ['q1', 'q2'],
+            'new_transcript': ['qt1', 'qt2'],
             'class_code': ['=', '=']
         }
         df = pd.DataFrame(data)
@@ -149,13 +149,13 @@ class TestMissingColumns(unittest.TestCase):
         with self.assertRaises((KeyError, ValueError)):
             detect_multiple_mappings(filepath)
 
-    def test_mapping_tsv_missing_query_gene(self):
-        """Test mapping TSV missing query_gene column."""
-        # Missing query_gene column
+    def test_mapping_tsv_missing_new_gene(self):
+        """Test mapping TSV missing new_gene column."""
+        # Missing new_gene column
         data = {
-            'ref_gene': ['r1', 'r2'],
-            'ref_transcript': ['t1', 't2'],
-            'query_transcript': ['qt1', 'qt2'],
+            'old_gene': ['r1', 'r2'],
+            'old_transcript': ['t1', 't2'],
+            'new_transcript': ['qt1', 'qt2'],
             'class_code': ['=', '=']
         }
         df = pd.DataFrame(data)

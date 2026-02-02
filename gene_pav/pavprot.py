@@ -158,7 +158,7 @@ class PAVprot:
 
         Returns:
             Tuple of (full_dict, filtered_dict) where each is a dict mapping
-            ref_gene to list of entry dictionaries
+            old_gene to list of entry dictionaries
         """
         rna_to_protein, locus_to_gene = {}, {}
         if feature_table:
@@ -189,10 +189,10 @@ class PAVprot:
                 if len(parts) < 3:
                     continue
 
-                ref_gene_raw, ref_trans_raw = [x.strip() for x in ref_field.split('|')]
+                old_gene_raw, ref_trans_raw = [x.strip() for x in ref_field.split('|')]
                 ref_trans_clean = ref_trans_raw.replace('rna-', '')
                 ref_trans_final = rna_to_protein.get(ref_trans_clean, ref_trans_clean)
-                ref_gene = locus_to_gene.get(ref_gene_raw, ref_gene_raw)
+                old_gene = locus_to_gene.get(old_gene_raw, old_gene_raw)
 
                 q_gene_full = parts[0]
                 q_gene = q_gene_full.split(':')[-1]
@@ -203,17 +203,17 @@ class PAVprot:
                     exons = None
 
                 entry = {
-                    "ref_gene": ref_gene,
-                    "ref_transcript": ref_trans_final,
-                    "query_gene": q_gene,
-                    "query_transcript": q_trans,
+                    "old_gene": old_gene,
+                    "old_transcript": ref_trans_final,
+                    "new_gene": q_gene,
+                    "new_transcript": q_trans,
                     "class_code": class_code,
                     "exons": exons
                 }
 
-                full_dict[ref_gene].append(entry)
+                full_dict[old_gene].append(entry)
                 if not filter_codes or class_code in filter_codes:
-                    filtered_dict[ref_gene].append(entry)
+                    filtered_dict[old_gene].append(entry)
 
         return dict(full_dict), dict(filtered_dict)
 
@@ -261,27 +261,27 @@ class PAVprot:
 
         Computes:
             Query-gene level:
-                - class_code_multi_query: aggregated class codes for query_gene
-                - class_type_transcript: class_type based on query_gene aggregation
+                - class_code_multi_query: aggregated class codes for new_gene
+                - class_type_transcript: class_type based on new_gene aggregation
                 - ackmnj: 1 if any code in {em,c,k,m,n,j}
                 - ackmnje: 1 if any code in {em,c,k,m,n,j,e}
 
             Ref-gene level:
-                - class_code_multi_ref: aggregated class codes for ref_gene
+                - class_code_multi_ref: aggregated class codes for old_gene
 
             Gene-pair level:
-                - class_code_pair: aggregated class codes for (ref_gene, query_gene) pair
+                - class_code_pair: aggregated class codes for (old_gene, new_gene) pair
                 - class_type_gene: class_type at gene-pair level
                 - exact_match: 1 if ALL transcripts in pair are 'em'
-                - ref_multi_transcript: 1 if ref_gene has >1 transcripts globally
-                - qry_multi_transcript: 1 if query_gene has >1 transcripts globally
-                - ref_multi_query: 0=exclusive 1:1, 1=one-to-many, 2=partner has others
-                - qry_multi_ref: 0=exclusive 1:1, 1=many-to-one, 2=partner has others
+                - ref_multi_transcript: 1 if old_gene has >1 transcripts globally
+                - qry_multi_transcript: 1 if new_gene has >1 transcripts globally
+                - old_multi_new: 0=exclusive 1:1, 1=one-to-many, 2=partner has others
+                - new_multi_old: 0=exclusive 1:1, 1=many-to-one, 2=partner has others
                 - ref_query_count: number of query genes this ref maps to
                 - qry_ref_count: number of ref genes this query maps to
 
         Args:
-            full_dict: Dictionary of entries keyed by ref_gene
+            full_dict: Dictionary of entries keyed by old_gene
 
         Returns:
             Updated full_dict with all metrics added to each entry
@@ -289,46 +289,46 @@ class PAVprot:
         # =====================================================================
         # Single pass: Collect all groupings
         # =====================================================================
-        query_gene_to_entries = defaultdict(list)
-        ref_gene_to_entries = defaultdict(list)
+        new_gene_to_entries = defaultdict(list)
+        old_gene_to_entries = defaultdict(list)
         gene_pair_entries = defaultdict(list)
-        ref_gene_transcripts = defaultdict(set)
+        old_gene_transcripts = defaultdict(set)
         qry_gene_transcripts = defaultdict(set)
         ref_to_queries = defaultdict(set)
         qry_to_refs = defaultdict(set)
 
         for entries in full_dict.values():
             for entry in entries:
-                ref_gene = entry['ref_gene']
-                qry_gene = entry['query_gene']
+                old_gene = entry['old_gene']
+                qry_gene = entry['new_gene']
 
-                # Group by query_gene and ref_gene
-                query_gene_to_entries[qry_gene].append(entry)
-                ref_gene_to_entries[ref_gene].append(entry)
+                # Group by new_gene and old_gene
+                new_gene_to_entries[qry_gene].append(entry)
+                old_gene_to_entries[old_gene].append(entry)
 
                 # Group by gene pair
-                gene_pair_entries[(ref_gene, qry_gene)].append(entry)
+                gene_pair_entries[(old_gene, qry_gene)].append(entry)
 
                 # Collect transcripts per gene (global counting)
-                ref_gene_transcripts[ref_gene].add(entry['ref_transcript'])
-                qry_gene_transcripts[qry_gene].add(entry['query_transcript'])
+                old_gene_transcripts[old_gene].add(entry['old_transcript'])
+                qry_gene_transcripts[qry_gene].add(entry['new_transcript'])
 
                 # Track gene-level mappings
-                ref_to_queries[ref_gene].add(qry_gene)
-                qry_to_refs[qry_gene].add(ref_gene)
+                ref_to_queries[old_gene].add(qry_gene)
+                qry_to_refs[qry_gene].add(old_gene)
 
         # =====================================================================
         # Compute query-gene level metrics
         # =====================================================================
-        query_gene_info = {}
-        for qgene, qentries in query_gene_to_entries.items():
+        new_gene_info = {}
+        for qgene, qentries in new_gene_to_entries.items():
             class_codes = {e['class_code'] for e in qentries}
             code_str = ';'.join(sorted(class_codes))
             ctype = cls._assign_class_type(class_codes)
             ackmnj = 1 if class_codes & {'em', 'c', 'k', 'm', 'n', 'j'} else 0
             ackmnje = 1 if class_codes & {'em', 'c', 'k', 'm', 'n', 'j', 'e'} else 0
 
-            query_gene_info[qgene] = {
+            new_gene_info[qgene] = {
                 'class_code_multi_query': code_str,
                 'class_type_transcript': ctype,
                 'ackmnj': ackmnj,
@@ -338,47 +338,47 @@ class PAVprot:
         # =====================================================================
         # Compute ref-gene level metrics
         # =====================================================================
-        ref_gene_info = {}
-        for rgene, rentries in ref_gene_to_entries.items():
+        old_gene_info = {}
+        for rgene, rentries in old_gene_to_entries.items():
             class_codes = {e['class_code'] for e in rentries}
             code_str = ';'.join(sorted(class_codes))
-            ref_gene_info[rgene] = {'class_code_multi_ref': code_str}
+            old_gene_info[rgene] = {'class_code_multi_ref': code_str}
 
         # =====================================================================
         # Compute gene-pair level metrics
         # =====================================================================
         gene_pair_metrics = {}
-        for (ref_gene, qry_gene), pair_entries in gene_pair_entries.items():
+        for (old_gene, qry_gene), pair_entries in gene_pair_entries.items():
             class_codes = {e['class_code'] for e in pair_entries}
             exact_match = 1 if class_codes == {'em'} else 0
             class_code_pair = ';'.join(sorted(class_codes))
             class_type_gene = cls._assign_class_type(class_codes)
 
-            num_queries_for_ref = len(ref_to_queries[ref_gene])
+            num_queries_for_ref = len(ref_to_queries[old_gene])
             num_refs_for_qry = len(qry_to_refs[qry_gene])
 
-            # ref_multi_query encoding
+            # old_multi_new encoding
             if num_queries_for_ref > 1:
-                ref_multi_query = 1
+                old_multi_new = 1
             elif num_refs_for_qry > 1:
-                ref_multi_query = 2
+                old_multi_new = 2
             else:
-                ref_multi_query = 0
+                old_multi_new = 0
 
-            # qry_multi_ref encoding
+            # new_multi_old encoding
             if num_refs_for_qry > 1:
-                qry_multi_ref = 1
+                new_multi_old = 1
             elif num_queries_for_ref > 1:
-                qry_multi_ref = 2
+                new_multi_old = 2
             else:
-                qry_multi_ref = 0
+                new_multi_old = 0
 
-            gene_pair_metrics[(ref_gene, qry_gene)] = {
+            gene_pair_metrics[(old_gene, qry_gene)] = {
                 'exact_match': exact_match,
                 'class_code_pair': class_code_pair,
                 'class_type_gene': class_type_gene,
-                'ref_multi_query': ref_multi_query,
-                'qry_multi_ref': qry_multi_ref,
+                'old_multi_new': old_multi_new,
+                'new_multi_old': new_multi_old,
                 'ref_query_count': num_queries_for_ref,
                 'qry_ref_count': num_refs_for_qry
             }
@@ -388,11 +388,11 @@ class PAVprot:
         # =====================================================================
         for entries in full_dict.values():
             for entry in entries:
-                ref_gene = entry['ref_gene']
-                qry_gene = entry['query_gene']
+                old_gene = entry['old_gene']
+                qry_gene = entry['new_gene']
 
                 # Query gene metrics
-                qinfo = query_gene_info.get(qry_gene, {
+                qinfo = new_gene_info.get(qry_gene, {
                     'class_code_multi_query': entry['class_code'],
                     'class_type_transcript': 'pru',
                     'ackmnj': 0,
@@ -404,20 +404,20 @@ class PAVprot:
                 entry['ackmnje'] = qinfo['ackmnje']
 
                 # Ref gene metrics
-                rinfo = ref_gene_info.get(ref_gene, {'class_code_multi_ref': entry['class_code']})
+                rinfo = old_gene_info.get(old_gene, {'class_code_multi_ref': entry['class_code']})
                 entry['class_code_multi_ref'] = rinfo['class_code_multi_ref']
 
                 # Multi-transcript flags
-                entry['ref_multi_transcript'] = 1 if len(ref_gene_transcripts[ref_gene]) > 1 else 0
+                entry['ref_multi_transcript'] = 1 if len(old_gene_transcripts[old_gene]) > 1 else 0
                 entry['qry_multi_transcript'] = 1 if len(qry_gene_transcripts[qry_gene]) > 1 else 0
 
                 # Gene pair metrics
-                pair_metrics = gene_pair_metrics.get((ref_gene, qry_gene), {})
+                pair_metrics = gene_pair_metrics.get((old_gene, qry_gene), {})
                 entry['exact_match'] = pair_metrics.get('exact_match', 0)
                 entry['class_code_pair'] = pair_metrics.get('class_code_pair', entry['class_code'])
                 entry['class_type_gene'] = pair_metrics.get('class_type_gene', 'pru')
-                entry['ref_multi_query'] = pair_metrics.get('ref_multi_query', 0)
-                entry['qry_multi_ref'] = pair_metrics.get('qry_multi_ref', 0)
+                entry['old_multi_new'] = pair_metrics.get('old_multi_new', 0)
+                entry['new_multi_old'] = pair_metrics.get('new_multi_old', 0)
                 entry['ref_query_count'] = pair_metrics.get('ref_query_count', 1)
                 entry['qry_ref_count'] = pair_metrics.get('qry_ref_count', 1)
 
@@ -427,7 +427,7 @@ class PAVprot:
     def load_extra_copy_numbers(cls, liftoff_gff: str):
         """
         Parse Liftoff GFF3 (mRNA features) and extract extra_copy_number
-        Returns: {query_transcript_id: int(extra_copy_number)}
+        Returns: {new_transcript_id: int(extra_copy_number)}
         """
         extra_copy = {}
 
@@ -470,13 +470,13 @@ class PAVprot:
     @classmethod
     def filter_extra_copy_transcripts(cls, full_dict: dict, liftoff_gff: str = None):
         """
-        Add extra_copy_number from Liftoff GFF3 to entries based on query_transcript
+        Add extra_copy_number from Liftoff GFF3 to entries based on new_transcript
         """
         extra_copy_map = cls.load_extra_copy_numbers(liftoff_gff)
 
         for entries in full_dict.values():
             for entry in entries:
-                q_trans = entry["query_transcript"]
+                q_trans = entry["new_transcript"]
                 copy_num = extra_copy_map.get(q_trans, 0)  # default 0 if not found
                 entry["extra_copy_number"] = copy_num
 
@@ -615,19 +615,19 @@ class PAVprot:
         """
         for entries in data.values():
             for entry in entries:
-                # Add query InterProScan data (map by query_gene)
-                qry_gene = entry['query_gene']
+                # Add query InterProScan data (map by new_gene)
+                qry_gene = entry['new_gene']
                 if qry_gene in qry_interproscan_map:
-                    entry['query_gene_total_iprdom_len'] = qry_interproscan_map[qry_gene]
+                    entry['new_gene_total_iprdom_len'] = qry_interproscan_map[qry_gene]
                 else:
-                    entry['query_gene_total_iprdom_len'] = 0
+                    entry['new_gene_total_iprdom_len'] = 0
 
-                # Add reference InterProScan data (map by ref_gene)
-                ref_gene = entry['ref_gene']
-                if ref_gene in ref_interproscan_map:
-                    entry['ref_gene_total_iprdom_len'] = ref_interproscan_map[ref_gene]
+                # Add reference InterProScan data (map by old_gene)
+                old_gene = entry['old_gene']
+                if old_gene in ref_interproscan_map:
+                    entry['old_gene_total_iprdom_len'] = ref_interproscan_map[old_gene]
                 else:
-                    entry['ref_gene_total_iprdom_len'] = 0
+                    entry['old_gene_total_iprdom_len'] = 0
 
         return data
 
@@ -637,7 +637,7 @@ class PAVprot:
         Auto-detect whether InterProScan file matches reference or query transcripts.
 
         Args:
-            data: The main data dictionary with ref_transcript and query_transcript
+            data: The main data dictionary with old_transcript and new_transcript
             interproscan_tsv: Path to InterProScan TSV file
 
         Returns:
@@ -649,15 +649,15 @@ class PAVprot:
             return 'unknown'
 
         # Collect all reference and query transcript IDs from tracking data
-        ref_transcripts = set()
-        query_transcripts = set()
-        query_genes = set()
+        old_transcripts = set()
+        new_transcripts = set()
+        new_genes = set()
 
         for entries in data.values():
             for entry in entries:
-                ref_transcripts.add(entry['ref_transcript'])
-                query_transcripts.add(entry['query_transcript'])
-                query_genes.add(entry['query_gene'])
+                old_transcripts.add(entry['old_transcript'])
+                new_transcripts.add(entry['new_transcript'])
+                new_genes.add(entry['new_gene'])
 
         # Load protein IDs from InterProScan file
         interpro_proteins = set()
@@ -680,17 +680,17 @@ class PAVprot:
                         interpro_proteins.add(protein_id)
 
         # Count matches
-        ref_matches = len(interpro_proteins & ref_transcripts)
-        query_matches = len(interpro_proteins & query_transcripts)
-        query_gene_matches = len(interpro_proteins & query_genes)
+        ref_matches = len(interpro_proteins & old_transcripts)
+        query_matches = len(interpro_proteins & new_transcripts)
+        new_gene_matches = len(interpro_proteins & new_genes)
 
         # Combine query transcript and gene matches
-        total_query_matches = query_matches + query_gene_matches
+        total_query_matches = query_matches + new_gene_matches
 
         print(f"  → InterProScan auto-detection:", file=sys.stderr)
-        print(f"     Reference transcript matches: {ref_matches}/{len(ref_transcripts)}", file=sys.stderr)
-        print(f"     Query transcript matches: {query_matches}/{len(query_transcripts)}", file=sys.stderr)
-        print(f"     Query gene matches: {query_gene_matches}/{len(query_genes)}", file=sys.stderr)
+        print(f"     Reference transcript matches: {ref_matches}/{len(old_transcripts)}", file=sys.stderr)
+        print(f"     Query transcript matches: {query_matches}/{len(new_transcripts)}", file=sys.stderr)
+        print(f"     Query gene matches: {new_gene_matches}/{len(new_genes)}", file=sys.stderr)
 
         # Determine type based on match counts
         if ref_matches > total_query_matches:
@@ -799,7 +799,7 @@ class DiamondRunner:
 
         for entries in data.values():
             for entry in entries:
-                qid = entry["query_transcript"]
+                qid = entry["new_transcript"]
                 if qid in hits:
                     h = hits[qid]
                     entry["diamond"] = h
@@ -831,12 +831,12 @@ def enrich_pairwise_alignment(data: dict, ref_faa: str, qry_faa: str) -> dict:
 
     Performs local alignment for each transcript pair and adds:
     - pairwise_identity: Percent identity from local alignment
-    - pairwise_coverage_ref: Coverage of reference sequence
-    - pairwise_coverage_query: Coverage of query sequence
+    - pairwise_coverage_old: Coverage of reference sequence
+    - pairwise_coverage_new: Coverage of query sequence
     - pairwise_aligned_length: Length of alignment
 
     Args:
-        data: PAVprot data dictionary (ref_gene -> list of entries)
+        data: PAVprot data dictionary (old_gene -> list of entries)
         ref_faa: Path to reference protein FASTA
         qry_faa: Path to query protein FASTA
 
@@ -857,8 +857,8 @@ def enrich_pairwise_alignment(data: dict, ref_faa: str, qry_faa: str) -> dict:
 
     for entries in data.values():
         for entry in entries:
-            ref_trans = entry.get('ref_transcript', '')
-            qry_trans = entry.get('query_transcript', '')
+            ref_trans = entry.get('old_transcript', '')
+            qry_trans = entry.get('new_transcript', '')
 
             # Get sequences
             ref_seq = ref_seqs.get(ref_trans)
@@ -868,15 +868,15 @@ def enrich_pairwise_alignment(data: dict, ref_faa: str, qry_faa: str) -> dict:
                 # Perform local alignment
                 result = local_alignment_similarity(str(ref_seq), str(qry_seq))
                 entry['pairwise_identity'] = result.identity_percent
-                entry['pairwise_coverage_ref'] = result.coverage_ref
-                entry['pairwise_coverage_query'] = result.coverage_query
+                entry['pairwise_coverage_old'] = result.coverage_ref
+                entry['pairwise_coverage_new'] = result.coverage_query
                 entry['pairwise_aligned_length'] = result.aligned_length
                 aligned_count += 1
             else:
                 # Sequence not found - set to NA
                 entry['pairwise_identity'] = None
-                entry['pairwise_coverage_ref'] = None
-                entry['pairwise_coverage_query'] = None
+                entry['pairwise_coverage_old'] = None
+                entry['pairwise_coverage_new'] = None
                 entry['pairwise_aligned_length'] = None
 
             completed += 1
@@ -897,13 +897,14 @@ def create_argument_parser() -> argparse.ArgumentParser:
 
     # Core inputs
     parser.add_argument('--gff-comp', required=True)
-    parser.add_argument('--gff', help="GFF3 CDS feature table. Single GFF for reference only, or comma-separated 'ref.gff,query.gff' for both")
+    parser.add_argument('--gff', help="GFF3 CDS feature table. Single file or comma-separated 'old.gff,new.gff'. Order: old annotation first, new annotation second")
     parser.add_argument('--liftoff-gff', help="Liftoff GFF3 with extra_copy_number (optional)")
     parser.add_argument('--class-code', help="Comma-separated class codes (e.g. em,j)")
 
-    # FASTA and DIAMOND options
-    parser.add_argument('--ref-faa', help="Reference proteins FASTA")
-    parser.add_argument('--qry-faa', help="Query proteins FASTA")
+    # Protein FASTA options
+    parser.add_argument('--prot', help="Protein FASTA file(s). Single file or comma-separated 'old.faa,new.faa'. Order must match --gff")
+
+    # DIAMOND options
     parser.add_argument('--run-diamond', action='store_true')
     parser.add_argument('--run-bbh', action='store_true', help='Run bidirectional best hit analysis (requires --run-diamond)')
     parser.add_argument('--bbh-min-pident', type=float, default=30.0, help='Minimum pident for BBH analysis (default: 30.0)')
@@ -911,23 +912,22 @@ def create_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument('--diamond-threads', type=int, default=40)
 
     # Pairwise alignment options (Biopython local alignment)
-    parser.add_argument('--run-pairwise', action='store_true', help='Run Biopython pairwise alignment (adds pairwise_identity, pairwise_coverage_ref, pairwise_coverage_query, pairwise_aligned_length)')
+    parser.add_argument('--run-pairwise', action='store_true', help='Run Biopython pairwise alignment. Adds columns: pairwise_identity, pairwise_coverage_old, pairwise_coverage_new, pairwise_aligned_length')
 
     # Output options
     parser.add_argument('--output-prefix', default="synonym_mapping_liftover_gffcomp")
     parser.add_argument('--output-dir', default="pavprot_out", help="Output directory (default: pavprot_out)")
 
     # InterProScan options
-    parser.add_argument('--interproscan-out', help="InterProScan TSV output file(s). Single file for single GFF, or comma-separated for 2 GFFs. Format: 'ref_interpro.tsv' or 'ref_interpro.tsv,query_interpro.tsv'")
-    parser.add_argument('--run-interproscan', action='store_true', help='Run InterProScan on input protein files before parsing')
-    parser.add_argument('--input-prots', help="Comma-separated protein FASTA file(s). Single file for single GFF, or 2 files for 2 GFFs. Format: 'ref.faa' or 'ref.faa,query.faa'")
+    parser.add_argument('--interproscan-out', help="InterProScan TSV output file(s). Single file or comma-separated 'old_interpro.tsv,new_interpro.tsv'. Order must match --gff")
+    parser.add_argument('--run-interproscan', action='store_true', help='Run InterProScan on input protein files before parsing (requires --prot)')
     parser.add_argument('--interproscan-cpu', type=int, default=4, help='Number of CPUs for InterProScan (default: 4)')
     parser.add_argument('--interproscan-pathways', action='store_true', help='Include pathway annotations in InterProScan')
     parser.add_argument('--interproscan-databases', help='Databases to search (comma-separated, default: all)')
 
     # Output filtering options
     parser.add_argument('--filter-exact-match', action='store_true', help='Only output gene pairs with exact_match=1 (all transcripts are em)')
-    parser.add_argument('--filter-exclusive-1to1', action='store_true', help='Only output exclusive 1:1 mappings (ref_multi_query=0 AND qry_multi_ref=0)')
+    parser.add_argument('--filter-exclusive-1to1', action='store_true', help='Only output exclusive 1:1 mappings (old_multi_new=0 AND new_multi_old=0)')
     parser.add_argument('--filter-class-type-gene', help='Only output gene pairs with specified class_type_gene (comma-separated, e.g., "a,ackmnj")')
 
     return parser
@@ -951,11 +951,21 @@ def validate_inputs(args, parser: argparse.ArgumentParser) -> Tuple[List[str], L
             if not os.path.exists(gff_file):
                 parser.error(f"GFF file not found: {gff_file}")
 
-    # Validate FASTA files
-    if args.ref_faa and not os.path.exists(args.ref_faa):
-        parser.error(f"Reference FASTA not found: {args.ref_faa}")
-    if args.qry_faa and not os.path.exists(args.qry_faa):
-        parser.error(f"Query FASTA not found: {args.qry_faa}")
+    # Parse and validate protein FASTA files from --prot
+    args.ref_faa = None
+    args.qry_faa = None
+    if args.prot:
+        prot_files = [f.strip() for f in args.prot.split(',')]
+        for pf in prot_files:
+            if not os.path.exists(pf):
+                parser.error(f"Protein FASTA not found: {pf}")
+        if len(prot_files) >= 1:
+            args.ref_faa = prot_files[0]
+        if len(prot_files) >= 2:
+            args.qry_faa = prot_files[1]
+        if len(prot_files) > 2:
+            parser.error(f"--prot accepts at most 2 files (ref,query). Got {len(prot_files)}")
+
     if args.liftoff_gff and not os.path.exists(args.liftoff_gff):
         parser.error(f"Liftoff GFF not found: {args.liftoff_gff}")
 
@@ -975,17 +985,17 @@ def validate_inputs(args, parser: argparse.ArgumentParser) -> Tuple[List[str], L
 
 def _run_interproscan_pipeline(args, parser, ref_gff_list: List[str], num_gffs: int) -> List[str]:
     """Run InterProScan on input protein files."""
-    if not args.input_prots:
-        parser.error("--run-interproscan requires --input-prots argument")
+    if not args.prot:
+        parser.error("--run-interproscan requires --prot argument")
 
-    input_prot_files = [f.strip() for f in args.input_prots.split(',')]
+    input_prot_files = [f.strip() for f in args.prot.split(',')]
 
     # Validate file counts match
     if args.gff:
         if num_gffs == 2 and len(input_prot_files) != 2:
-            parser.error(f"When --gff has 2 files, --input-prots must also have exactly 2 comma-separated files. Got {len(input_prot_files)} protein files.")
+            parser.error(f"When --gff has 2 files, --prot must also have exactly 2 comma-separated files. Got {len(input_prot_files)} protein files.")
         elif num_gffs == 1 and len(input_prot_files) > 2:
-            parser.error(f"When --gff has 1 file, --input-prots can have at most 2 files. Got {len(input_prot_files)} protein files.")
+            parser.error(f"When --gff has 1 file, --prot can have at most 2 files. Got {len(input_prot_files)} protein files.")
 
         print(f"\nNote: Protein file order follows GFF file order:", file=sys.stderr)
         for i, (prot_file, gff_file) in enumerate(zip(input_prot_files, ref_gff_list)):
@@ -1119,7 +1129,7 @@ def process_interproscan_integration(
         has_interproscan = True
         print(f"\nEnriching PAVprot data with InterProScan totals...", file=sys.stderr)
         data = PAVprot.enrich_interproscan_data(data, qry_interproscan_map, ref_interproscan_map)
-        print(f"  → Added columns: query_gene_total_iprdom_len, ref_gene_total_iprdom_len", file=sys.stderr)
+        print(f"  → Added columns: new_gene_total_iprdom_len, old_gene_total_iprdom_len", file=sys.stderr)
         print(f"\n" + "="*80, file=sys.stderr)
         print(f"✓ InterProScan integration complete!", file=sys.stderr)
         print(f"  Query genes with IPR data: {len(qry_interproscan_map)}", file=sys.stderr)
@@ -1376,8 +1386,8 @@ def _build_output_filename(
         interproscan_prefix = interpro_basename.replace('.prot', '').replace('.faa', '')
 
     # Build base prefix
-    base_prefix = "synonym_mapping_liftover_gffcomp"
-    if args.output_prefix and args.output_prefix != "synonym_mapping_liftover_gffcomp":
+    base_prefix = "liftoff_gffcomp_mapping"
+    if args.output_prefix and args.output_prefix != "liftoff_gffcomp_mapping":
         full_prefix = f"{base_prefix}_{args.output_prefix}"
     else:
         full_prefix = base_prefix
@@ -1398,14 +1408,14 @@ def _build_output_filename(
 
 def _build_header(args, has_interproscan: bool, has_bbh: bool, has_pairwise: bool = False) -> str:
     """Build the output file header."""
-    header = "ref_gene\tref_transcript\tquery_gene\tquery_transcript\tclass_code\texons\tclass_code_multi_query\tclass_code_multi_ref\tclass_type_transcript\tclass_type_gene\temckmnj\temckmnje\tref_multi_transcript\tqry_multi_transcript\texact_match\tclass_code_pair\tref_multi_query\tqry_multi_ref\tref_query_count\tqry_ref_count"
+    header = "old_gene\told_transcript\tnew_gene\tnew_transcript\tclass_code\texons\tclass_code_multi_query\tclass_code_multi_ref\tclass_type_transcript\tclass_type_gene\temckmnj\temckmnje\tref_multi_transcript\tqry_multi_transcript\texact_match\tclass_code_pair\told_multi_new\tnew_multi_old\tref_query_count\tqry_ref_count"
 
     if args.run_diamond:
         header += "\tpident\tqcovhsp\tscovhsp\tidentical_aa\tmismatched_aa\tindels_aa\taligned_aa"
     if has_bbh:
         header += "\tis_bbh\tbbh_avg_pident\tbbh_avg_coverage"
     if has_pairwise:
-        header += "\tpairwise_identity\tpairwise_coverage_ref\tpairwise_coverage_query\tpairwise_aligned_length"
+        header += "\tpairwise_identity\tpairwise_coverage_old\tpairwise_coverage_new\tpairwise_aligned_length"
     if args.liftoff_gff:
         header += "\textra_copy_number"
     if has_interproscan:
@@ -1438,7 +1448,7 @@ def _write_output_file(
                 if args.filter_exact_match and e.get('exact_match', 0) != 1:
                     filtered_count += 1
                     continue
-                if args.filter_exclusive_1to1 and (e.get('ref_multi_query', 0) != 0 or e.get('qry_multi_ref', 0) != 0):
+                if args.filter_exclusive_1to1 and (e.get('old_multi_new', 0) != 0 or e.get('new_multi_old', 0) != 0):
                     filtered_count += 1
                     continue
                 if filter_class_types and e.get('class_type_gene', 'pru') not in filter_class_types:
@@ -1447,7 +1457,7 @@ def _write_output_file(
 
                 # Build output line
                 exons = e.get('exons') if e.get('exons') is not None else '-'
-                base = f"{e['ref_gene']}\t{e['ref_transcript']}\t{e['query_gene']}\t{e['query_transcript']}\t{e['class_code']}\t{exons}\t{e['class_code_multi_query']}\t{e['class_code_multi_ref']}\t{e['class_type_transcript']}\t{e['class_type_gene']}\t{e['ackmnj']}\t{e['ackmnje']}\t{e['ref_multi_transcript']}\t{e['qry_multi_transcript']}\t{e['exact_match']}\t{e['class_code_pair']}\t{e['ref_multi_query']}\t{e['qry_multi_ref']}\t{e['ref_query_count']}\t{e['qry_ref_count']}"
+                base = f"{e['old_gene']}\t{e['old_transcript']}\t{e['new_gene']}\t{e['new_transcript']}\t{e['class_code']}\t{exons}\t{e['class_code_multi_query']}\t{e['class_code_multi_ref']}\t{e['class_type_transcript']}\t{e['class_type_gene']}\t{e['ackmnj']}\t{e['ackmnje']}\t{e['ref_multi_transcript']}\t{e['qry_multi_transcript']}\t{e['exact_match']}\t{e['class_code_pair']}\t{e['old_multi_new']}\t{e['new_multi_old']}\t{e['ref_query_count']}\t{e['qry_ref_count']}"
 
                 diamond_line = ""
                 if args.run_diamond:
@@ -1468,8 +1478,8 @@ def _write_output_file(
                 pairwise_line = ""
                 if has_pairwise:
                     pw_identity = e.get('pairwise_identity')
-                    pw_cov_ref = e.get('pairwise_coverage_ref')
-                    pw_cov_query = e.get('pairwise_coverage_query')
+                    pw_cov_ref = e.get('pairwise_coverage_old')
+                    pw_cov_query = e.get('pairwise_coverage_new')
                     pw_aligned_len = e.get('pairwise_aligned_length')
                     pw_identity_str = f"{pw_identity:.2f}" if pw_identity is not None else 'NA'
                     pw_cov_ref_str = f"{pw_cov_ref:.2f}" if pw_cov_ref is not None else 'NA'
@@ -1483,8 +1493,8 @@ def _write_output_file(
 
                 interproscan_line = ""
                 if has_interproscan:
-                    query_val = e.get('query_gene_total_iprdom_len', 0)
-                    ref_val = e.get('ref_gene_total_iprdom_len', 0)
+                    query_val = e.get('new_gene_total_iprdom_len', 0)
+                    ref_val = e.get('old_gene_total_iprdom_len', 0)
                     query_val = 'NA' if query_val == 0 else query_val
                     ref_val = 'NA' if ref_val == 0 else ref_val
                     interproscan_line = f"\t{query_val}\t{ref_val}"
@@ -1510,8 +1520,8 @@ def aggregate_to_gene_level(
     Aggregate transcript-level output to gene-level and add scenario columns.
 
     Creates a gene-level output where:
-    - Each row is a unique ref_gene:query_gene pair
-    - Transcripts are comma-separated in ref_transcripts and query_transcripts columns
+    - Each row is a unique old_gene:new_gene pair
+    - Transcripts are comma-separated in old_transcripts and new_transcripts columns
     - scenario and mapping_type columns are added based on exclusive scenario detection
 
     Args:
@@ -1554,9 +1564,9 @@ def aggregate_to_gene_level(
         return vals.mean() if len(vals) > 0 else None
 
     # Group by gene pair
-    gene_pairs = df.groupby(['ref_gene', 'query_gene']).agg({
-        'ref_transcript': agg_comma_join,
-        'query_transcript': agg_comma_join,
+    gene_pairs = df.groupby(['old_gene', 'new_gene']).agg({
+        'old_transcript': agg_comma_join,
+        'new_transcript': agg_comma_join,
         'class_code': agg_comma_join,  # Combine all class codes
         'exons': agg_first,
         'class_code_multi_query': agg_first,
@@ -1569,37 +1579,37 @@ def aggregate_to_gene_level(
         'qry_multi_transcript': agg_max,
         'exact_match': agg_max,
         'class_code_pair': agg_first,
-        'ref_multi_query': agg_first,
-        'qry_multi_ref': agg_first,
+        'old_multi_new': agg_first,
+        'new_multi_old': agg_first,
         'ref_query_count': agg_first,
         'qry_ref_count': agg_first,
     }).reset_index()
 
     # Rename transcript columns
     gene_pairs = gene_pairs.rename(columns={
-        'ref_transcript': 'ref_transcripts',
-        'query_transcript': 'query_transcripts'
+        'old_transcript': 'old_transcripts',
+        'new_transcript': 'new_transcripts'
     })
 
     # Add transcript counts
-    gene_pairs['ref_transcript_count'] = gene_pairs['ref_transcripts'].apply(
+    gene_pairs['old_transcript_count'] = gene_pairs['old_transcripts'].apply(
         lambda x: len(x.split(',')) if x else 0
     )
-    gene_pairs['query_transcript_count'] = gene_pairs['query_transcripts'].apply(
+    gene_pairs['new_transcript_count'] = gene_pairs['new_transcripts'].apply(
         lambda x: len(x.split(',')) if x else 0
     )
 
     # Handle optional columns if present
     optional_cols = ['pident', 'qcovhsp', 'scovhsp', 'is_bbh', 'bbh_avg_pident',
-                     'bbh_avg_coverage', 'pairwise_identity', 'pairwise_coverage_ref',
-                     'pairwise_coverage_query', 'pairwise_aligned_length',
+                     'bbh_avg_coverage', 'pairwise_identity', 'pairwise_coverage_old',
+                     'pairwise_coverage_new', 'pairwise_aligned_length',
                      'query_total_ipr_domain_length', 'ref_total_ipr_domain_length',
                      'extra_copy_number']
 
     for col in optional_cols:
         if col in df.columns:
-            gene_agg = df.groupby(['ref_gene', 'query_gene'])[col].agg(agg_mean).reset_index()
-            gene_pairs = gene_pairs.merge(gene_agg, on=['ref_gene', 'query_gene'], how='left')
+            gene_agg = df.groupby(['old_gene', 'new_gene'])[col].agg(agg_mean).reset_index()
+            gene_pairs = gene_pairs.merge(gene_agg, on=['old_gene', 'new_gene'], how='left')
 
     print(f"  Created {len(gene_pairs)} gene-level pairs", file=sys.stderr)
 
@@ -1609,47 +1619,47 @@ def aggregate_to_gene_level(
     print(f"\nDetecting exclusive scenarios...", file=sys.stderr)
 
     # Get CDI genes first (for exclusivity)
-    cdi_ref_genes, cdi_query_genes = get_cdi_genes(gene_pairs)
-    print(f"  CDI genes: {len(cdi_ref_genes)} ref, {len(cdi_query_genes)} query", file=sys.stderr)
+    cdi_old_genes, cdi_new_genes = get_cdi_genes(gene_pairs)
+    print(f"  CDI genes: {len(cdi_old_genes)} ref, {len(cdi_new_genes)} query", file=sys.stderr)
 
     # Initialize scenario columns
     gene_pairs['scenario'] = ''
     gene_pairs['mapping_type'] = ''
 
     # Detect E (1:1)
-    ref_counts = gene_pairs.groupby('ref_gene')['query_gene'].nunique()
-    query_counts = gene_pairs.groupby('query_gene')['ref_gene'].nunique()
+    ref_counts = gene_pairs.groupby('old_gene')['new_gene'].nunique()
+    query_counts = gene_pairs.groupby('new_gene')['old_gene'].nunique()
     refs_1to1 = set(ref_counts[ref_counts == 1].index)
     queries_1to1 = set(query_counts[query_counts == 1].index)
 
-    mask_E = (gene_pairs['ref_gene'].isin(refs_1to1)) & (gene_pairs['query_gene'].isin(queries_1to1))
+    mask_E = (gene_pairs['old_gene'].isin(refs_1to1)) & (gene_pairs['new_gene'].isin(queries_1to1))
     gene_pairs.loc[mask_E, 'scenario'] = 'E'
     gene_pairs.loc[mask_E, 'mapping_type'] = '1to1'
     print(f"  E (1to1): {mask_E.sum()} pairs", file=sys.stderr)
 
     # Detect A (1to2N, exactly 2 queries, NOT in CDI)
-    refs_1to2N = set(ref_counts[ref_counts == 2].index) - cdi_ref_genes
-    mask_A = (gene_pairs['ref_gene'].isin(refs_1to2N)) & (gene_pairs['scenario'] == '')
+    refs_1to2N = set(ref_counts[ref_counts == 2].index) - cdi_old_genes
+    mask_A = (gene_pairs['old_gene'].isin(refs_1to2N)) & (gene_pairs['scenario'] == '')
     gene_pairs.loc[mask_A, 'scenario'] = 'A'
     gene_pairs.loc[mask_A, 'mapping_type'] = '1to2N'
     print(f"  A (1to2N): {mask_A.sum()} pairs", file=sys.stderr)
 
     # Detect J (1to2N+, 3+ queries, NOT in CDI)
-    refs_1to2Nplus = set(ref_counts[ref_counts >= 3].index) - cdi_ref_genes
-    mask_J = (gene_pairs['ref_gene'].isin(refs_1to2Nplus)) & (gene_pairs['scenario'] == '')
+    refs_1to2Nplus = set(ref_counts[ref_counts >= 3].index) - cdi_old_genes
+    mask_J = (gene_pairs['old_gene'].isin(refs_1to2Nplus)) & (gene_pairs['scenario'] == '')
     gene_pairs.loc[mask_J, 'scenario'] = 'J'
     gene_pairs.loc[mask_J, 'mapping_type'] = '1to2N+'
     print(f"  J (1to2N+): {mask_J.sum()} pairs", file=sys.stderr)
 
     # Detect B (Nto1, NOT in CDI)
-    queries_Nto1 = set(query_counts[query_counts > 1].index) - cdi_query_genes
-    mask_B = (gene_pairs['query_gene'].isin(queries_Nto1)) & (gene_pairs['scenario'] == '')
+    queries_Nto1 = set(query_counts[query_counts > 1].index) - cdi_new_genes
+    mask_B = (gene_pairs['new_gene'].isin(queries_Nto1)) & (gene_pairs['scenario'] == '')
     gene_pairs.loc[mask_B, 'scenario'] = 'B'
     gene_pairs.loc[mask_B, 'mapping_type'] = 'Nto1'
     print(f"  B (Nto1): {mask_B.sum()} pairs", file=sys.stderr)
 
     # Detect CDI (remaining pairs with multi-mapping on both sides)
-    mask_CDI = (gene_pairs['ref_gene'].isin(cdi_ref_genes)) & (gene_pairs['query_gene'].isin(cdi_query_genes))
+    mask_CDI = (gene_pairs['old_gene'].isin(cdi_old_genes)) & (gene_pairs['new_gene'].isin(cdi_new_genes))
     gene_pairs.loc[mask_CDI & (gene_pairs['scenario'] == ''), 'scenario'] = 'CDI'
     gene_pairs.loc[mask_CDI & (gene_pairs['mapping_type'] == ''), 'mapping_type'] = 'complex'
     print(f"  CDI (complex): {(gene_pairs['scenario'] == 'CDI').sum()} pairs", file=sys.stderr)
@@ -1662,8 +1672,8 @@ def aggregate_to_gene_level(
 
     # Reorder columns to put scenario and mapping_type early
     cols = gene_pairs.columns.tolist()
-    priority_cols = ['ref_gene', 'ref_transcripts', 'ref_transcript_count',
-                     'query_gene', 'query_transcripts', 'query_transcript_count',
+    priority_cols = ['old_gene', 'old_transcripts', 'old_transcript_count',
+                     'new_gene', 'new_transcripts', 'new_transcript_count',
                      'scenario', 'mapping_type']
     other_cols = [c for c in cols if c not in priority_cols]
     gene_pairs = gene_pairs[priority_cols + other_cols]
@@ -1707,7 +1717,7 @@ def main():
     has_bbh = False
     if args.run_diamond:
         if not args.ref_faa or not args.qry_faa:
-            print("Error: --run-diamond requires --ref-faa and --qry-faa", file=sys.stderr)
+            print("Error: --run-diamond requires --prot with 2 comma-separated files (ref.faa,query.faa)", file=sys.stderr)
             sys.exit(1)
 
         pavprot_out = os.path.join(os.getcwd(), args.output_dir)
@@ -1782,7 +1792,7 @@ def main():
     has_pairwise = False
     if args.run_pairwise:
         if not args.ref_faa or not args.qry_faa:
-            print("Error: --run-pairwise requires --ref-faa and --qry-faa", file=sys.stderr)
+            print("Error: --run-pairwise requires --prot with 2 comma-separated files (ref.faa,query.faa)", file=sys.stderr)
             sys.exit(1)
 
         print(f"\nRunning Biopython pairwise alignment...", file=sys.stderr)

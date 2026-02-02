@@ -159,8 +159,8 @@ python pavprot.py \
   --gff-comp test/data/gffcompare.tracking \
   --gff test/data/gff_feature_table.gff3 \
   --run-diamond \
-  --ref-faa test/data/mock_reference.faa \
-  --qry-faa test/data/mock_query.faa \
+  --prot test/data/mock_reference.faa \
+  --prot test/data/mock_query.faa \
   --run-bbh \
   --output-dir /tmp/pavprot_manual_test \
   --output-prefix full_test
@@ -380,7 +380,7 @@ python -c "
 import pandas as pd
 import sys
 
-required_cols = ['ref_gene', 'ref_transcript', 'query_gene', 'query_transcript',
+required_cols = ['old_gene', 'old_transcript', 'new_gene', 'new_transcript',
                  'class_code', 'exons', 'class_type_transcript']
 
 df = pd.read_csv('$OUTPUT_DIR/integration_test_gffcomp.tsv', sep='\t')

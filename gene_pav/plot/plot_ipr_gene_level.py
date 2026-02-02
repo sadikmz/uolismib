@@ -31,16 +31,16 @@ def aggregate_by_gene(df):
     # Group by query gene
     gene_stats = []
 
-    for qgene in df_both['query_gene'].unique():
-        gene_data = df_both[df_both['query_gene'] == qgene]
+    for qgene in df_both['new_gene'].unique():
+        gene_data = df_both[df_both['new_gene'] == qgene]
 
         # Take the longest transcript for each gene
         max_idx = gene_data['query_total_ipr_domain_length'].idxmax()
         longest = gene_data.loc[max_idx]
 
         stats = {
-            'query_gene': qgene,
-            'ref_gene': longest['ref_gene'],
+            'new_gene': qgene,
+            'old_gene': longest['old_gene'],
             'num_transcripts': len(gene_data),
             'class_codes': ';'.join(sorted(gene_data['class_code'].unique())),
             'class_type': longest['class_type'],
@@ -183,7 +183,7 @@ def plot_gene_level_analysis(df_genes, output_prefix):
     ax6.barh(y_pos, df_poor['conservation_score'], color='red',
             alpha=0.7, edgecolor='black', linewidth=1.5)
     ax6.set_yticks(y_pos)
-    ax6.set_yticklabels([g[:15] for g in df_poor['query_gene']], fontsize=8)
+    ax6.set_yticklabels([g[:15] for g in df_poor['new_gene']], fontsize=8)
     ax6.set_xlabel('Conservation Score (%)', fontsize=11, fontweight='bold')
     ax6.set_ylabel('Query Gene', fontsize=11, fontweight='bold')
     ax6.set_title('15 Poorest Conserved Genes', fontsize=13, fontweight='bold')
@@ -252,7 +252,7 @@ def create_gene_summary_table(df_genes, output_prefix):
 
     # Select columns for output
     output_cols = [
-        'conservation_rank', 'query_gene', 'ref_gene', 'conservation_score',
+        'conservation_rank', 'new_gene', 'old_gene', 'conservation_score',
         'agreement_category', 'num_transcripts', 'class_codes', 'class_type',
         'query_max_ipr', 'ref_max_ipr', 'diff_max', 'query_mean_ipr', 'ref_mean_ipr', 'diff_mean'
     ]

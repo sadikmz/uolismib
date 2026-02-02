@@ -48,14 +48,14 @@ def build_transcript_lookup(pavprot_df: pd.DataFrame) -> Tuple[Dict, Dict]:
     Build lookup dictionaries for transcripts per gene.
 
     Returns:
-        Tuple of (ref_gene_transcripts, query_gene_transcripts)
+        Tuple of (old_gene_transcripts, new_gene_transcripts)
         Each dict maps gene_id -> (transcript_list, transcript_count)
     """
-    ref_tx = pavprot_df.groupby('ref_gene')['ref_transcript'].agg(
+    ref_tx = pavprot_df.groupby('old_gene')['old_transcript'].agg(
         lambda x: (list(x.unique()), len(x.unique()))
     ).to_dict()
 
-    query_tx = pavprot_df.groupby('query_gene')['query_transcript'].agg(
+    query_tx = pavprot_df.groupby('new_gene')['new_transcript'].agg(
         lambda x: (list(x.unique()), len(x.unique()))
     ).to_dict()
 
@@ -64,15 +64,15 @@ def build_transcript_lookup(pavprot_df: pd.DataFrame) -> Tuple[Dict, Dict]:
 
 def has_pairwise_columns(pavprot_df: pd.DataFrame) -> bool:
     """Check if pavprot output has pairwise alignment columns."""
-    pairwise_cols = ['pairwise_identity', 'pairwise_coverage_ref',
-                     'pairwise_coverage_query', 'pairwise_aligned_length']
+    pairwise_cols = ['pairwise_identity', 'pairwise_coverage_old',
+                     'pairwise_coverage_new', 'pairwise_aligned_length']
     return all(col in pavprot_df.columns for col in pairwise_cols)
 
 
 def aggregate_pairwise_metrics(
     pavprot_df: pd.DataFrame,
-    ref_gene: str,
-    query_gene: str
+    old_gene: str,
+    new_gene: str
 ) -> Dict:
     """
     Aggregate pairwise alignment metrics for a gene pair.
@@ -83,32 +83,32 @@ def aggregate_pairwise_metrics(
 
     Args:
         pavprot_df: DataFrame from pavprot output with pairwise columns
-        ref_gene: Reference gene ID
-        query_gene: Query gene ID
+        old_gene: Reference gene ID
+        new_gene: Query gene ID
 
     Returns:
         Dict with aggregated pairwise metrics
     """
     # Filter to this gene pair
-    mask = (pavprot_df['ref_gene'] == ref_gene) & (pavprot_df['query_gene'] == query_gene)
+    mask = (pavprot_df['old_gene'] == old_gene) & (pavprot_df['new_gene'] == new_gene)
     subset = pavprot_df[mask]
 
     if len(subset) == 0:
         return {
             'avg_pairwise_identity': None,
-            'avg_pairwise_coverage_ref': None,
-            'avg_pairwise_coverage_query': None,
+            'avg_pairwise_coverage_old': None,
+            'avg_pairwise_coverage_new': None,
             'avg_pairwise_aligned_length': None,
             'pairwise_identity_all': '',
-            'pairwise_coverage_ref_all': '',
-            'pairwise_coverage_query_all': '',
+            'pairwise_coverage_old_all': '',
+            'pairwise_coverage_new_all': '',
             'pairwise_aligned_length_all': '',
         }
 
     # Get non-NA values for averaging
     identity_vals = subset['pairwise_identity'].dropna().tolist()
-    cov_ref_vals = subset['pairwise_coverage_ref'].dropna().tolist()
-    cov_query_vals = subset['pairwise_coverage_query'].dropna().tolist()
+    cov_ref_vals = subset['pairwise_coverage_old'].dropna().tolist()
+    cov_query_vals = subset['pairwise_coverage_new'].dropna().tolist()
     aligned_len_vals = subset['pairwise_aligned_length'].dropna().tolist()
 
     # Calculate averages
@@ -125,12 +125,12 @@ def aggregate_pairwise_metrics(
 
     return {
         'avg_pairwise_identity': avg_identity,
-        'avg_pairwise_coverage_ref': avg_cov_ref,
-        'avg_pairwise_coverage_query': avg_cov_query,
+        'avg_pairwise_coverage_old': avg_cov_ref,
+        'avg_pairwise_coverage_new': avg_cov_query,
         'avg_pairwise_aligned_length': avg_aligned_len,
         'pairwise_identity_all': identity_all,
-        'pairwise_coverage_ref_all': cov_ref_all,
-        'pairwise_coverage_query_all': cov_query_all,
+        'pairwise_coverage_old_all': cov_ref_all,
+        'pairwise_coverage_new_all': cov_query_all,
         'pairwise_aligned_length_all': aligned_len_all,
     }
 
@@ -191,7 +191,7 @@ def get_cdi_genes(pavprot_df: pd.DataFrame) -> Tuple[Set[str], Set[str]]:
     Get genes that belong to CDI (cross-mapping) scenario.
 
     CDI genes are those where:
-    - ref_gene maps to multiple query genes AND
+    - old_gene maps to multiple query genes AND
     - at least one of those query genes maps to multiple ref genes
 
     This is used to exclude CDI genes from A, B, J scenarios.
@@ -200,33 +200,33 @@ def get_cdi_genes(pavprot_df: pd.DataFrame) -> Tuple[Set[str], Set[str]]:
         pavprot_df: DataFrame from pavprot output
 
     Returns:
-        Tuple of (cdi_ref_genes, cdi_query_genes)
+        Tuple of (cdi_old_genes, cdi_new_genes)
     """
     # Get unique gene pairs
-    gene_pairs = pavprot_df[['ref_gene', 'query_gene']].drop_duplicates()
+    gene_pairs = pavprot_df[['old_gene', 'new_gene']].drop_duplicates()
 
     # Count mappings per gene
-    ref_counts = gene_pairs.groupby('ref_gene')['query_gene'].nunique()
-    query_counts = gene_pairs.groupby('query_gene')['ref_gene'].nunique()
+    ref_counts = gene_pairs.groupby('old_gene')['new_gene'].nunique()
+    query_counts = gene_pairs.groupby('new_gene')['old_gene'].nunique()
 
     # Find multi-mapping genes
     refs_multi = set(ref_counts[ref_counts > 1].index)
     queries_multi = set(query_counts[query_counts > 1].index)
 
     # CDI: pairs where BOTH sides are multi-mapping
-    cdi_ref_genes = set()
-    cdi_query_genes = set()
+    cdi_old_genes = set()
+    cdi_new_genes = set()
 
     for _, row in gene_pairs.iterrows():
-        ref_gene = row['ref_gene']
-        query_gene = row['query_gene']
+        old_gene = row['old_gene']
+        new_gene = row['new_gene']
 
         # Check if this pair is in CDI
-        if ref_gene in refs_multi and query_gene in queries_multi:
-            cdi_ref_genes.add(ref_gene)
-            cdi_query_genes.add(query_gene)
+        if old_gene in refs_multi and new_gene in queries_multi:
+            cdi_old_genes.add(old_gene)
+            cdi_new_genes.add(new_gene)
 
-    return cdi_ref_genes, cdi_query_genes
+    return cdi_old_genes, cdi_new_genes
 
 
 # =============================================================================
@@ -248,11 +248,11 @@ def detect_one_to_one_orthologs(pavprot_df: pd.DataFrame) -> pd.DataFrame:
         DataFrame with 1:1 ortholog pairs and transcript info
     """
     # Get unique gene pairs
-    gene_pairs = pavprot_df[['ref_gene', 'query_gene']].drop_duplicates()
+    gene_pairs = pavprot_df[['old_gene', 'new_gene']].drop_duplicates()
 
     # Count mappings per gene
-    ref_counts = gene_pairs.groupby('ref_gene')['query_gene'].nunique()
-    query_counts = gene_pairs.groupby('query_gene')['ref_gene'].nunique()
+    ref_counts = gene_pairs.groupby('old_gene')['new_gene'].nunique()
+    query_counts = gene_pairs.groupby('new_gene')['old_gene'].nunique()
 
     # Find genes with exactly 1 mapping
     refs_1to1 = set(ref_counts[ref_counts == 1].index)
@@ -260,8 +260,8 @@ def detect_one_to_one_orthologs(pavprot_df: pd.DataFrame) -> pd.DataFrame:
 
     # True 1:1 pairs: both conditions met
     one_to_one = gene_pairs[
-        (gene_pairs['ref_gene'].isin(refs_1to1)) &
-        (gene_pairs['query_gene'].isin(queries_1to1))
+        (gene_pairs['old_gene'].isin(refs_1to1)) &
+        (gene_pairs['new_gene'].isin(queries_1to1))
     ]
 
     print(f"  Found {len(one_to_one)} 1:1 ortholog pairs")
@@ -278,26 +278,26 @@ def detect_one_to_one_orthologs(pavprot_df: pd.DataFrame) -> pd.DataFrame:
     # Create output with transcript info
     results = []
     for _, row in one_to_one.iterrows():
-        ref_gene = row['ref_gene']
-        query_gene = row['query_gene']
+        old_gene = row['old_gene']
+        new_gene = row['new_gene']
 
-        ref_tx_list, ref_tx_count = ref_tx_lookup.get(ref_gene, ([], 0))
-        query_tx_list, query_tx_count = query_tx_lookup.get(query_gene, ([], 0))
+        ref_tx_list, ref_tx_count = ref_tx_lookup.get(old_gene, ([], 0))
+        query_tx_list, query_tx_count = query_tx_lookup.get(new_gene, ([], 0))
 
         result_row = {
-            'ref_gene': ref_gene,
-            'ref_transcripts': ';'.join(ref_tx_list) if ref_tx_list else '',
-            'ref_transcript_count': ref_tx_count,
-            'query_gene': query_gene,
-            'query_transcripts': ';'.join(query_tx_list) if query_tx_list else '',
-            'query_transcript_count': query_tx_count,
+            'old_gene': old_gene,
+            'old_transcripts': ';'.join(ref_tx_list) if ref_tx_list else '',
+            'old_transcript_count': ref_tx_count,
+            'new_gene': new_gene,
+            'new_transcripts': ';'.join(query_tx_list) if query_tx_list else '',
+            'new_transcript_count': query_tx_count,
             'scenario': 'E',
             'mapping_type': '1to1'
         }
 
         # Add pairwise metrics if available
         if include_pairwise:
-            pairwise_metrics = aggregate_pairwise_metrics(pavprot_df, ref_gene, query_gene)
+            pairwise_metrics = aggregate_pairwise_metrics(pavprot_df, old_gene, new_gene)
             result_row.update(pairwise_metrics)
 
         results.append(result_row)
@@ -328,10 +328,10 @@ def detect_one_to_many(
     exclude_refs = exclude_refs or set()
 
     # Get unique gene pairs
-    gene_pairs = pavprot_df[['ref_gene', 'query_gene']].drop_duplicates()
+    gene_pairs = pavprot_df[['old_gene', 'new_gene']].drop_duplicates()
 
     # Count mappings per ref gene
-    ref_counts = gene_pairs.groupby('ref_gene')['query_gene'].nunique()
+    ref_counts = gene_pairs.groupby('old_gene')['new_gene'].nunique()
 
     # Find ref genes with EXACTLY 2 query mappings (not >1)
     refs_1to2N = set(ref_counts[ref_counts == 2].index)
@@ -340,7 +340,7 @@ def detect_one_to_many(
     refs_1to2N = refs_1to2N - exclude_refs
 
     # Get all pairs for these ref genes
-    one_to_many = gene_pairs[gene_pairs['ref_gene'].isin(refs_1to2N)]
+    one_to_many = gene_pairs[gene_pairs['old_gene'].isin(refs_1to2N)]
 
     print(f"  Found {len(refs_1to2N)} ref genes with 1:2N mappings ({len(one_to_many)} total pairs)")
     if exclude_refs:
@@ -357,29 +357,29 @@ def detect_one_to_many(
 
     # Create output with transcript info, grouped by ref gene
     results = []
-    for ref_gene in sorted(refs_1to2N):
-        query_genes = sorted(gene_pairs[gene_pairs['ref_gene'] == ref_gene]['query_gene'].tolist())
-        ref_tx_list, ref_tx_count = ref_tx_lookup.get(ref_gene, ([], 0))
+    for old_gene in sorted(refs_1to2N):
+        new_genes = sorted(gene_pairs[gene_pairs['old_gene'] == old_gene]['new_gene'].tolist())
+        ref_tx_list, ref_tx_count = ref_tx_lookup.get(old_gene, ([], 0))
 
-        for query_gene in query_genes:
-            query_tx_list, query_tx_count = query_tx_lookup.get(query_gene, ([], 0))
+        for new_gene in new_genes:
+            query_tx_list, query_tx_count = query_tx_lookup.get(new_gene, ([], 0))
 
             result_row = {
-                'ref_gene': ref_gene,
-                'ref_transcripts': ';'.join(ref_tx_list) if ref_tx_list else '',
-                'ref_transcript_count': ref_tx_count,
-                'query_gene': query_gene,
-                'query_transcripts': ';'.join(query_tx_list) if query_tx_list else '',
-                'query_transcript_count': query_tx_count,
-                'query_count': len(query_genes),
-                'all_query_genes': ';'.join(query_genes),
+                'old_gene': old_gene,
+                'old_transcripts': ';'.join(ref_tx_list) if ref_tx_list else '',
+                'old_transcript_count': ref_tx_count,
+                'new_gene': new_gene,
+                'new_transcripts': ';'.join(query_tx_list) if query_tx_list else '',
+                'new_transcript_count': query_tx_count,
+                'query_count': len(new_genes),
+                'all_new_genes': ';'.join(new_genes),
                 'scenario': 'A',
                 'mapping_type': '1to2N'
             }
 
             # Add pairwise metrics if available
             if include_pairwise:
-                pairwise_metrics = aggregate_pairwise_metrics(pavprot_df, ref_gene, query_gene)
+                pairwise_metrics = aggregate_pairwise_metrics(pavprot_df, old_gene, new_gene)
                 result_row.update(pairwise_metrics)
 
             results.append(result_row)
@@ -410,10 +410,10 @@ def detect_many_to_one(
     exclude_queries = exclude_queries or set()
 
     # Get unique gene pairs
-    gene_pairs = pavprot_df[['ref_gene', 'query_gene']].drop_duplicates()
+    gene_pairs = pavprot_df[['old_gene', 'new_gene']].drop_duplicates()
 
     # Count mappings per query gene
-    query_counts = gene_pairs.groupby('query_gene')['ref_gene'].nunique()
+    query_counts = gene_pairs.groupby('new_gene')['old_gene'].nunique()
 
     # Find query genes with >1 ref mapping
     queries_Nto1 = set(query_counts[query_counts > 1].index)
@@ -422,7 +422,7 @@ def detect_many_to_one(
     queries_Nto1 = queries_Nto1 - exclude_queries
 
     # Get all pairs for these query genes
-    many_to_one = gene_pairs[gene_pairs['query_gene'].isin(queries_Nto1)]
+    many_to_one = gene_pairs[gene_pairs['new_gene'].isin(queries_Nto1)]
 
     print(f"  Found {len(queries_Nto1)} query genes with N:1 mappings ({len(many_to_one)} total pairs)")
     if exclude_queries:
@@ -439,29 +439,29 @@ def detect_many_to_one(
 
     # Create output with transcript info, grouped by query gene
     results = []
-    for query_gene in sorted(queries_Nto1):
-        ref_genes = sorted(gene_pairs[gene_pairs['query_gene'] == query_gene]['ref_gene'].tolist())
-        query_tx_list, query_tx_count = query_tx_lookup.get(query_gene, ([], 0))
+    for new_gene in sorted(queries_Nto1):
+        old_genes = sorted(gene_pairs[gene_pairs['new_gene'] == new_gene]['old_gene'].tolist())
+        query_tx_list, query_tx_count = query_tx_lookup.get(new_gene, ([], 0))
 
-        for ref_gene in ref_genes:
-            ref_tx_list, ref_tx_count = ref_tx_lookup.get(ref_gene, ([], 0))
+        for old_gene in old_genes:
+            ref_tx_list, ref_tx_count = ref_tx_lookup.get(old_gene, ([], 0))
 
             result_row = {
-                'ref_gene': ref_gene,
-                'ref_transcripts': ';'.join(ref_tx_list) if ref_tx_list else '',
-                'ref_transcript_count': ref_tx_count,
-                'query_gene': query_gene,
-                'query_transcripts': ';'.join(query_tx_list) if query_tx_list else '',
-                'query_transcript_count': query_tx_count,
-                'ref_count': len(ref_genes),
-                'all_ref_genes': ';'.join(ref_genes),
+                'old_gene': old_gene,
+                'old_transcripts': ';'.join(ref_tx_list) if ref_tx_list else '',
+                'old_transcript_count': ref_tx_count,
+                'new_gene': new_gene,
+                'new_transcripts': ';'.join(query_tx_list) if query_tx_list else '',
+                'new_transcript_count': query_tx_count,
+                'ref_count': len(old_genes),
+                'all_old_genes': ';'.join(old_genes),
                 'scenario': 'B',
                 'mapping_type': 'Nto1'
             }
 
             # Add pairwise metrics if available
             if include_pairwise:
-                pairwise_metrics = aggregate_pairwise_metrics(pavprot_df, ref_gene, query_gene)
+                pairwise_metrics = aggregate_pairwise_metrics(pavprot_df, old_gene, new_gene)
                 result_row.update(pairwise_metrics)
 
             results.append(result_row)
@@ -494,10 +494,10 @@ def detect_complex_one_to_many(
     exclude_refs = exclude_refs or set()
 
     # Get unique gene pairs
-    gene_pairs = pavprot_df[['ref_gene', 'query_gene']].drop_duplicates()
+    gene_pairs = pavprot_df[['old_gene', 'new_gene']].drop_duplicates()
 
     # Count mappings per ref gene
-    ref_counts = gene_pairs.groupby('ref_gene')['query_gene'].nunique()
+    ref_counts = gene_pairs.groupby('old_gene')['new_gene'].nunique()
 
     # Find ref genes with >= min_count query mappings
     refs_complex = set(ref_counts[ref_counts >= min_count].index)
@@ -506,7 +506,7 @@ def detect_complex_one_to_many(
     refs_complex = refs_complex - exclude_refs
 
     # Get all pairs for these ref genes
-    complex_mappings = gene_pairs[gene_pairs['ref_gene'].isin(refs_complex)]
+    complex_mappings = gene_pairs[gene_pairs['old_gene'].isin(refs_complex)]
 
     print(f"  Found {len(refs_complex)} ref genes with 1:2N+ mappings ({len(complex_mappings)} total pairs)")
     if exclude_refs:
@@ -523,29 +523,29 @@ def detect_complex_one_to_many(
 
     # Create output with transcript info, grouped by ref gene
     results = []
-    for ref_gene in sorted(refs_complex):
-        query_genes = sorted(gene_pairs[gene_pairs['ref_gene'] == ref_gene]['query_gene'].tolist())
-        ref_tx_list, ref_tx_count = ref_tx_lookup.get(ref_gene, ([], 0))
+    for old_gene in sorted(refs_complex):
+        new_genes = sorted(gene_pairs[gene_pairs['old_gene'] == old_gene]['new_gene'].tolist())
+        ref_tx_list, ref_tx_count = ref_tx_lookup.get(old_gene, ([], 0))
 
-        for query_gene in query_genes:
-            query_tx_list, query_tx_count = query_tx_lookup.get(query_gene, ([], 0))
+        for new_gene in new_genes:
+            query_tx_list, query_tx_count = query_tx_lookup.get(new_gene, ([], 0))
 
             result_row = {
-                'ref_gene': ref_gene,
-                'ref_transcripts': ';'.join(ref_tx_list) if ref_tx_list else '',
-                'ref_transcript_count': ref_tx_count,
-                'query_gene': query_gene,
-                'query_transcripts': ';'.join(query_tx_list) if query_tx_list else '',
-                'query_transcript_count': query_tx_count,
-                'query_count': len(query_genes),
-                'all_query_genes': ';'.join(query_genes),
+                'old_gene': old_gene,
+                'old_transcripts': ';'.join(ref_tx_list) if ref_tx_list else '',
+                'old_transcript_count': ref_tx_count,
+                'new_gene': new_gene,
+                'new_transcripts': ';'.join(query_tx_list) if query_tx_list else '',
+                'new_transcript_count': query_tx_count,
+                'query_count': len(new_genes),
+                'all_new_genes': ';'.join(new_genes),
                 'scenario': 'J',
                 'mapping_type': '1to2N+'
             }
 
             # Add pairwise metrics if available
             if include_pairwise:
-                pairwise_metrics = aggregate_pairwise_metrics(pavprot_df, ref_gene, query_gene)
+                pairwise_metrics = aggregate_pairwise_metrics(pavprot_df, old_gene, new_gene)
                 result_row.update(pairwise_metrics)
 
             results.append(result_row)
@@ -572,7 +572,7 @@ def classify_cross_mappings(pavprot_df: pd.DataFrame) -> pd.DataFrame:
         DataFrame with cross_mapping_type and cross_mapping_group_id columns
     """
     # Find entries where both flags indicate cross-mapping
-    cross_mask = (pavprot_df['ref_multi_query'] >= 1) & (pavprot_df['qry_multi_ref'] >= 1)
+    cross_mask = (pavprot_df['old_multi_new'] >= 1) & (pavprot_df['new_multi_old'] >= 1)
 
     if not cross_mask.any():
         print("  No cross-mapping patterns found")
@@ -580,15 +580,15 @@ def classify_cross_mappings(pavprot_df: pd.DataFrame) -> pd.DataFrame:
 
     cross_df = pavprot_df[cross_mask].copy()
 
-    # Build mapping: ref_gene -> set of query_genes
+    # Build mapping: old_gene -> set of new_genes
     ref_to_queries = defaultdict(set)
     query_to_refs = defaultdict(set)
 
     for _, row in cross_df.iterrows():
-        ref_gene = row['ref_gene']
-        query_gene = row['query_gene']
-        ref_to_queries[ref_gene].add(query_gene)
-        query_to_refs[query_gene].add(ref_gene)
+        old_gene = row['old_gene']
+        new_gene = row['new_gene']
+        ref_to_queries[old_gene].add(new_gene)
+        query_to_refs[new_gene].add(old_gene)
 
     # Build connected components (cross-mapping groups)
     def find_connected_component(start_ref: str, ref_to_q: dict, q_to_ref: dict) -> Tuple[Set[str], Set[str]]:
@@ -667,20 +667,20 @@ def classify_cross_mappings(pavprot_df: pd.DataFrame) -> pd.DataFrame:
                     query_tx_list, query_tx_count = query_tx_lookup.get(query, ([], 0))
 
                     result_row = {
-                        'ref_gene': ref,
-                        'ref_transcripts': ';'.join(ref_tx_list) if ref_tx_list else '',
-                        'ref_transcript_count': ref_tx_count,
-                        'query_gene': query,
-                        'query_transcripts': ';'.join(query_tx_list) if query_tx_list else '',
-                        'query_transcript_count': query_tx_count,
+                        'old_gene': ref,
+                        'old_transcripts': ';'.join(ref_tx_list) if ref_tx_list else '',
+                        'old_transcript_count': ref_tx_count,
+                        'new_gene': query,
+                        'new_transcripts': ';'.join(query_tx_list) if query_tx_list else '',
+                        'new_transcript_count': query_tx_count,
                         'scenario': 'CDI',
                         'mapping_type': 'complex',
                         'cross_mapping_type': cross_type,
                         'cross_mapping_group_id': group_id,
                         'group_ref_count': len(ref_list),
                         'group_query_count': len(query_list),
-                        'ref_genes_in_group': ';'.join(ref_list),
-                        'query_genes_in_group': ';'.join(query_list)
+                        'old_genes_in_group': ';'.join(ref_list),
+                        'new_genes_in_group': ';'.join(query_list)
                     }
 
                     # Add pairwise metrics if available
@@ -829,23 +829,23 @@ def detect_positional_swaps(
 
     # Get 1:1 mappings only (exclusive orthologs)
     orthologs = pavprot_df[
-        (pavprot_df['ref_multi_query'] == 0) &
-        (pavprot_df['qry_multi_ref'] == 0)
-    ][['ref_gene', 'query_gene']].drop_duplicates()
+        (pavprot_df['old_multi_new'] == 0) &
+        (pavprot_df['new_multi_old'] == 0)
+    ][['old_gene', 'new_gene']].drop_duplicates()
 
     print(f"  Analyzing {len(orthologs)} 1:1 ortholog pairs")
 
     # Build lookups
-    ref_to_query = dict(zip(orthologs['ref_gene'], orthologs['query_gene']))
-    query_to_ref = dict(zip(orthologs['query_gene'], orthologs['ref_gene']))
+    ref_to_query = dict(zip(orthologs['old_gene'], orthologs['new_gene']))
+    query_to_ref = dict(zip(orthologs['new_gene'], orthologs['old_gene']))
 
     # Get sets of genes with orthologs
-    ref_genes_with_orthologs = set(ref_to_query.keys())
-    query_genes_with_orthologs = set(query_to_ref.keys())
+    old_genes_with_orthologs = set(ref_to_query.keys())
+    new_genes_with_orthologs = set(query_to_ref.keys())
 
     # Build adjacency maps (only for genes with orthologs)
     print(f"  Building adjacency maps for orthologous genes...")
-    ref_adjacency = build_adjacency_map(ref_positions, ref_genes_with_orthologs)
+    ref_adjacency = build_adjacency_map(ref_positions, old_genes_with_orthologs)
     print(f"    Reference: {len(ref_adjacency)} adjacent pairs")
 
     # Build transcript lookup
@@ -893,24 +893,24 @@ def detect_positional_swaps(
             query_b_tx, query_b_tx_count = query_tx_lookup.get(query_b, ([], 0))
 
             swaps.append({
-                'ref_gene_1': ref_a,
-                'ref_gene_1_transcripts': ';'.join(ref_a_tx) if ref_a_tx else '',
-                'ref_gene_1_tx_count': ref_a_tx_count,
-                'ref_gene_2': ref_b,
-                'ref_gene_2_transcripts': ';'.join(ref_b_tx) if ref_b_tx else '',
-                'ref_gene_2_tx_count': ref_b_tx_count,
-                'query_gene_1': query_a,
-                'query_gene_1_transcripts': ';'.join(query_a_tx) if query_a_tx else '',
-                'query_gene_1_tx_count': query_a_tx_count,
-                'query_gene_2': query_b,
-                'query_gene_2_transcripts': ';'.join(query_b_tx) if query_b_tx else '',
-                'query_gene_2_tx_count': query_b_tx_count,
+                'old_gene_1': ref_a,
+                'old_gene_1_transcripts': ';'.join(ref_a_tx) if ref_a_tx else '',
+                'old_gene_1_tx_count': ref_a_tx_count,
+                'old_gene_2': ref_b,
+                'old_gene_2_transcripts': ';'.join(ref_b_tx) if ref_b_tx else '',
+                'old_gene_2_tx_count': ref_b_tx_count,
+                'new_gene_1': query_a,
+                'new_gene_1_transcripts': ';'.join(query_a_tx) if query_a_tx else '',
+                'new_gene_1_tx_count': query_a_tx_count,
+                'new_gene_2': query_b,
+                'new_gene_2_transcripts': ';'.join(query_b_tx) if query_b_tx else '',
+                'new_gene_2_tx_count': query_b_tx_count,
                 'ref_chrom': ref_a_pos[0],
-                'ref_gene_1_start': ref_a_pos[1],
-                'ref_gene_2_start': ref_b_pos[1],
+                'old_gene_1_start': ref_a_pos[1],
+                'old_gene_2_start': ref_b_pos[1],
                 'query_chrom': query_a_pos[0],
-                'query_gene_1_start': query_a_pos[1],
-                'query_gene_2_start': query_b_pos[1],
+                'new_gene_1_start': query_a_pos[1],
+                'new_gene_2_start': query_b_pos[1],
                 'ref_distance': ref_distance,
                 'query_distance': query_distance,
                 'swap_type': 'adjacent_order_inversion'
@@ -1023,36 +1023,36 @@ def detect_unmapped_genes(
         Tuple of (unmapped_ref_df, unmapped_query_df)
     """
     # Get mapped genes from pavprot output
-    mapped_ref_genes = set(pavprot_df['ref_gene'].unique())
-    mapped_query_genes = set(pavprot_df['query_gene'].unique())
+    mapped_old_genes = set(pavprot_df['old_gene'].unique())
+    mapped_new_genes = set(pavprot_df['new_gene'].unique())
 
-    print(f"  Mapped ref genes in pavprot: {len(mapped_ref_genes)}")
-    print(f"  Mapped query genes in pavprot: {len(mapped_query_genes)}")
+    print(f"  Mapped ref genes in pavprot: {len(mapped_old_genes)}")
+    print(f"  Mapped query genes in pavprot: {len(mapped_new_genes)}")
 
     # Get all reference genes
-    all_ref_genes = set()
+    all_old_genes = set()
     if ref_gff and os.path.exists(ref_gff):
         print(f"  Getting ref genes from GFF: {ref_gff}")
-        all_ref_genes = parse_gff_gene_ids(ref_gff)
+        all_old_genes = parse_gff_gene_ids(ref_gff)
     elif ref_faa and os.path.exists(ref_faa):
         print(f"  Getting ref genes from FASTA: {ref_faa}")
-        all_ref_genes = parse_fasta_ids(ref_faa, is_query=False)
+        all_old_genes = parse_fasta_ids(ref_faa, is_query=False)
 
     # Get all query genes
-    all_query_genes = set()
+    all_new_genes = set()
     if query_gff and os.path.exists(query_gff):
         print(f"  Getting query genes from GFF: {query_gff}")
-        all_query_genes = parse_gff_gene_ids(query_gff)
+        all_new_genes = parse_gff_gene_ids(query_gff)
     elif qry_faa and os.path.exists(qry_faa):
         print(f"  Getting query genes from FASTA: {qry_faa}")
-        all_query_genes = parse_fasta_ids(qry_faa, is_query=True)
+        all_new_genes = parse_fasta_ids(qry_faa, is_query=True)
 
-    print(f"  Total ref genes found: {len(all_ref_genes)}")
-    print(f"  Total query genes found: {len(all_query_genes)}")
+    print(f"  Total ref genes found: {len(all_old_genes)}")
+    print(f"  Total query genes found: {len(all_new_genes)}")
 
     # Calculate unmapped genes
-    unmapped_ref = all_ref_genes - mapped_ref_genes
-    unmapped_query = all_query_genes - mapped_query_genes
+    unmapped_ref = all_old_genes - mapped_old_genes
+    unmapped_query = all_new_genes - mapped_new_genes
 
     print(f"  Unmapped ref genes (Scenario G): {len(unmapped_ref)}")
     print(f"  Unmapped query genes (Scenario H): {len(unmapped_query)}")
@@ -1076,7 +1076,7 @@ def detect_unmapped_genes(
             'transcripts': ';'.join(tx_list) if tx_list else '',
             'transcript_count': tx_count,
             'scenario': 'G',
-            'description': 'ref_gene_no_query_match'
+            'description': 'old_gene_no_query_match'
         })
     unmapped_ref_df = pd.DataFrame(unmapped_ref_records)
 
@@ -1088,7 +1088,7 @@ def detect_unmapped_genes(
             'transcripts': ';'.join(tx_list) if tx_list else '',
             'transcript_count': tx_count,
             'scenario': 'H',
-            'description': 'query_gene_no_ref_match'
+            'description': 'new_gene_no_ref_match'
         })
     unmapped_query_df = pd.DataFrame(unmapped_query_records)
 
@@ -1190,8 +1190,8 @@ def main():
     # IMPORTANT: Detect CDI FIRST to get exclusion sets for A, B, J
     # CDI takes priority - genes in CDI are NOT counted in A, B, or J
     # =========================================================================
-    cdi_ref_genes, cdi_query_genes = get_cdi_genes(pavprot_df)
-    print(f"CDI exclusion sets: {len(cdi_ref_genes)} ref genes, {len(cdi_query_genes)} query genes\n")
+    cdi_old_genes, cdi_new_genes = get_cdi_genes(pavprot_df)
+    print(f"CDI exclusion sets: {len(cdi_old_genes)} ref genes, {len(cdi_new_genes)} query genes\n")
 
     # Detect E (1:1 orthologs) - exclusive by definition
     if 'E' in scenarios:
@@ -1213,7 +1213,7 @@ def main():
         print("=" * 60)
         print("Detecting Scenario A (1:2N Mappings - exactly 2 queries, NOT in CDI)")
         print("=" * 60)
-        one_to_many_df = detect_one_to_many(pavprot_df, exclude_refs=cdi_ref_genes)
+        one_to_many_df = detect_one_to_many(pavprot_df, exclude_refs=cdi_old_genes)
         if len(one_to_many_df) > 0:
             output_file = output_dir / 'scenario_A_1to2N_mappings.tsv'
             one_to_many_df.to_csv(output_file, sep='\t', index=False)
@@ -1228,7 +1228,7 @@ def main():
         print("=" * 60)
         print("Detecting Scenario B (N:1 Mappings - NOT in CDI)")
         print("=" * 60)
-        many_to_one_df = detect_many_to_one(pavprot_df, exclude_queries=cdi_query_genes)
+        many_to_one_df = detect_many_to_one(pavprot_df, exclude_queries=cdi_new_genes)
         if len(many_to_one_df) > 0:
             output_file = output_dir / 'scenario_B_Nto1_mappings.tsv'
             many_to_one_df.to_csv(output_file, sep='\t', index=False)
@@ -1243,7 +1243,7 @@ def main():
         print("=" * 60)
         print("Detecting Scenario J (1:2N+ Mappings - 3+ queries, NOT in CDI)")
         print("=" * 60)
-        complex_df = detect_complex_one_to_many(pavprot_df, min_count=3, exclude_refs=cdi_ref_genes)
+        complex_df = detect_complex_one_to_many(pavprot_df, min_count=3, exclude_refs=cdi_old_genes)
         if len(complex_df) > 0:
             output_file = output_dir / 'scenario_J_1to2N_plus_mappings.tsv'
             complex_df.to_csv(output_file, sep='\t', index=False)
@@ -1293,7 +1293,7 @@ def main():
         )
 
         if 'G' in scenarios and len(unmapped_ref_df) > 0:
-            output_file = output_dir / 'scenario_G_unmapped_ref_genes.tsv'
+            output_file = output_dir / 'scenario_G_unmapped_old_genes.tsv'
             unmapped_ref_df.to_csv(output_file, sep='\t', index=False)
             print(f"  Output Scenario G: {output_file}")
             results_summary.append(('G', len(unmapped_ref_df), str(output_file)))
@@ -1301,7 +1301,7 @@ def main():
             results_summary.append(('G', 0, 'N/A'))
 
         if 'H' in scenarios and len(unmapped_query_df) > 0:
-            output_file = output_dir / 'scenario_H_unmapped_query_genes.tsv'
+            output_file = output_dir / 'scenario_H_unmapped_new_genes.tsv'
             unmapped_query_df.to_csv(output_file, sep='\t', index=False)
             print(f"  Output Scenario H: {output_file}")
             results_summary.append(('H', len(unmapped_query_df), str(output_file)))

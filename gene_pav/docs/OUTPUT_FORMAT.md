@@ -17,10 +17,10 @@ The output file is named based on:
 
 | Column | Description | Example |
 |--------|-------------|---------|
-| `ref_gene` | Reference gene ID | `gene-FOBCDRAFT_266382` |
-| `ref_transcript` | Reference transcript ID | `XM_031180388.3` |
-| `query_gene` | Query gene ID | `FOZG_02279` |
-| `query_transcript` | Query transcript ID | `FOZG_02279-t36_1` |
+| `old_gene` | Reference gene ID | `gene-FOBCDRAFT_266382` |
+| `old_transcript` | Reference transcript ID | `XM_031180388.3` |
+| `new_gene` | Query gene ID | `FOZG_02279` |
+| `new_transcript` | Query transcript ID | `FOZG_02279-t36_1` |
 | `class_code` | Gffcompare class code | `em`, `j`, `n`, etc. |
 | `exons` | Number of exons | `5` or `-` |
 | `class_code_multi` | Multi-transcript class codes (semicolon-separated) | `em;j;n` |
@@ -66,7 +66,7 @@ The output file is named based on:
 ### Minimal Output (no optional features)
 
 ```tsv
-ref_gene	ref_transcript	query_gene	query_transcript	class_code	exons	class_code_multi	class_type	emckmnj	emckmnje
+old_gene	old_transcript	new_gene	new_transcript	class_code	exons	class_code_multi	class_type	emckmnj	emckmnje
 gene-FOBCDRAFT_266382	XM_031180388.3	FOZG_02279	FOZG_02279-t36_1	j	4	j;m	1	1	1
 gene-FOBCDRAFT_266382	XM_031180388.3	FOZG_02279	FOZG_02279-t36_2	m	3	j;m	1	1	1
 gene-FOBCDRAFT_430	XM_031180643.3	FOZG_02018	FOZG_02018-t36_1	j	6	em;j;n	1	1	1
@@ -77,7 +77,7 @@ gene-FOBCDRAFT_430	XM_031180643.3	FOZG_02018	FOZG_02018-t36_3	em	5	em;j;n	0	1	1
 ### Full Output (all features enabled)
 
 ```tsv
-ref_gene	ref_transcript	query_gene	query_transcript	class_code	exons	class_code_multi	class_type	emckmnj	emckmnje	identical_aa	mismatched_aa	indels_aa	aligned_aa	extra_copy_number	query_total_ipr_domain_length	ref_total_ipr_domain_length
+old_gene	old_transcript	new_gene	new_transcript	class_code	exons	class_code_multi	class_type	emckmnj	emckmnje	identical_aa	mismatched_aa	indels_aa	aligned_aa	extra_copy_number	query_total_ipr_domain_length	ref_total_ipr_domain_length
 gene-FOBCDRAFT_266382	XM_031180388.3	FOZG_02279	FOZG_02279-t36_1	j	4	j;m	1	1	1	432	8	2	442	0	450	520
 gene-FOBCDRAFT_266382	XM_031180388.3	FOZG_02279	FOZG_02279-t36_2	m	3	j;m	1	1	1	428	10	3	441	1	450	520
 gene-FOBCDRAFT_430	XM_031180643.3	FOZG_02018	FOZG_02018-t36_1	j	6	em;j;n	1	1	1	958	15	5	978	0	680	720
@@ -104,8 +104,8 @@ python gene_pav/pavprot.py \
   --gff-comp gffcompare.tracking \
   --gff reference.gff3 \
   --class-code em,j \
-  --ref-faa reference.faa \
-  --qry-faa query.faa \
+  --prot reference.faa \
+  --prot query.faa \
   --run-diamond \
   --diamond-threads 40 \
   --output-prefix my_analysis
@@ -161,8 +161,8 @@ python gene_pav/pavprot.py \
   --liftoff-gff liftoff_output.gff3 \
   --interproscan-out reference_interproscan.tsv,query_interproscan.tsv \
   --class-code em,j \
-  --ref-faa reference.faa \
-  --qry-faa query.faa \
+  --prot reference.faa \
+  --prot query.faa \
   --run-diamond \
   --diamond-threads 40 \
   --output-prefix synonym_mapping_liftover_gffcomp
