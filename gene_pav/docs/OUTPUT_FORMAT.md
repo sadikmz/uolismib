@@ -177,6 +177,44 @@ Includes ALL columns:
 - InterProScan: 2 columns
 **Total: 17 columns**
 
+## Excel Export (Default: Enabled)
+
+By default, all TSV outputs are also exported to a single Excel workbook (`*.xlsx`) with the following sheets:
+
+| Sheet Name | Description | Source |
+|------------|-------------|--------|
+| `transcript_level` | Main transcript-level mappings | `*_diamond_blastp.tsv` |
+| `gene_level` | Gene-level aggregation | `*_gene_level.tsv` |
+| `old_to_multi_new` | Old genes → multiple new (summary) | `*_old_to_multiple_new.tsv` |
+| `old_to_multi_new_detail` | Old genes → multiple new (detailed) | `*_old_to_multiple_new_detailed.tsv` |
+| `new_to_multi_old` | New genes → multiple old (summary) | `*_new_to_multiple_old.tsv` |
+| `new_to_multi_old_detail` | New genes → multiple old (detailed) | `*_new_to_multiple_old_detailed.tsv` |
+| `summary` | Multiple mappings summary text | `*_multiple_mappings_summary.txt` |
+| `old_domain_dist` | Old annotation domain distribution | `*_domain_distribution.tsv` |
+| `new_domain_dist` | New annotation domain distribution | `*_domain_distribution.tsv` |
+| `ipr_length` | Combined old/new IPR lengths | Both `*_total_ipr_length.tsv` files |
+| `bbh_results` | Bidirectional best hits | `*_bbh_results.tsv` |
+
+### Combined `ipr_length` Sheet Format
+
+The `ipr_length` sheet combines both old and new annotation IPR lengths with a `source` column:
+
+```tsv
+source    gene_id                    total_iprdom_len
+old       FOZG_00001                 227
+old       FOZG_00002                 45
+new       gene-FOBCDRAFT_100165      368
+new       gene-FOBCDRAFT_1003        73
+```
+
+### Disabling Excel Export
+
+```bash
+python pavprot.py --gff-comp tracking.txt --gff old.gff --no-output-excel
+```
+
+---
+
 ## Notes
 
 1. **Gene-level aggregation for InterProScan**: IPR domain lengths are summed per gene, not per transcript. Multiple transcripts from the same gene will show the same total IPR domain length.
@@ -185,6 +223,8 @@ Includes ALL columns:
 
 3. **DIAMOND output**: Uses ultra-sensitive mode with E-value cutoff of 1e-6.
 
-4. **Class codes**: Standard gffcompare class codes (=, c, j, e, i, o, p, r, u, x, s, ., y)
+4. **Class codes**: Standard gffcompare class codes (=, c, j, e, i, o, p, r, u, x, s, ., y). Note: `=` is internally converted to `em`.
 
 5. **Output directory**: All outputs are written to `pavprot_out/` directory (created automatically).
+
+6. **Excel export**: Requires `openpyxl` package. Install with `pip install openpyxl`.

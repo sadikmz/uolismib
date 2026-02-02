@@ -30,6 +30,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.3.0] - 2026-02-02
+
+### Added
+- **Excel export feature** (`--output-excel`, default: True)
+  - Exports all TSV outputs to a single Excel workbook
+  - 11 sheets: transcript_level, gene_level, old_to_multi_new, new_to_multi_old, summary, old_domain_dist, new_domain_dist, ipr_length, bbh_results
+  - Combined `ipr_length` sheet with `source` column (old/new)
+  - Use `--no-output-excel` to disable
+  - Requires `openpyxl` package
+
+### Fixed
+- **Critical bug: Class code `=` filtering** - The `=` class code was converted to `em` in data but not in filter_codes set, causing all exact match entries (10,150) to be excluded from output
+  - Before fix: 11,707 transcript entries, 7,693 gene pairs
+  - After fix: 21,857 transcript entries, 15,816 gene pairs
+
+### Changed
+- **Terminology standardization** - Changed ref/query to old/new across entire codebase
+  - Column names: `ref_gene` → `old_gene`, `query_gene` → `new_gene`
+  - CLI help: `--gff old.gff,new.gff`, `--prot old.faa,new.faa`
+  - Internal variables and documentation updated
+  - **⚠️ Breaking change**: Users parsing existing output files need to update column names
+
+- **CLI argument consolidation**
+  - Consolidated `--ref-faa`/`--qry-faa`/`--input-prots` into single `--prot` argument
+  - `--prot` accepts comma-separated files: `old.faa,new.faa`
+
+### Dependencies
+- Added `openpyxl>=3.0.0` for Excel export
+
+---
+
 ## [0.2.0] - 2026-01-21
 
 ### Added
@@ -118,6 +149,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 | Version | Date | Highlights |
 |---------|------|------------|
+| 0.3.0 | 2026-02-02 | Excel export, class code bug fix, old/new terminology |
 | 0.2.0 | 2026-01-21 | Module reorganization, testing infrastructure, tools_runner |
 | 0.1.0 | 2026-01-09 | Initial release with scenario detection |
 

@@ -1,13 +1,13 @@
 # PAVprot Pipeline Architecture
 
-> **Generated:** 2026-01-26
+> **Generated:** 2026-02-02
 > **Purpose:** Comprehensive documentation of module connections, data flow, and pipeline structure
 
 ---
 
 ## Overview
 
-**PAVprot** is a Presence/Absence Variation (PAV) protein analysis pipeline that analyzes gene mapping relationships between reference and query genomes. It integrates GffCompare tracking data, DIAMOND BLASTP alignments, and InterProScan domain annotations.
+**PAVprot** is a Presence/Absence Variation (PAV) protein analysis pipeline that analyzes gene mapping relationships between old and new genome annotations. It integrates GffCompare tracking data, DIAMOND BLASTP alignments, and InterProScan domain annotations.
 
 ---
 
@@ -85,10 +85,10 @@
 **Purpose:** Detects 1-to-many and many-to-1 relationships.
 
 **Output Files:**
-1. `*_ref_to_multiple_query.tsv` - 1-to-many summary
-2. `*_ref_to_multiple_query_detailed.tsv` - Detailed pairs
-3. `*_query_to_multiple_ref.tsv` - Many-to-1 summary
-4. `*_query_to_multiple_ref_detailed.tsv` - Detailed pairs
+1. `*_old_to_multiple_new.tsv` - 1-to-many summary
+2. `*_old_to_multiple_new_detailed.tsv` - Detailed pairs
+3. `*_new_to_multiple_old.tsv` - Many-to-1 summary
+4. `*_new_to_multiple_old_detailed.tsv` - Detailed pairs
 5. `*_multiple_mappings_summary.txt` - Statistics
 
 ---
@@ -113,13 +113,13 @@
 **Scenarios:**
 | Code | Name | Definition |
 |------|------|------------|
-| E | 1:1 orthologs | ref→1 query AND query→1 ref |
-| A | 1:2N | ref→exactly 2 queries, NOT CDI |
-| J | 1:2N+ | ref→3+ queries, NOT CDI |
-| B | N:1 | query→2+ refs, NOT CDI |
+| E | 1:1 orthologs | old→1 new AND new→1 old |
+| A | 1:2N | old→exactly 2 new, NOT CDI |
+| J | 1:2N+ | old→3+ new, NOT CDI |
+| B | N:1 | new→2+ old, NOT CDI |
 | CDI | Complex | Both sides multi-mapping |
-| G | Unmapped ref | Reference gene not mapped |
-| H | Unmapped query | Query gene not mapped |
+| G | Unmapped old | Old gene not mapped |
+| H | Unmapped new | New gene not mapped |
 
 **Key Functions:**
 - `get_cdi_genes()` - Identify cross-mapping
@@ -135,10 +135,10 @@
 ```
 Input Files
 ├── GffCompare Tracking (.tracking)  ──→ pavprot.parse_tracking()
-├── Reference GFF3                   ──→ pavprot.load_gff()
-├── Query GFF3                       ──┘
-├── Reference FASTA (.faa)           ──→ DiamondRunner
-├── Query FASTA (.faa)               ──→ DiamondRunner
+├── Old GFF3                         ──→ pavprot.load_gff()
+├── New GFF3                         ──┘
+├── Old FASTA (.faa)                 ──→ DiamondRunner
+├── New FASTA (.faa)                 ──→ DiamondRunner
 ├── Liftoff GFF3                     ──→ pavprot.load_extra_copy_numbers()
 └── InterProScan TSV(s)              ──→ InterProParser.parse_tsv()
 
@@ -158,18 +158,21 @@ Input Files
                             ↓
             ┌───────────────┬───────────────┐
             ↓               ↓               ↓
-        Multi-mapping  Gene-level      plot/
-        detection      aggregation      visualization
+        Multi-mapping  Gene-level      Excel Export
+        detection      aggregation      (11 sheets)
             ↓               ↓               ↓
-        Summary        Gene-level TSV  PNG/PDF plots
+        Summary        Gene-level TSV  .xlsx workbook
         files          + scenarios
 
 Output Files (pavprot_out/)
-├── synonym_mapping_liftover_gffcomp.tsv
+├── *_diamond_blastp.tsv              # Transcript-level
+├── *_diamond_blastp.xlsx             # Excel workbook (11 sheets)
 ├── *_gene_level.tsv
-├── *_ref_to_multiple_query*.tsv
-├── *_query_to_multiple_ref*.tsv
+├── *_old_to_multiple_new*.tsv
+├── *_new_to_multiple_old*.tsv
 ├── *_multiple_mappings_summary.txt
+├── *_domain_distribution.tsv
+├── *_total_ipr_length.tsv
 └── compareprot_out/
     ├── *_diamond_blastp_*.tsv.gz
     └── *_bbh_results.tsv
@@ -229,7 +232,7 @@ Standalone:
 ### Core
 ```bash
 --gff-comp FILE      # GffCompare tracking file (required)
---gff FILE           # Reference GFF3 or "ref.gff,query.gff"
+--gff FILE           # GFF3 files: "old.gff,new.gff"
 --output-dir DIR     # Output directory (default: pavprot_out)
 --output-prefix STR  # Output filename prefix
 ```
@@ -237,8 +240,7 @@ Standalone:
 ### Alignment
 ```bash
 --run-diamond        # Run DIAMOND BLASTP
---prot FILE       # Reference protein FASTA
---prot FILE       # Query protein FASTA
+--prot FILE          # Protein FASTA files: "old.faa,new.faa"
 --run-bbh            # Enable bidirectional best hit
 --run-pairwise       # Enable Biopython local alignment
 ```
@@ -246,14 +248,20 @@ Standalone:
 ### InterProScan
 ```bash
 --run-interproscan   # Run InterProScan
---interproscan-out   # Existing InterProScan results
+--interproscan-out   # Existing InterProScan results: "old.tsv,new.tsv"
 ```
 
 ### Filtering
 ```bash
---class-code CODES   # Filter by class codes (e.g., "em,j")
+--class-code CODES   # Filter by class codes (e.g., "=,c,k,m,n,j,e")
 --filter-exact-match # Only exact matches
 --filter-exclusive-1to1  # Only 1:1 orthologs
+```
+
+### Output
+```bash
+--output-excel       # Export to Excel workbook (default: True)
+--no-output-excel    # Disable Excel export
 ```
 
 ---
