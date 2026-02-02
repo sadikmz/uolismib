@@ -2,7 +2,7 @@
 """
 PAVprot - Presence/Absence Variation Protein Analysis Pipeline
 
-Analyzes gene mapping relationships between reference and query genomes,
+Analyzes gene mapping relationships between old and new genome annotations,
 integrating GffCompare tracking data, DIAMOND BLASTP alignments, and
 InterProScan domain annotations.
 
@@ -15,18 +15,18 @@ Features:
     - Filter output by exact match, 1:1 mappings, or class type
 
 Usage:
-    python pavprot.py --gff-comp tracking.txt --gff ref.gff3 [options]
+    python pavprot.py --gff-comp tracking.txt --gff old.gff3 [options]
 
 Example:
-    python pavprot.py --gff-comp gffcompare.tracking --gff ref.gff3,query.gff3 \\
-        --run-diamond --ref-faa ref.faa --qry-faa query.faa \\
+    python pavprot.py --gff-comp gffcompare.tracking --gff old.gff3,new.gff3 \\
+        --run-diamond --prot old.faa,new.faa \\
         --filter-exact-match --output-dir results/
 
 Output:
     Creates a pavprot_out/ directory (or specified --output-dir) containing:
     - synonym_mapping_liftover_gffcomp.tsv: Main output with all metrics
-    - *_ref_to_multiple_query.tsv: One-to-many mapping analysis
-    - *_query_to_multiple_ref.tsv: Many-to-one mapping analysis
+    - *_old_to_multiple_new.tsv: One-to-many mapping analysis
+    - *_new_to_multiple_old.tsv: Many-to-one mapping analysis
     - *_multiple_mappings_summary.txt: Summary statistics
 """
 
@@ -57,13 +57,13 @@ from gsmc import (
 
 class PAVprot:
     @staticmethod
-    def fasta2dict(source: str, is_query: bool = False):
+    def fasta2dict(source: str, is_new: bool = False):
         """
         Parse FASTA file and yield (header, sequence) tuples.
 
         Args:
             source: Path to FASTA file or '-' for stdin
-            is_query: If True, strip '-pN' suffix from transcript IDs
+            is_new: If True, strip '-pN' suffix from transcript IDs
 
         Yields:
             Tuple of (transcript_id, sequence)
@@ -89,7 +89,7 @@ class PAVprot:
                     header = line[1:].strip()
                     transcript_id = header.split()[0].split('|')[0]
 
-                    if is_query:
+                    if is_new:
                         if len(transcript_id) >= 3 and transcript_id[-3] == '-' and transcript_id[-2] == 'p':
                             transcript_id = transcript_id[:-3]
 
@@ -168,6 +168,12 @@ class PAVprot:
         filtered_dict = defaultdict(list)
         filter_codes = filter_codes or set()
 
+        # Convert '=' to 'em' in filter_codes for consistency
+        if '=' in filter_codes:
+            filter_codes = filter_codes.copy()
+            filter_codes.discard('=')
+            filter_codes.add('em')
+
         with open(filepath) as f:
             for line in f:
                 line = line.rstrip('\n')
@@ -176,44 +182,47 @@ class PAVprot:
                 fields = line.split('\t')
                 if len(fields) < 5:
                     continue
-                ref_field = fields[2].strip()
-                if ref_field == '-' or '|' not in ref_field:
+                gffcomp_new_field = fields[2].strip()
+                if gffcomp_new_field == '-' or '|' not in gffcomp_new_field:
                     continue
 
                 class_code = fields[3].strip()
                 if class_code == '=':
                     class_code = 'em'
 
-                query_info = fields[4].strip()
-                parts = query_info.split('|')
+                gffcomp_old_field = fields[4].strip()
+                parts = gffcomp_old_field.split('|')
                 if len(parts) < 3:
                     continue
 
-                old_gene_raw, ref_trans_raw = [x.strip() for x in ref_field.split('|')]
-                ref_trans_clean = ref_trans_raw.replace('rna-', '')
-                ref_trans_final = rna_to_protein.get(ref_trans_clean, ref_trans_clean)
-                old_gene = locus_to_gene.get(old_gene_raw, old_gene_raw)
+                # gffcomp_new_field contains: new_gene|new_transcript (GCF annotation)
+                new_gene_raw, new_trans_raw = [x.strip() for x in gffcomp_new_field.split('|')]
+                new_trans_clean = new_trans_raw.replace('rna-', '')
+                new_trans_final = rna_to_protein.get(new_trans_clean, new_trans_clean)
+                new_gene_id = locus_to_gene.get(new_gene_raw, new_gene_raw)
 
-                q_gene_full = parts[0]
-                q_gene = q_gene_full.split(':')[-1]
-                q_trans = parts[1]
+                # gffcomp_old_field (parts) contains: old_gene|old_transcript|exons (FungiDB annotation)
+                old_gene_full = parts[0]
+                old_gene_id = old_gene_full.split(':')[-1]
+                old_trans = parts[1]
                 try:
                     exons = int(parts[2])
                 except ValueError:
                     exons = None
-
+                    
+                # This matches --prot order: old.faa,new.faa
                 entry = {
-                    "old_gene": old_gene,
-                    "old_transcript": ref_trans_final,
-                    "new_gene": q_gene,
-                    "new_transcript": q_trans,
+                    "old_gene": old_gene_id,
+                    "old_transcript": old_trans,
+                    "new_gene": new_gene_id,
+                    "new_transcript": new_trans_final,
                     "class_code": class_code,
                     "exons": exons
                 }
 
-                full_dict[old_gene].append(entry)
+                full_dict[old_gene_id].append(entry)
                 if not filter_codes or class_code in filter_codes:
-                    filtered_dict[old_gene].append(entry)
+                    filtered_dict[old_gene_id].append(entry)
 
         return dict(full_dict), dict(filtered_dict)
 
@@ -260,25 +269,25 @@ class PAVprot:
         (filter_multi_transcripts and add_gene_pair_metrics) for better performance.
 
         Computes:
-            Query-gene level:
-                - class_code_multi_query: aggregated class codes for new_gene
+            New-gene level:
+                - class_code_multi_new: aggregated class codes for new_gene
                 - class_type_transcript: class_type based on new_gene aggregation
                 - ackmnj: 1 if any code in {em,c,k,m,n,j}
                 - ackmnje: 1 if any code in {em,c,k,m,n,j,e}
 
-            Ref-gene level:
-                - class_code_multi_ref: aggregated class codes for old_gene
+            Old-gene level:
+                - class_code_multi_old: aggregated class codes for old_gene
 
             Gene-pair level:
                 - class_code_pair: aggregated class codes for (old_gene, new_gene) pair
                 - class_type_gene: class_type at gene-pair level
                 - exact_match: 1 if ALL transcripts in pair are 'em'
-                - ref_multi_transcript: 1 if old_gene has >1 transcripts globally
-                - qry_multi_transcript: 1 if new_gene has >1 transcripts globally
+                - old_multi_transcript: 1 if old_gene has >1 transcripts globally
+                - new_multi_transcript: 1 if new_gene has >1 transcripts globally
                 - old_multi_new: 0=exclusive 1:1, 1=one-to-many, 2=partner has others
                 - new_multi_old: 0=exclusive 1:1, 1=many-to-one, 2=partner has others
-                - ref_query_count: number of query genes this ref maps to
-                - qry_ref_count: number of ref genes this query maps to
+                - old_new_count: number of new genes this old gene maps to
+                - new_old_count: number of old genes this new gene maps to
 
         Args:
             full_dict: Dictionary of entries keyed by old_gene
@@ -293,94 +302,94 @@ class PAVprot:
         old_gene_to_entries = defaultdict(list)
         gene_pair_entries = defaultdict(list)
         old_gene_transcripts = defaultdict(set)
-        qry_gene_transcripts = defaultdict(set)
-        ref_to_queries = defaultdict(set)
-        qry_to_refs = defaultdict(set)
+        new_gene_var_transcripts = defaultdict(set)
+        old_to_new_genes = defaultdict(set)
+        new_to_old_genes = defaultdict(set)
 
         for entries in full_dict.values():
             for entry in entries:
                 old_gene = entry['old_gene']
-                qry_gene = entry['new_gene']
+                new_gene_var = entry['new_gene']
 
                 # Group by new_gene and old_gene
-                new_gene_to_entries[qry_gene].append(entry)
+                new_gene_to_entries[new_gene_var].append(entry)
                 old_gene_to_entries[old_gene].append(entry)
 
                 # Group by gene pair
-                gene_pair_entries[(old_gene, qry_gene)].append(entry)
+                gene_pair_entries[(old_gene, new_gene_var)].append(entry)
 
                 # Collect transcripts per gene (global counting)
                 old_gene_transcripts[old_gene].add(entry['old_transcript'])
-                qry_gene_transcripts[qry_gene].add(entry['new_transcript'])
+                new_gene_var_transcripts[new_gene_var].add(entry['new_transcript'])
 
                 # Track gene-level mappings
-                ref_to_queries[old_gene].add(qry_gene)
-                qry_to_refs[qry_gene].add(old_gene)
+                old_to_new_genes[old_gene].add(new_gene_var)
+                new_to_old_genes[new_gene_var].add(old_gene)
 
         # =====================================================================
-        # Compute query-gene level metrics
+        # Compute new-gene level metrics
         # =====================================================================
         new_gene_info = {}
-        for qgene, qentries in new_gene_to_entries.items():
-            class_codes = {e['class_code'] for e in qentries}
+        for ngene, nentries in new_gene_to_entries.items():
+            class_codes = {e['class_code'] for e in nentries}
             code_str = ';'.join(sorted(class_codes))
             ctype = cls._assign_class_type(class_codes)
             ackmnj = 1 if class_codes & {'em', 'c', 'k', 'm', 'n', 'j'} else 0
             ackmnje = 1 if class_codes & {'em', 'c', 'k', 'm', 'n', 'j', 'e'} else 0
 
-            new_gene_info[qgene] = {
-                'class_code_multi_query': code_str,
+            new_gene_info[ngene] = {
+                'class_code_multi_new': code_str,
                 'class_type_transcript': ctype,
                 'ackmnj': ackmnj,
                 'ackmnje': ackmnje
             }
 
         # =====================================================================
-        # Compute ref-gene level metrics
+        # Compute old-gene level metrics
         # =====================================================================
         old_gene_info = {}
-        for rgene, rentries in old_gene_to_entries.items():
-            class_codes = {e['class_code'] for e in rentries}
+        for ogene, oentries in old_gene_to_entries.items():
+            class_codes = {e['class_code'] for e in oentries}
             code_str = ';'.join(sorted(class_codes))
-            old_gene_info[rgene] = {'class_code_multi_ref': code_str}
+            old_gene_info[ogene] = {'class_code_multi_old': code_str}
 
         # =====================================================================
         # Compute gene-pair level metrics
         # =====================================================================
         gene_pair_metrics = {}
-        for (old_gene, qry_gene), pair_entries in gene_pair_entries.items():
+        for (old_gene, new_gene_var), pair_entries in gene_pair_entries.items():
             class_codes = {e['class_code'] for e in pair_entries}
             exact_match = 1 if class_codes == {'em'} else 0
             class_code_pair = ';'.join(sorted(class_codes))
             class_type_gene = cls._assign_class_type(class_codes)
 
-            num_queries_for_ref = len(ref_to_queries[old_gene])
-            num_refs_for_qry = len(qry_to_refs[qry_gene])
+            num_new_for_old = len(old_to_new_genes[old_gene])
+            num_old_for_new = len(new_to_old_genes[new_gene_var])
 
             # old_multi_new encoding
-            if num_queries_for_ref > 1:
+            if num_new_for_old > 1:
                 old_multi_new = 1
-            elif num_refs_for_qry > 1:
+            elif num_old_for_new > 1:
                 old_multi_new = 2
             else:
                 old_multi_new = 0
 
             # new_multi_old encoding
-            if num_refs_for_qry > 1:
+            if num_old_for_new > 1:
                 new_multi_old = 1
-            elif num_queries_for_ref > 1:
+            elif num_new_for_old > 1:
                 new_multi_old = 2
             else:
                 new_multi_old = 0
 
-            gene_pair_metrics[(old_gene, qry_gene)] = {
+            gene_pair_metrics[(old_gene, new_gene_var)] = {
                 'exact_match': exact_match,
                 'class_code_pair': class_code_pair,
                 'class_type_gene': class_type_gene,
                 'old_multi_new': old_multi_new,
                 'new_multi_old': new_multi_old,
-                'ref_query_count': num_queries_for_ref,
-                'qry_ref_count': num_refs_for_qry
+                'old_new_count': num_new_for_old,
+                'new_old_count': num_old_for_new
             }
 
         # =====================================================================
@@ -389,37 +398,37 @@ class PAVprot:
         for entries in full_dict.values():
             for entry in entries:
                 old_gene = entry['old_gene']
-                qry_gene = entry['new_gene']
+                new_gene_var = entry['new_gene']
 
-                # Query gene metrics
-                qinfo = new_gene_info.get(qry_gene, {
-                    'class_code_multi_query': entry['class_code'],
+                # New gene metrics
+                ninfo = new_gene_info.get(new_gene_var, {
+                    'class_code_multi_new': entry['class_code'],
                     'class_type_transcript': 'pru',
                     'ackmnj': 0,
                     'ackmnje': 0
                 })
-                entry['class_code_multi_query'] = qinfo['class_code_multi_query']
-                entry['class_type_transcript'] = qinfo['class_type_transcript']
-                entry['ackmnj'] = qinfo['ackmnj']
-                entry['ackmnje'] = qinfo['ackmnje']
+                entry['class_code_multi_new'] = ninfo['class_code_multi_new']
+                entry['class_type_transcript'] = ninfo['class_type_transcript']
+                entry['ackmnj'] = ninfo['ackmnj']
+                entry['ackmnje'] = ninfo['ackmnje']
 
-                # Ref gene metrics
-                rinfo = old_gene_info.get(old_gene, {'class_code_multi_ref': entry['class_code']})
-                entry['class_code_multi_ref'] = rinfo['class_code_multi_ref']
+                # Old gene metrics
+                oinfo = old_gene_info.get(old_gene, {'class_code_multi_old': entry['class_code']})
+                entry['class_code_multi_old'] = oinfo['class_code_multi_old']
 
                 # Multi-transcript flags
-                entry['ref_multi_transcript'] = 1 if len(old_gene_transcripts[old_gene]) > 1 else 0
-                entry['qry_multi_transcript'] = 1 if len(qry_gene_transcripts[qry_gene]) > 1 else 0
+                entry['old_multi_transcript'] = 1 if len(old_gene_transcripts[old_gene]) > 1 else 0
+                entry['new_multi_transcript'] = 1 if len(new_gene_var_transcripts[new_gene_var]) > 1 else 0
 
                 # Gene pair metrics
-                pair_metrics = gene_pair_metrics.get((old_gene, qry_gene), {})
+                pair_metrics = gene_pair_metrics.get((old_gene, new_gene_var), {})
                 entry['exact_match'] = pair_metrics.get('exact_match', 0)
                 entry['class_code_pair'] = pair_metrics.get('class_code_pair', entry['class_code'])
                 entry['class_type_gene'] = pair_metrics.get('class_type_gene', 'pru')
                 entry['old_multi_new'] = pair_metrics.get('old_multi_new', 0)
                 entry['new_multi_old'] = pair_metrics.get('new_multi_old', 0)
-                entry['ref_query_count'] = pair_metrics.get('ref_query_count', 1)
-                entry['qry_ref_count'] = pair_metrics.get('qry_ref_count', 1)
+                entry['old_new_count'] = pair_metrics.get('old_new_count', 1)
+                entry['new_old_count'] = pair_metrics.get('new_old_count', 1)
 
         return full_dict
 
@@ -476,8 +485,8 @@ class PAVprot:
 
         for entries in full_dict.values():
             for entry in entries:
-                q_trans = entry["new_transcript"]
-                copy_num = extra_copy_map.get(q_trans, 0)  # default 0 if not found
+                new_trans = entry["new_transcript"]
+                copy_num = extra_copy_map.get(new_trans, 0)  # default 0 if not found
                 entry["extra_copy_number"] = copy_num
 
         return full_dict
@@ -604,28 +613,28 @@ class PAVprot:
         return total_length
 
     @classmethod
-    def enrich_interproscan_data(cls, data: dict, qry_interproscan_map: dict, ref_interproscan_map: dict):
+    def enrich_interproscan_data(cls, data: dict, new_interproscan_map: dict, old_interproscan_map: dict):
         """
         Add InterProScan total IPR domain length to the data dictionary.
 
         Args:
             data: The main data dictionary to enrich
-            qry_interproscan_map: Query gene_id -> total_iprdom_len mapping
-            ref_interproscan_map: Reference gene_id -> total_iprdom_len mapping
+            new_interproscan_map: New gene_id -> total_iprdom_len mapping
+            old_interproscan_map: Old gene_id -> total_iprdom_len mapping
         """
         for entries in data.values():
             for entry in entries:
-                # Add query InterProScan data (map by new_gene)
-                qry_gene = entry['new_gene']
-                if qry_gene in qry_interproscan_map:
-                    entry['new_gene_total_iprdom_len'] = qry_interproscan_map[qry_gene]
+                # Add new annotation InterProScan data (map by new_gene)
+                new_gene_var = entry['new_gene']
+                if new_gene_var in new_interproscan_map:
+                    entry['new_gene_total_iprdom_len'] = new_interproscan_map[new_gene_var]
                 else:
                     entry['new_gene_total_iprdom_len'] = 0
 
-                # Add reference InterProScan data (map by old_gene)
+                # Add old annotation InterProScan data (map by old_gene)
                 old_gene = entry['old_gene']
-                if old_gene in ref_interproscan_map:
-                    entry['old_gene_total_iprdom_len'] = ref_interproscan_map[old_gene]
+                if old_gene in old_interproscan_map:
+                    entry['old_gene_total_iprdom_len'] = old_interproscan_map[old_gene]
                 else:
                     entry['old_gene_total_iprdom_len'] = 0
 
@@ -634,21 +643,21 @@ class PAVprot:
     @classmethod
     def detect_interproscan_type(cls, data: dict, interproscan_tsv: str) -> str:
         """
-        Auto-detect whether InterProScan file matches reference or query transcripts.
+        Auto-detect whether InterProScan file matches old or new annotation transcripts.
 
         Args:
             data: The main data dictionary with old_transcript and new_transcript
             interproscan_tsv: Path to InterProScan TSV file
 
         Returns:
-            'reference' if InterProScan matches reference transcripts
-            'query' if InterProScan matches query transcripts
+            'old' if InterProScan matches old annotation transcripts
+            'new' if InterProScan matches new annotation transcripts
             'unknown' if no clear match
         """
         if not interproscan_tsv or not os.path.exists(interproscan_tsv):
             return 'unknown'
 
-        # Collect all reference and query transcript IDs from tracking data
+        # Collect all old and new transcript IDs from tracking data
         old_transcripts = set()
         new_transcripts = set()
         new_genes = set()
@@ -680,38 +689,38 @@ class PAVprot:
                         interpro_proteins.add(protein_id)
 
         # Count matches
-        ref_matches = len(interpro_proteins & old_transcripts)
-        query_matches = len(interpro_proteins & new_transcripts)
+        old_matches = len(interpro_proteins & old_transcripts)
+        new_trans_matches = len(interpro_proteins & new_transcripts)
         new_gene_matches = len(interpro_proteins & new_genes)
 
-        # Combine query transcript and gene matches
-        total_query_matches = query_matches + new_gene_matches
+        # Combine new transcript and gene matches
+        total_new_matches = new_trans_matches + new_gene_matches
 
         print(f"  → InterProScan auto-detection:", file=sys.stderr)
-        print(f"     Reference transcript matches: {ref_matches}/{len(old_transcripts)}", file=sys.stderr)
-        print(f"     Query transcript matches: {query_matches}/{len(new_transcripts)}", file=sys.stderr)
-        print(f"     Query gene matches: {new_gene_matches}/{len(new_genes)}", file=sys.stderr)
+        print(f"     Old transcript matches: {old_matches}/{len(old_transcripts)}", file=sys.stderr)
+        print(f"     New transcript matches: {new_trans_matches}/{len(new_transcripts)}", file=sys.stderr)
+        print(f"     New gene matches: {new_gene_matches}/{len(new_genes)}", file=sys.stderr)
 
         # Determine type based on match counts
-        if ref_matches > total_query_matches:
-            print(f"  → Detected as: REFERENCE", file=sys.stderr)
-            return 'reference'
-        elif total_query_matches > ref_matches:
-            print(f"  → Detected as: QUERY", file=sys.stderr)
-            return 'query'
+        if old_matches > total_new_matches:
+            print(f"  → Detected as: OLD annotation", file=sys.stderr)
+            return 'old'
+        elif total_new_matches > old_matches:
+            print(f"  → Detected as: NEW annotation", file=sys.stderr)
+            return 'new'
         else:
-            print(f"  → Could not auto-detect (defaulting to: REFERENCE)", file=sys.stderr)
-            return 'reference'  # Default to reference if unclear
+            print(f"  → Could not auto-detect (defaulting to: OLD annotation)", file=sys.stderr)
+            return 'old'  # Default to old annotation if unclear
 
 class DiamondRunner:
     def __init__(self, threads: int = 40, output_prefix: str = "synonym_mapping_liftover_gffcomp", output_dir: str = "pavprot_out"):
         self.threads = threads
         self.output_prefix = output_prefix
         self.output_dir = output_dir
-        self.fwd_diamond_path: str = None  # query -> ref (forward)
-        self.rev_diamond_path: str = None  # ref -> query (reverse)
+        self.fwd_diamond_path: str = None  # new -> old (forward)
+        self.rev_diamond_path: str = None  # old -> new (reverse)
 
-    def _run_diamond(self, db_path: str, query_path: str, output_name: str) -> str:
+    def _run_diamond(self, db_path: str, input_path: str, output_name: str) -> str:
         """Run DIAMOND blastp with standard parameters."""
         out_dir = os.path.join(os.getcwd(), self.output_dir, 'compareprot_out')
         os.makedirs(out_dir, exist_ok=True)
@@ -720,7 +729,7 @@ class DiamondRunner:
         cmd_str = (
             f"diamond blastp "
             f"--db {db_path} "
-            f"--query {query_path} "
+            f"--query {input_path} "
             f"--ultra-sensitive "
             f"--masking none "
             f"--out {diamond_out} "
@@ -737,25 +746,25 @@ class DiamondRunner:
 
         return diamond_out
 
-    def diamond_blastp(self, ref_faa_path: str, qry_faa_path: str) -> str:
-        """Run forward DIAMOND blastp (query -> reference)."""
+    def diamond_blastp(self, old_faa_path: str, new_faa_path: str) -> str:
+        """Run forward DIAMOND blastp (new -> old)."""
         self.fwd_diamond_path = self._run_diamond(
-            db_path=ref_faa_path,
-            query_path=qry_faa_path,
+            db_path=old_faa_path,
+            input_path=new_faa_path,
             output_name="diamond_blastp_fwd"
         )
         return self.fwd_diamond_path
 
-    def diamond_blastp_reverse(self, ref_faa_path: str, qry_faa_path: str) -> str:
-        """Run reverse DIAMOND blastp (reference -> query) for BBH analysis."""
+    def diamond_blastp_reverse(self, old_faa_path: str, new_faa_path: str) -> str:
+        """Run reverse DIAMOND blastp (old -> new) for BBH analysis."""
         self.rev_diamond_path = self._run_diamond(
-            db_path=qry_faa_path,
-            query_path=ref_faa_path,
+            db_path=new_faa_path,
+            input_path=old_faa_path,
             output_name="diamond_blastp_rev"
         )
         return self.rev_diamond_path
 
-    def run_bidirectional(self, ref_faa_path: str, qry_faa_path: str) -> Tuple[str, str]:
+    def run_bidirectional(self, old_faa_path: str, new_faa_path: str) -> Tuple[str, str]:
         """
         Run bidirectional DIAMOND blastp for BBH analysis.
 
@@ -763,8 +772,8 @@ class DiamondRunner:
             Tuple of (forward_path, reverse_path)
         """
         print(f"\nRunning bidirectional DIAMOND for BBH analysis...", file=sys.stderr)
-        fwd = self.diamond_blastp(ref_faa_path, qry_faa_path)
-        rev = self.diamond_blastp_reverse(ref_faa_path, qry_faa_path)
+        fwd = self.diamond_blastp(old_faa_path, new_faa_path)
+        rev = self.diamond_blastp_reverse(old_faa_path, new_faa_path)
         return fwd, rev
 
     def enrich_blastp(self, data: dict, diamond_tsv_gz: str):
@@ -788,14 +797,14 @@ class DiamondRunner:
                     hits[qid] = hit
         
         # add pidentCov_9090
-        query_to_high_hits = defaultdict(list)
-        
+        new_to_high_hits = defaultdict(list)
+
         for hit in hits.values():
             if hit["pident"] >= 90.0 and hit["qcovhsp"] >= 90.0:
-                query_to_high_hits[hit["qseqid"]].append(hit['sallseqid'])
-       
-        # Only keep query transcripts with multiple high-quality hits
-        multi_match_queries = {q for q, refs in query_to_high_hits.items() if len(refs) > 1} 
+                new_to_high_hits[hit["qseqid"]].append(hit['sallseqid'])
+
+        # Only keep new transcripts with multiple high-quality hits
+        multi_match_new = {q for q, olds in new_to_high_hits.items() if len(olds) > 1} 
 
         for entries in data.values():
             for entry in entries:
@@ -814,39 +823,39 @@ class DiamondRunner:
                     entry["diamond"] = None
                     entry["identical_aa"] = entry["mismatched_aa"] = entry["indels_aa"] = entry["aligned_aa"] = entry['pident'] = entry['qcovhsp'] = entry['scovhsp'] = 0
                 
-                # add pidentCov_9090 info 
-                if qid in multi_match_queries:
-                    matching_refs = query_to_high_hits[qid]
-                    entry['pidentCov_9090'] = {"ref_cnt": len(matching_refs), 
-                                               "ref_trans": matching_refs}
+                # add pidentCov_9090 info
+                if qid in multi_match_new:
+                    matching_olds = new_to_high_hits[qid]
+                    entry['pidentCov_9090'] = {"old_cnt": len(matching_olds),
+                                               "old_trans": matching_olds}
                 else:
                     entry['pidentCov_9090'] = None
 
         return data
 
 
-def enrich_pairwise_alignment(data: dict, ref_faa: str, qry_faa: str) -> dict:
+def enrich_pairwise_alignment(data: dict, old_faa: str, new_faa: str) -> dict:
     """
     Enrich PAVprot data with Biopython pairwise alignment results.
 
     Performs local alignment for each transcript pair and adds:
     - pairwise_identity: Percent identity from local alignment
-    - pairwise_coverage_old: Coverage of reference sequence
-    - pairwise_coverage_new: Coverage of query sequence
+    - pairwise_coverage_old: Coverage of old sequence
+    - pairwise_coverage_new: Coverage of new sequence
     - pairwise_aligned_length: Length of alignment
 
     Args:
         data: PAVprot data dictionary (old_gene -> list of entries)
-        ref_faa: Path to reference protein FASTA
-        qry_faa: Path to query protein FASTA
+        old_faa: Path to old annotation protein FASTA
+        new_faa: Path to new annotation protein FASTA
 
     Returns:
         Enriched data dictionary
     """
     print("Loading sequences for pairwise alignment...", file=sys.stderr)
-    ref_seqs = read_all_sequences(ref_faa)
-    qry_seqs = read_all_sequences(qry_faa)
-    print(f"  Loaded {len(ref_seqs)} reference, {len(qry_seqs)} query sequences", file=sys.stderr)
+    old_seqs = read_all_sequences(old_faa)
+    new_seqs = read_all_sequences(new_faa)
+    print(f"  Loaded {len(old_seqs)} old, {len(new_seqs)} new sequences", file=sys.stderr)
 
     # Count total pairs for progress
     total_pairs = sum(len(entries) for entries in data.values())
@@ -857,16 +866,16 @@ def enrich_pairwise_alignment(data: dict, ref_faa: str, qry_faa: str) -> dict:
 
     for entries in data.values():
         for entry in entries:
-            ref_trans = entry.get('old_transcript', '')
-            qry_trans = entry.get('new_transcript', '')
+            old_trans = entry.get('old_transcript', '')
+            new_trans = entry.get('new_transcript', '')
 
             # Get sequences
-            ref_seq = ref_seqs.get(ref_trans)
-            qry_seq = qry_seqs.get(qry_trans)
+            old_seq = old_seqs.get(old_trans)
+            new_seq = new_seqs.get(new_trans)
 
-            if ref_seq is not None and qry_seq is not None:
+            if old_seq is not None and new_seq is not None:
                 # Perform local alignment
-                result = local_alignment_similarity(str(ref_seq), str(qry_seq))
+                result = local_alignment_similarity(str(old_seq), str(new_seq))
                 entry['pairwise_identity'] = result.identity_percent
                 entry['pairwise_coverage_old'] = result.coverage_ref
                 entry['pairwise_coverage_new'] = result.coverage_query
@@ -930,6 +939,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument('--filter-exclusive-1to1', action='store_true', help='Only output exclusive 1:1 mappings (old_multi_new=0 AND new_multi_old=0)')
     parser.add_argument('--filter-class-type-gene', help='Only output gene pairs with specified class_type_gene (comma-separated, e.g., "a,ackmnj")')
 
+    # Excel output option
+    parser.add_argument('--output-excel', action='store_true', default=True, dest='output_excel',
+                        help='Export all results to a single Excel file (default: True)')
+    parser.add_argument('--no-output-excel', action='store_false', dest='output_excel',
+                        help='Disable Excel export')
+
     return parser
 
 
@@ -938,7 +953,7 @@ def validate_inputs(args, parser: argparse.ArgumentParser) -> Tuple[List[str], L
     Validate all input files exist and return parsed file lists.
 
     Returns:
-        Tuple of (ref_gff_list, interproscan_files)
+        Tuple of (gff_list, interproscan_files)
     """
     # Validate tracking file
     if not os.path.exists(args.gff_comp):
@@ -952,38 +967,38 @@ def validate_inputs(args, parser: argparse.ArgumentParser) -> Tuple[List[str], L
                 parser.error(f"GFF file not found: {gff_file}")
 
     # Parse and validate protein FASTA files from --prot
-    args.ref_faa = None
-    args.qry_faa = None
+    args.old_faa = None
+    args.new_faa = None
     if args.prot:
         prot_files = [f.strip() for f in args.prot.split(',')]
         for pf in prot_files:
             if not os.path.exists(pf):
                 parser.error(f"Protein FASTA not found: {pf}")
         if len(prot_files) >= 1:
-            args.ref_faa = prot_files[0]
+            args.old_faa = prot_files[0]
         if len(prot_files) >= 2:
-            args.qry_faa = prot_files[1]
+            args.new_faa = prot_files[1]
         if len(prot_files) > 2:
-            parser.error(f"--prot accepts at most 2 files (ref,query). Got {len(prot_files)}")
+            parser.error(f"--prot accepts at most 2 files (old,new). Got {len(prot_files)}")
 
     if args.liftoff_gff and not os.path.exists(args.liftoff_gff):
         parser.error(f"Liftoff GFF not found: {args.liftoff_gff}")
 
     # Parse GFF list
-    ref_gff_list = [g.strip() for g in args.gff.split(',')] if args.gff else []
-    num_gffs = len(ref_gff_list)
+    gff_list = [g.strip() for g in args.gff.split(',')] if args.gff else []
+    num_gffs = len(gff_list)
 
     # Handle InterProScan files
     interproscan_files = []
     if args.run_interproscan:
-        interproscan_files = _run_interproscan_pipeline(args, parser, ref_gff_list, num_gffs)
+        interproscan_files = _run_interproscan_pipeline(args, parser, gff_list, num_gffs)
     elif args.interproscan_out:
         interproscan_files = _validate_interproscan_files(args, parser, num_gffs)
 
-    return ref_gff_list, interproscan_files
+    return gff_list, interproscan_files
 
 
-def _run_interproscan_pipeline(args, parser, ref_gff_list: List[str], num_gffs: int) -> List[str]:
+def _run_interproscan_pipeline(args, parser, gff_list: List[str], num_gffs: int) -> List[str]:
     """Run InterProScan on input protein files."""
     if not args.prot:
         parser.error("--run-interproscan requires --prot argument")
@@ -998,8 +1013,8 @@ def _run_interproscan_pipeline(args, parser, ref_gff_list: List[str], num_gffs: 
             parser.error(f"When --gff has 1 file, --prot can have at most 2 files. Got {len(input_prot_files)} protein files.")
 
         print(f"\nNote: Protein file order follows GFF file order:", file=sys.stderr)
-        for i, (prot_file, gff_file) in enumerate(zip(input_prot_files, ref_gff_list)):
-            file_type = "Reference" if i == 0 else "Query"
+        for i, (prot_file, gff_file) in enumerate(zip(input_prot_files, gff_list)):
+            file_type = "Old" if i == 0 else "New"
             print(f"  {file_type}: {prot_file} → {gff_file}", file=sys.stderr)
     else:
         print(f"\nNote: Running InterProScan without GFF - gene IDs will not be mapped", file=sys.stderr)
@@ -1019,8 +1034,8 @@ def _run_interproscan_pipeline(args, parser, ref_gff_list: List[str], num_gffs: 
 
     interproscan_output_files = []
     for i, prot_file in enumerate(input_prot_files):
-        file_type = "Reference" if i == 0 else "Query"
-        print(f"\n[{i+1}/{len(input_prot_files)}] Running InterProScan for {file_type} proteins: {prot_file}", file=sys.stderr)
+        file_type = "Old" if i == 0 else "New"
+        print(f"\n[{i+1}/{len(input_prot_files)}] Running InterProScan for {file_type} annotation proteins: {prot_file}", file=sys.stderr)
 
         output_basename = Path(prot_file).stem + "_interproscan"
         output_base = os.path.join(pavprot_out, output_basename)
@@ -1056,14 +1071,14 @@ def _validate_interproscan_files(args, parser, num_gffs: int) -> List[str]:
     # Validate counts based on GFF configuration
     if num_gffs == 2:
         if len(interproscan_files) == 1:
-            print(f"Note: Single InterProScan file provided with 2 GFFs - will be treated as reference-only", file=sys.stderr)
+            print(f"Note: Single InterProScan file provided with 2 GFFs - will be treated as old annotation only", file=sys.stderr)
         elif len(interproscan_files) != 2:
             parser.error(f"--interproscan-out must have 1 or 2 comma-separated files when --gff has 2 GFFs. Got {len(interproscan_files)} files.")
     elif num_gffs == 1:
         if len(interproscan_files) == 1:
-            print(f"Note: Single InterProScan file provided with 1 GFF - will be treated as reference-only", file=sys.stderr)
+            print(f"Note: Single InterProScan file provided with 1 GFF - will be treated as old annotation only", file=sys.stderr)
         elif len(interproscan_files) == 2:
-            print(f"Note: Two InterProScan files provided with 1 GFF - first for reference (with gene mapping), second for query (protein-level only)", file=sys.stderr)
+            print(f"Note: Two InterProScan files provided with 1 GFF - first for old annotation (with gene mapping), second for new annotation (protein-level only)", file=sys.stderr)
         elif len(interproscan_files) > 2:
             parser.error(f"--interproscan-out can have at most 2 files when --gff has 1 GFF. Got {len(interproscan_files)} files.")
     elif num_gffs == 0 and len(interproscan_files) > 0:
@@ -1081,22 +1096,22 @@ def process_interproscan_integration(
     args,
     data: dict,
     interproscan_files: List[str],
-    ref_gff_list: List[str],
+    gff_list: List[str],
     pavprot_out: str
 ) -> Tuple[dict, bool, dict, dict]:
     """
     Process InterProScan data and enrich the PAVprot data.
 
     Returns:
-        Tuple of (enriched_data, has_interproscan, ref_interproscan_map, qry_interproscan_map)
+        Tuple of (enriched_data, has_interproscan, old_interproscan_map, new_interproscan_map)
     """
-    num_gffs = len(ref_gff_list)
-    ref_interproscan_map = {}
-    qry_interproscan_map = {}
+    num_gffs = len(gff_list)
+    old_interproscan_map = {}
+    new_interproscan_map = {}
     has_interproscan = False
 
     if not interproscan_files or len(interproscan_files) == 0:
-        return data, has_interproscan, ref_interproscan_map, qry_interproscan_map
+        return data, has_interproscan, old_interproscan_map, new_interproscan_map
 
     print("\n" + "="*80, file=sys.stderr)
     print("RUNNING INTERPROSCAN INTEGRATION (parse_interproscan functionality)", file=sys.stderr)
@@ -1104,52 +1119,52 @@ def process_interproscan_integration(
 
     # Dispatch to appropriate handler based on configuration
     if num_gffs == 0:
-        ref_interproscan_map, qry_interproscan_map = _process_interproscan_no_gff(
+        old_interproscan_map, new_interproscan_map = _process_interproscan_no_gff(
             interproscan_files, pavprot_out
         )
     elif num_gffs == 1 and len(interproscan_files) == 1:
-        ref_interproscan_map, qry_interproscan_map = _process_interproscan_single_gff_single_file(
-            data, interproscan_files, ref_gff_list, pavprot_out
+        old_interproscan_map, new_interproscan_map = _process_interproscan_single_gff_single_file(
+            data, interproscan_files, gff_list, pavprot_out
         )
     elif num_gffs == 2 and len(interproscan_files) == 1:
-        ref_interproscan_map, qry_interproscan_map = _process_interproscan_dual_gff_single_file(
-            data, interproscan_files, ref_gff_list, pavprot_out
+        old_interproscan_map, new_interproscan_map = _process_interproscan_dual_gff_single_file(
+            data, interproscan_files, gff_list, pavprot_out
         )
     elif num_gffs == 1 and len(interproscan_files) == 2:
-        ref_interproscan_map, qry_interproscan_map = _process_interproscan_single_gff_dual_file(
-            interproscan_files, ref_gff_list, pavprot_out
+        old_interproscan_map, new_interproscan_map = _process_interproscan_single_gff_dual_file(
+            interproscan_files, gff_list, pavprot_out
         )
     elif num_gffs == 2 and len(interproscan_files) == 2:
-        ref_interproscan_map, qry_interproscan_map = _process_interproscan_dual_gff_dual_file(
-            interproscan_files, ref_gff_list, pavprot_out
+        old_interproscan_map, new_interproscan_map = _process_interproscan_dual_gff_dual_file(
+            interproscan_files, gff_list, pavprot_out
         )
 
     # Enrich data with InterProScan information
-    if qry_interproscan_map or ref_interproscan_map:
+    if new_interproscan_map or old_interproscan_map:
         has_interproscan = True
         print(f"\nEnriching PAVprot data with InterProScan totals...", file=sys.stderr)
-        data = PAVprot.enrich_interproscan_data(data, qry_interproscan_map, ref_interproscan_map)
+        data = PAVprot.enrich_interproscan_data(data, new_interproscan_map, old_interproscan_map)
         print(f"  → Added columns: new_gene_total_iprdom_len, old_gene_total_iprdom_len", file=sys.stderr)
         print(f"\n" + "="*80, file=sys.stderr)
         print(f"✓ InterProScan integration complete!", file=sys.stderr)
-        print(f"  Query genes with IPR data: {len(qry_interproscan_map)}", file=sys.stderr)
-        print(f"  Reference genes with IPR data: {len(ref_interproscan_map)}", file=sys.stderr)
+        print(f"  New annotation genes with IPR data: {len(new_interproscan_map)}", file=sys.stderr)
+        print(f"  Old annotation genes with IPR data: {len(old_interproscan_map)}", file=sys.stderr)
         print("="*80 + "\n", file=sys.stderr)
 
-    return data, has_interproscan, ref_interproscan_map, qry_interproscan_map
+    return data, has_interproscan, old_interproscan_map, new_interproscan_map
 
 
 def _process_interproscan_no_gff(interproscan_files: List[str], pavprot_out: str) -> Tuple[dict, dict]:
     """Process InterProScan without GFF (protein-level only)."""
     print(f"\n[1/3] No GFF mode: Protein-level data only (no gene mapping)", file=sys.stderr)
 
-    ref_interproscan_map = {}
-    qry_interproscan_map = {}
+    old_interproscan_map = {}
+    new_interproscan_map = {}
     parsers_list = []
 
     for i, interpro_file in enumerate(interproscan_files):
-        file_type = "Reference" if i == 0 else "Query"
-        print(f"  {file_type} InterProScan: {interpro_file}", file=sys.stderr)
+        file_type = "Old" if i == 0 else "New"
+        print(f"  {file_type} annotation InterProScan: {interpro_file}", file=sys.stderr)
 
         parser = InterProParser(gff_file=None)
         df = parser.parse_tsv(interpro_file)
@@ -1159,67 +1174,67 @@ def _process_interproscan_no_gff(interproscan_files: List[str], pavprot_out: str
         print(f"  → Calculated for {len(ipr_map)} proteins", file=sys.stderr)
 
         if i == 0:
-            ref_interproscan_map = ipr_map
+            old_interproscan_map = ipr_map
         else:
-            qry_interproscan_map = ipr_map
+            new_interproscan_map = ipr_map
 
         parsers_list.append((parser, interpro_file))
 
     # Save outputs
     for i, (parser, interpro_file) in enumerate(parsers_list):
-        file_type = "reference" if i == 0 else "query"
+        file_type = "old" if i == 0 else "new"
         file_base = Path(interpro_file).stem
-        ipr_map = ref_interproscan_map if i == 0 else qry_interproscan_map
+        ipr_map = old_interproscan_map if i == 0 else new_interproscan_map
         _save_interproscan_outputs(parser, ipr_map, file_base, pavprot_out, has_gene_mapping=False)
-        print(f"  → Saved {file_type} outputs to pavprot_out/", file=sys.stderr)
+        print(f"  → Saved {file_type} annotation outputs to pavprot_out/", file=sys.stderr)
 
     print(f"\nNote: Gene IDs not added to output (no GFF provided)", file=sys.stderr)
-    return ref_interproscan_map, qry_interproscan_map
+    return old_interproscan_map, new_interproscan_map
 
 
 def _process_interproscan_single_gff_single_file(
-    data: dict, interproscan_files: List[str], ref_gff_list: List[str], pavprot_out: str
+    data: dict, interproscan_files: List[str], gff_list: List[str], pavprot_out: str
 ) -> Tuple[dict, dict]:
     """Process single InterProScan file with single GFF."""
     print(f"\n[1/4] Single GFF mode: Auto-detecting InterProScan type", file=sys.stderr)
-    print(f"  GFF: {ref_gff_list[0]}", file=sys.stderr)
+    print(f"  GFF: {gff_list[0]}", file=sys.stderr)
     print(f"  InterProScan: {interproscan_files[0]}", file=sys.stderr)
 
     interproscan_type = PAVprot.detect_interproscan_type(data, interproscan_files[0])
 
-    parser = InterProParser(gff_file=ref_gff_list[0])
+    parser = InterProParser(gff_file=gff_list[0])
     df = parser.parse_tsv(interproscan_files[0])
     print(f"  → Loaded {len(df)} InterProScan entries", file=sys.stderr)
 
     ipr_map = parser.total_ipr_length()
 
-    ref_interproscan_map = {}
-    qry_interproscan_map = {}
+    old_interproscan_map = {}
+    new_interproscan_map = {}
 
-    if interproscan_type == 'query':
-        qry_interproscan_map = ipr_map
-        print(f"  → Calculated for {len(qry_interproscan_map)} query genes", file=sys.stderr)
+    if interproscan_type == 'new':
+        new_interproscan_map = ipr_map
+        print(f"  → Calculated for {len(new_interproscan_map)} new genes", file=sys.stderr)
     else:
-        ref_interproscan_map = ipr_map
-        print(f"  → Calculated for {len(ref_interproscan_map)} reference genes", file=sys.stderr)
+        old_interproscan_map = ipr_map
+        print(f"  → Calculated for {len(old_interproscan_map)} old genes", file=sys.stderr)
 
     file_base = Path(interproscan_files[0]).stem
     _save_interproscan_outputs(parser, ipr_map, file_base, pavprot_out, has_gene_mapping=bool(parser.transcript_to_gene_map))
 
-    return ref_interproscan_map, qry_interproscan_map
+    return old_interproscan_map, new_interproscan_map
 
 
 def _process_interproscan_dual_gff_single_file(
-    data: dict, interproscan_files: List[str], ref_gff_list: List[str], pavprot_out: str
+    data: dict, interproscan_files: List[str], gff_list: List[str], pavprot_out: str
 ) -> Tuple[dict, dict]:
     """Process single InterProScan file with dual GFFs."""
     print(f"\n[1/4] Dual GFF mode with single InterProScan: Auto-detecting type", file=sys.stderr)
-    print(f"  Reference GFF: {ref_gff_list[0]}", file=sys.stderr)
-    print(f"  Query GFF: {ref_gff_list[1]}", file=sys.stderr)
+    print(f"  Old annotation GFF: {gff_list[0]}", file=sys.stderr)
+    print(f"  New annotation GFF: {gff_list[1]}", file=sys.stderr)
     print(f"  InterProScan: {interproscan_files[0]}", file=sys.stderr)
 
     interproscan_type = PAVprot.detect_interproscan_type(data, interproscan_files[0])
-    gff_to_use = ref_gff_list[0] if interproscan_type == 'reference' else ref_gff_list[1]
+    gff_to_use = gff_list[0] if interproscan_type == 'old' else gff_list[1]
 
     parser = InterProParser(gff_file=gff_to_use)
     df = parser.parse_tsv(interproscan_files[0])
@@ -1227,85 +1242,85 @@ def _process_interproscan_dual_gff_single_file(
 
     ipr_map = parser.total_ipr_length()
 
-    ref_interproscan_map = {}
-    qry_interproscan_map = {}
+    old_interproscan_map = {}
+    new_interproscan_map = {}
 
-    if interproscan_type == 'query':
-        qry_interproscan_map = ipr_map
-        print(f"  → Calculated for {len(qry_interproscan_map)} query genes", file=sys.stderr)
+    if interproscan_type == 'new':
+        new_interproscan_map = ipr_map
+        print(f"  → Calculated for {len(new_interproscan_map)} new genes", file=sys.stderr)
     else:
-        ref_interproscan_map = ipr_map
-        print(f"  → Calculated for {len(ref_interproscan_map)} reference genes", file=sys.stderr)
+        old_interproscan_map = ipr_map
+        print(f"  → Calculated for {len(old_interproscan_map)} old genes", file=sys.stderr)
 
     file_base = Path(interproscan_files[0]).stem
     _save_interproscan_outputs(parser, ipr_map, file_base, pavprot_out, has_gene_mapping=bool(parser.transcript_to_gene_map))
 
-    return ref_interproscan_map, qry_interproscan_map
+    return old_interproscan_map, new_interproscan_map
 
 
 def _process_interproscan_single_gff_dual_file(
-    interproscan_files: List[str], ref_gff_list: List[str], pavprot_out: str
+    interproscan_files: List[str], gff_list: List[str], pavprot_out: str
 ) -> Tuple[dict, dict]:
     """Process two InterProScan files with single GFF."""
-    print(f"\n[1/4] Single GFF mode: Reference with gene mapping, Query without", file=sys.stderr)
-    print(f"  Reference GFF: {ref_gff_list[0]}", file=sys.stderr)
-    print(f"  Reference InterProScan: {interproscan_files[0]}", file=sys.stderr)
-    print(f"  Query InterProScan: {interproscan_files[1]} (no gene mapping)", file=sys.stderr)
+    print(f"\n[1/4] Single GFF mode: Old annotation with gene mapping, New annotation without", file=sys.stderr)
+    print(f"  Old annotation GFF: {gff_list[0]}", file=sys.stderr)
+    print(f"  Old annotation InterProScan: {interproscan_files[0]}", file=sys.stderr)
+    print(f"  New annotation InterProScan: {interproscan_files[1]} (no gene mapping)", file=sys.stderr)
 
-    # Reference with GFF mapping
-    ref_parser = InterProParser(gff_file=ref_gff_list[0])
-    ref_df = ref_parser.parse_tsv(interproscan_files[0])
-    print(f"  → Loaded {len(ref_df)} reference InterProScan entries", file=sys.stderr)
-    ref_interproscan_map = ref_parser.total_ipr_length()
-    print(f"  → Calculated for {len(ref_interproscan_map)} reference genes", file=sys.stderr)
+    # Old annotation with GFF mapping
+    old_parser = InterProParser(gff_file=gff_list[0])
+    old_df = old_parser.parse_tsv(interproscan_files[0])
+    print(f"  → Loaded {len(old_df)} old annotation InterProScan entries", file=sys.stderr)
+    old_interproscan_map = old_parser.total_ipr_length()
+    print(f"  → Calculated for {len(old_interproscan_map)} old genes", file=sys.stderr)
 
-    # Query without GFF mapping
-    qry_parser = InterProParser(gff_file=None)
-    qry_df = qry_parser.parse_tsv(interproscan_files[1])
-    print(f"  → Loaded {len(qry_df)} query InterProScan entries", file=sys.stderr)
-    qry_interproscan_map = qry_parser.total_ipr_length()
-    print(f"  → Calculated for {len(qry_interproscan_map)} query proteins", file=sys.stderr)
+    # New annotation without GFF mapping
+    new_parser = InterProParser(gff_file=None)
+    new_df = new_parser.parse_tsv(interproscan_files[1])
+    print(f"  → Loaded {len(new_df)} new annotation InterProScan entries", file=sys.stderr)
+    new_interproscan_map = new_parser.total_ipr_length()
+    print(f"  → Calculated for {len(new_interproscan_map)} new proteins", file=sys.stderr)
 
     # Save outputs
-    ref_base = Path(interproscan_files[0]).stem
-    qry_base = Path(interproscan_files[1]).stem
-    _save_interproscan_outputs(ref_parser, ref_interproscan_map, ref_base, pavprot_out, has_gene_mapping=bool(ref_parser.transcript_to_gene_map))
-    _save_interproscan_outputs(qry_parser, qry_interproscan_map, qry_base, pavprot_out, has_gene_mapping=False)
+    old_base = Path(interproscan_files[0]).stem
+    new_base = Path(interproscan_files[1]).stem
+    _save_interproscan_outputs(old_parser, old_interproscan_map, old_base, pavprot_out, has_gene_mapping=bool(old_parser.transcript_to_gene_map))
+    _save_interproscan_outputs(new_parser, new_interproscan_map, new_base, pavprot_out, has_gene_mapping=False)
 
-    return ref_interproscan_map, qry_interproscan_map
+    return old_interproscan_map, new_interproscan_map
 
 
 def _process_interproscan_dual_gff_dual_file(
-    interproscan_files: List[str], ref_gff_list: List[str], pavprot_out: str
+    interproscan_files: List[str], gff_list: List[str], pavprot_out: str
 ) -> Tuple[dict, dict]:
     """Process two InterProScan files with two GFFs."""
-    print(f"\n[1/4] Dual GFF mode: Reference + Query", file=sys.stderr)
-    print(f"  Reference GFF: {ref_gff_list[0]}", file=sys.stderr)
-    print(f"  Reference InterProScan: {interproscan_files[0]}", file=sys.stderr)
-    print(f"  Query GFF: {ref_gff_list[1]}", file=sys.stderr)
-    print(f"  Query InterProScan: {interproscan_files[1]}", file=sys.stderr)
+    print(f"\n[1/4] Dual GFF mode: Old + New annotations", file=sys.stderr)
+    print(f"  Old annotation GFF: {gff_list[0]}", file=sys.stderr)
+    print(f"  Old annotation InterProScan: {interproscan_files[0]}", file=sys.stderr)
+    print(f"  New annotation GFF: {gff_list[1]}", file=sys.stderr)
+    print(f"  New annotation InterProScan: {interproscan_files[1]}", file=sys.stderr)
 
-    # Reference
-    ref_parser = InterProParser(gff_file=ref_gff_list[0])
-    ref_df = ref_parser.parse_tsv(interproscan_files[0])
-    print(f"  → Loaded {len(ref_df)} reference InterProScan entries", file=sys.stderr)
-    ref_interproscan_map = ref_parser.total_ipr_length()
-    print(f"  → Calculated for {len(ref_interproscan_map)} reference genes", file=sys.stderr)
+    # Old annotation
+    old_parser = InterProParser(gff_file=gff_list[0])
+    old_df = old_parser.parse_tsv(interproscan_files[0])
+    print(f"  → Loaded {len(old_df)} old annotation InterProScan entries", file=sys.stderr)
+    old_interproscan_map = old_parser.total_ipr_length()
+    print(f"  → Calculated for {len(old_interproscan_map)} old genes", file=sys.stderr)
 
-    # Query
-    qry_parser = InterProParser(gff_file=ref_gff_list[1])
-    qry_df = qry_parser.parse_tsv(interproscan_files[1])
-    print(f"  → Loaded {len(qry_df)} query InterProScan entries", file=sys.stderr)
-    qry_interproscan_map = qry_parser.total_ipr_length()
-    print(f"  → Calculated for {len(qry_interproscan_map)} query genes", file=sys.stderr)
+    # New annotation
+    new_parser = InterProParser(gff_file=gff_list[1])
+    new_df = new_parser.parse_tsv(interproscan_files[1])
+    print(f"  → Loaded {len(new_df)} new annotation InterProScan entries", file=sys.stderr)
+    new_interproscan_map = new_parser.total_ipr_length()
+    print(f"  → Calculated for {len(new_interproscan_map)} new genes", file=sys.stderr)
 
     # Save outputs
-    ref_base = Path(interproscan_files[0]).stem
-    qry_base = Path(interproscan_files[1]).stem
-    _save_interproscan_outputs(ref_parser, ref_interproscan_map, ref_base, pavprot_out, has_gene_mapping=bool(ref_parser.transcript_to_gene_map))
-    _save_interproscan_outputs(qry_parser, qry_interproscan_map, qry_base, pavprot_out, has_gene_mapping=bool(qry_parser.transcript_to_gene_map))
+    old_base = Path(interproscan_files[0]).stem
+    new_base = Path(interproscan_files[1]).stem
+    _save_interproscan_outputs(old_parser, old_interproscan_map, old_base, pavprot_out, has_gene_mapping=bool(old_parser.transcript_to_gene_map))
+    _save_interproscan_outputs(new_parser, new_interproscan_map, new_base, pavprot_out, has_gene_mapping=bool(new_parser.transcript_to_gene_map))
 
-    return ref_interproscan_map, qry_interproscan_map
+    return old_interproscan_map, new_interproscan_map
 
 
 def _save_interproscan_outputs(
@@ -1408,7 +1423,7 @@ def _build_output_filename(
 
 def _build_header(args, has_interproscan: bool, has_bbh: bool, has_pairwise: bool = False) -> str:
     """Build the output file header."""
-    header = "old_gene\told_transcript\tnew_gene\tnew_transcript\tclass_code\texons\tclass_code_multi_query\tclass_code_multi_ref\tclass_type_transcript\tclass_type_gene\temckmnj\temckmnje\tref_multi_transcript\tqry_multi_transcript\texact_match\tclass_code_pair\told_multi_new\tnew_multi_old\tref_query_count\tqry_ref_count"
+    header = "old_gene\told_transcript\tnew_gene\tnew_transcript\tclass_code\texons\tclass_code_multi_new\tclass_code_multi_old\tclass_type_transcript\tclass_type_gene\temckmnj\temckmnje\told_multi_transcript\tnew_multi_transcript\texact_match\tclass_code_pair\told_multi_new\tnew_multi_old\told_new_count\tnew_old_count"
 
     if args.run_diamond:
         header += "\tpident\tqcovhsp\tscovhsp\tidentical_aa\tmismatched_aa\tindels_aa\taligned_aa"
@@ -1419,7 +1434,7 @@ def _build_header(args, has_interproscan: bool, has_bbh: bool, has_pairwise: boo
     if args.liftoff_gff:
         header += "\textra_copy_number"
     if has_interproscan:
-        header += "\tquery_total_ipr_domain_length\tref_total_ipr_domain_length"
+        header += "\tnew_total_ipr_domain_length\told_total_ipr_domain_length"
 
     return header
 
@@ -1457,7 +1472,7 @@ def _write_output_file(
 
                 # Build output line
                 exons = e.get('exons') if e.get('exons') is not None else '-'
-                base = f"{e['old_gene']}\t{e['old_transcript']}\t{e['new_gene']}\t{e['new_transcript']}\t{e['class_code']}\t{exons}\t{e['class_code_multi_query']}\t{e['class_code_multi_ref']}\t{e['class_type_transcript']}\t{e['class_type_gene']}\t{e['ackmnj']}\t{e['ackmnje']}\t{e['ref_multi_transcript']}\t{e['qry_multi_transcript']}\t{e['exact_match']}\t{e['class_code_pair']}\t{e['old_multi_new']}\t{e['new_multi_old']}\t{e['ref_query_count']}\t{e['qry_ref_count']}"
+                base = f"{e['old_gene']}\t{e['old_transcript']}\t{e['new_gene']}\t{e['new_transcript']}\t{e['class_code']}\t{exons}\t{e['class_code_multi_new']}\t{e['class_code_multi_old']}\t{e['class_type_transcript']}\t{e['class_type_gene']}\t{e['ackmnj']}\t{e['ackmnje']}\t{e['old_multi_transcript']}\t{e['new_multi_transcript']}\t{e['exact_match']}\t{e['class_code_pair']}\t{e['old_multi_new']}\t{e['new_multi_old']}\t{e['old_new_count']}\t{e['new_old_count']}"
 
                 diamond_line = ""
                 if args.run_diamond:
@@ -1478,14 +1493,14 @@ def _write_output_file(
                 pairwise_line = ""
                 if has_pairwise:
                     pw_identity = e.get('pairwise_identity')
-                    pw_cov_ref = e.get('pairwise_coverage_old')
-                    pw_cov_query = e.get('pairwise_coverage_new')
+                    pw_cov_old = e.get('pairwise_coverage_old')
+                    pw_cov_new = e.get('pairwise_coverage_new')
                     pw_aligned_len = e.get('pairwise_aligned_length')
                     pw_identity_str = f"{pw_identity:.2f}" if pw_identity is not None else 'NA'
-                    pw_cov_ref_str = f"{pw_cov_ref:.2f}" if pw_cov_ref is not None else 'NA'
-                    pw_cov_query_str = f"{pw_cov_query:.2f}" if pw_cov_query is not None else 'NA'
+                    pw_cov_old_str = f"{pw_cov_old:.2f}" if pw_cov_old is not None else 'NA'
+                    pw_cov_new_str = f"{pw_cov_new:.2f}" if pw_cov_new is not None else 'NA'
                     pw_aligned_len_str = str(pw_aligned_len) if pw_aligned_len is not None else 'NA'
-                    pairwise_line = f"\t{pw_identity_str}\t{pw_cov_ref_str}\t{pw_cov_query_str}\t{pw_aligned_len_str}"
+                    pairwise_line = f"\t{pw_identity_str}\t{pw_cov_old_str}\t{pw_cov_new_str}\t{pw_aligned_len_str}"
 
                 extra_copy_line = ""
                 if args.liftoff_gff:
@@ -1493,11 +1508,11 @@ def _write_output_file(
 
                 interproscan_line = ""
                 if has_interproscan:
-                    query_val = e.get('new_gene_total_iprdom_len', 0)
-                    ref_val = e.get('old_gene_total_iprdom_len', 0)
-                    query_val = 'NA' if query_val == 0 else query_val
-                    ref_val = 'NA' if ref_val == 0 else ref_val
-                    interproscan_line = f"\t{query_val}\t{ref_val}"
+                    new_val = e.get('new_gene_total_iprdom_len', 0)
+                    old_val = e.get('old_gene_total_iprdom_len', 0)
+                    new_val = 'NA' if new_val == 0 else new_val
+                    old_val = 'NA' if old_val == 0 else old_val
+                    interproscan_line = f"\t{new_val}\t{old_val}"
 
                 f.write(f"{base}{diamond_line}{bbh_line}{pairwise_line}{extra_copy_line}{interproscan_line}\n")
 
@@ -1511,10 +1526,10 @@ def _write_output_file(
 def aggregate_to_gene_level(
     transcript_level_file: str,
     output_dir: str,
-    ref_faa: Optional[str] = None,
-    qry_faa: Optional[str] = None,
-    ref_gff: Optional[str] = None,
-    query_gff: Optional[str] = None
+    old_faa: Optional[str] = None,
+    new_faa: Optional[str] = None,
+    old_gff: Optional[str] = None,
+    new_gff: Optional[str] = None
 ) -> str:
     """
     Aggregate transcript-level output to gene-level and add scenario columns.
@@ -1527,10 +1542,10 @@ def aggregate_to_gene_level(
     Args:
         transcript_level_file: Path to transcript-level TSV output
         output_dir: Output directory
-        ref_faa: Path to reference protein FASTA (for unmapped detection)
-        qry_faa: Path to query protein FASTA (for unmapped detection)
-        ref_gff: Path to reference GFF3 (for unmapped detection)
-        query_gff: Path to query GFF3 (for unmapped detection)
+        old_faa: Path to old annotation protein FASTA (for unmapped detection)
+        new_faa: Path to new annotation protein FASTA (for unmapped detection)
+        old_gff: Path to old annotation GFF3 (for unmapped detection)
+        new_gff: Path to new annotation GFF3 (for unmapped detection)
 
     Returns:
         Path to the gene-level output file
@@ -1569,20 +1584,20 @@ def aggregate_to_gene_level(
         'new_transcript': agg_comma_join,
         'class_code': agg_comma_join,  # Combine all class codes
         'exons': agg_first,
-        'class_code_multi_query': agg_first,
-        'class_code_multi_ref': agg_first,
+        'class_code_multi_new': agg_first,
+        'class_code_multi_old': agg_first,
         'class_type_transcript': agg_comma_join,
         'class_type_gene': agg_first,
         'emckmnj': agg_first,
         'emckmnje': agg_first,
-        'ref_multi_transcript': agg_max,
-        'qry_multi_transcript': agg_max,
+        'old_multi_transcript': agg_max,
+        'new_multi_transcript': agg_max,
         'exact_match': agg_max,
         'class_code_pair': agg_first,
         'old_multi_new': agg_first,
         'new_multi_old': agg_first,
-        'ref_query_count': agg_first,
-        'qry_ref_count': agg_first,
+        'old_new_count': agg_first,
+        'new_old_count': agg_first,
     }).reset_index()
 
     # Rename transcript columns
@@ -1603,7 +1618,7 @@ def aggregate_to_gene_level(
     optional_cols = ['pident', 'qcovhsp', 'scovhsp', 'is_bbh', 'bbh_avg_pident',
                      'bbh_avg_coverage', 'pairwise_identity', 'pairwise_coverage_old',
                      'pairwise_coverage_new', 'pairwise_aligned_length',
-                     'query_total_ipr_domain_length', 'ref_total_ipr_domain_length',
+                     'new_total_ipr_domain_length', 'old_total_ipr_domain_length',
                      'extra_copy_number']
 
     for col in optional_cols:
@@ -1620,40 +1635,40 @@ def aggregate_to_gene_level(
 
     # Get CDI genes first (for exclusivity)
     cdi_old_genes, cdi_new_genes = get_cdi_genes(gene_pairs)
-    print(f"  CDI genes: {len(cdi_old_genes)} ref, {len(cdi_new_genes)} query", file=sys.stderr)
+    print(f"  CDI genes: {len(cdi_old_genes)} old, {len(cdi_new_genes)} new", file=sys.stderr)
 
     # Initialize scenario columns
     gene_pairs['scenario'] = ''
     gene_pairs['mapping_type'] = ''
 
     # Detect E (1:1)
-    ref_counts = gene_pairs.groupby('old_gene')['new_gene'].nunique()
-    query_counts = gene_pairs.groupby('new_gene')['old_gene'].nunique()
-    refs_1to1 = set(ref_counts[ref_counts == 1].index)
-    queries_1to1 = set(query_counts[query_counts == 1].index)
+    old_counts = gene_pairs.groupby('old_gene')['new_gene'].nunique()
+    new_counts = gene_pairs.groupby('new_gene')['old_gene'].nunique()
+    olds_1to1 = set(old_counts[old_counts == 1].index)
+    news_1to1 = set(new_counts[new_counts == 1].index)
 
-    mask_E = (gene_pairs['old_gene'].isin(refs_1to1)) & (gene_pairs['new_gene'].isin(queries_1to1))
+    mask_E = (gene_pairs['old_gene'].isin(olds_1to1)) & (gene_pairs['new_gene'].isin(news_1to1))
     gene_pairs.loc[mask_E, 'scenario'] = 'E'
     gene_pairs.loc[mask_E, 'mapping_type'] = '1to1'
     print(f"  E (1to1): {mask_E.sum()} pairs", file=sys.stderr)
 
-    # Detect A (1to2N, exactly 2 queries, NOT in CDI)
-    refs_1to2N = set(ref_counts[ref_counts == 2].index) - cdi_old_genes
-    mask_A = (gene_pairs['old_gene'].isin(refs_1to2N)) & (gene_pairs['scenario'] == '')
+    # Detect A (1to2N, exactly 2 new genes, NOT in CDI)
+    olds_1to2N = set(old_counts[old_counts == 2].index) - cdi_old_genes
+    mask_A = (gene_pairs['old_gene'].isin(olds_1to2N)) & (gene_pairs['scenario'] == '')
     gene_pairs.loc[mask_A, 'scenario'] = 'A'
     gene_pairs.loc[mask_A, 'mapping_type'] = '1to2N'
     print(f"  A (1to2N): {mask_A.sum()} pairs", file=sys.stderr)
 
-    # Detect J (1to2N+, 3+ queries, NOT in CDI)
-    refs_1to2Nplus = set(ref_counts[ref_counts >= 3].index) - cdi_old_genes
-    mask_J = (gene_pairs['old_gene'].isin(refs_1to2Nplus)) & (gene_pairs['scenario'] == '')
+    # Detect J (1to2N+, 3+ new genes, NOT in CDI)
+    olds_1to2Nplus = set(old_counts[old_counts >= 3].index) - cdi_old_genes
+    mask_J = (gene_pairs['old_gene'].isin(olds_1to2Nplus)) & (gene_pairs['scenario'] == '')
     gene_pairs.loc[mask_J, 'scenario'] = 'J'
     gene_pairs.loc[mask_J, 'mapping_type'] = '1to2N+'
     print(f"  J (1to2N+): {mask_J.sum()} pairs", file=sys.stderr)
 
     # Detect B (Nto1, NOT in CDI)
-    queries_Nto1 = set(query_counts[query_counts > 1].index) - cdi_new_genes
-    mask_B = (gene_pairs['new_gene'].isin(queries_Nto1)) & (gene_pairs['scenario'] == '')
+    news_Nto1 = set(new_counts[new_counts > 1].index) - cdi_new_genes
+    mask_B = (gene_pairs['new_gene'].isin(news_Nto1)) & (gene_pairs['scenario'] == '')
     gene_pairs.loc[mask_B, 'scenario'] = 'B'
     gene_pairs.loc[mask_B, 'mapping_type'] = 'Nto1'
     print(f"  B (Nto1): {mask_B.sum()} pairs", file=sys.stderr)
@@ -1692,6 +1707,135 @@ def aggregate_to_gene_level(
     return gene_level_file
 
 
+def export_to_excel(output_dir: str, main_output_file: str, output_prefix: str) -> str:
+    """
+    Export all TSV output files to a single Excel workbook.
+
+    Args:
+        output_dir: Directory containing the output files
+        main_output_file: Path to the main transcript-level output file
+        output_prefix: Prefix for the Excel output filename (e.g., 'FocTst')
+
+    Returns:
+        Path to the generated Excel file
+    """
+    from glob import glob
+
+    if not os.path.exists(main_output_file):
+        print(f"Warning: Main output file not found for Excel export: {main_output_file}", file=sys.stderr)
+        return None
+
+    # Get the basename from the main output file
+    main_basename = Path(main_output_file).stem  # e.g., liftoff_gffcomp_mapping_FocTst_=_c_e_j_k_m_n_diamond_blastp
+
+    # Define sheet mappings: (file_suffix_or_pattern, sheet_name)
+    sheet_mappings = [
+        (f"{main_basename}.tsv", "transcript_level"),
+        (f"{main_basename}_gene_level.tsv", "gene_level"),
+        (f"{main_basename}_old_to_multiple_new.tsv", "old_to_multi_new"),
+        (f"{main_basename}_old_to_multiple_new_detailed.tsv", "old_to_multi_new_detail"),
+        (f"{main_basename}_new_to_multiple_old.tsv", "new_to_multi_old"),
+        (f"{main_basename}_new_to_multiple_old_detailed.tsv", "new_to_multi_old_detail"),
+        (f"{main_basename}_multiple_mappings_summary.txt", "summary"),
+    ]
+
+    # Find domain distribution files
+    domain_dist_files = glob(os.path.join(output_dir, "*_domain_distribution.tsv"))
+    ipr_length_files = glob(os.path.join(output_dir, "*_total_ipr_length.tsv"))
+
+    # Find BBH results
+    bbh_pattern = os.path.join(output_dir, "compareprot_out", "*_bbh_results.tsv")
+    bbh_files = glob(bbh_pattern)
+
+    # Excel output file - use same basename as main output
+    excel_file = os.path.join(output_dir, f"{main_basename}.xlsx")
+
+    print(f"\nExporting results to Excel: {excel_file}", file=sys.stderr)
+
+    try:
+        with pd.ExcelWriter(excel_file, engine='openpyxl') as writer:
+            sheets_written = 0
+
+            # Write main mapping sheets
+            for filename, sheet_name in sheet_mappings:
+                filepath = os.path.join(output_dir, filename)
+                if os.path.exists(filepath):
+                    try:
+                        # Handle txt files (summary) differently
+                        if filepath.endswith('.txt'):
+                            with open(filepath, 'r') as f:
+                                content = f.read()
+                            # Convert text content to DataFrame
+                            df = pd.DataFrame({'summary': content.split('\n')})
+                        else:
+                            df = pd.read_csv(filepath, sep='\t')
+                        df.to_excel(writer, sheet_name=sheet_name, index=False)
+                        sheets_written += 1
+                        print(f"  Added sheet: {sheet_name}", file=sys.stderr)
+                    except Exception as e:
+                        print(f"  Warning: Could not add {sheet_name}: {e}", file=sys.stderr)
+
+            # Write domain distribution sheets (old and new)
+            for domain_file in sorted(domain_dist_files):
+                basename = Path(domain_file).stem
+                # Determine if it's old or new based on filename
+                if 'foc' in basename.lower() or 'fozg' in basename.lower():
+                    sheet_name = "old_domain_dist"
+                else:
+                    sheet_name = "new_domain_dist"
+                try:
+                    df = pd.read_csv(domain_file, sep='\t')
+                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+                    sheets_written += 1
+                    print(f"  Added sheet: {sheet_name}", file=sys.stderr)
+                except Exception as e:
+                    print(f"  Warning: Could not add {sheet_name}: {e}", file=sys.stderr)
+
+            # Combine and write IPR length sheets
+            if ipr_length_files:
+                combined_ipr = []
+                for ipr_file in sorted(ipr_length_files):
+                    basename = Path(ipr_file).stem
+                    # Determine source (old or new)
+                    if 'foc' in basename.lower() or 'fozg' in basename.lower():
+                        source = "old"
+                    else:
+                        source = "new"
+                    try:
+                        df = pd.read_csv(ipr_file, sep='\t')
+                        df.insert(0, 'source', source)
+                        combined_ipr.append(df)
+                    except Exception as e:
+                        print(f"  Warning: Could not read {ipr_file}: {e}", file=sys.stderr)
+
+                if combined_ipr:
+                    combined_df = pd.concat(combined_ipr, ignore_index=True)
+                    combined_df.to_excel(writer, sheet_name="ipr_length", index=False)
+                    sheets_written += 1
+                    print(f"  Added sheet: ipr_length (combined old/new)", file=sys.stderr)
+
+            # Write BBH results
+            for bbh_file in bbh_files:
+                try:
+                    df = pd.read_csv(bbh_file, sep='\t')
+                    df.to_excel(writer, sheet_name="bbh_results", index=False)
+                    sheets_written += 1
+                    print(f"  Added sheet: bbh_results", file=sys.stderr)
+                except Exception as e:
+                    print(f"  Warning: Could not add bbh_results: {e}", file=sys.stderr)
+
+            print(f"\nExcel export complete: {sheets_written} sheets written", file=sys.stderr)
+
+    except ImportError:
+        print("Warning: openpyxl not installed. Install with: pip install openpyxl", file=sys.stderr)
+        return None
+    except Exception as e:
+        print(f"Warning: Excel export failed: {e}", file=sys.stderr)
+        return None
+
+    return excel_file
+
+
 def main():
     """Main entry point for PAVprot pipeline."""
     # =========================================================================
@@ -1701,14 +1845,14 @@ def main():
     args = parser.parse_args()
 
     # Validate inputs and get file lists
-    ref_gff_list, interproscan_files = validate_inputs(args, parser)
+    gff_list, interproscan_files = validate_inputs(args, parser)
 
     # =========================================================================
     # Step 2: Parse tracking file and apply class code filter
     # =========================================================================
-    ref_gff_for_tracking = ref_gff_list[0] if ref_gff_list else None
+    old_gff_for_tracking = gff_list[0] if gff_list else None
     filter_set = {c.strip() for c in args.class_code.split(',')} if args.class_code else None
-    full, filtered = PAVprot.parse_tracking(args.gff_comp, ref_gff_for_tracking, filter_set)
+    full, filtered = PAVprot.parse_tracking(args.gff_comp, old_gff_for_tracking, filter_set)
     data = filtered if filtered else full
 
     # =========================================================================
@@ -1716,8 +1860,8 @@ def main():
     # =========================================================================
     has_bbh = False
     if args.run_diamond:
-        if not args.ref_faa or not args.qry_faa:
-            print("Error: --run-diamond requires --prot with 2 comma-separated files (ref.faa,query.faa)", file=sys.stderr)
+        if not args.old_faa or not args.new_faa:
+            print("Error: --run-diamond requires --prot with 2 comma-separated files (old.faa,new.faa)", file=sys.stderr)
             sys.exit(1)
 
         pavprot_out = os.path.join(os.getcwd(), args.output_dir)
@@ -1725,21 +1869,21 @@ def main():
         input_seq_dir = os.path.join(compareprot_out, 'input_seq_dir')
         os.makedirs(input_seq_dir, exist_ok=True)
 
-        ref_faa_path = os.path.join(input_seq_dir, "ref_all.faa")
-        qry_faa_path = os.path.join(input_seq_dir, "qry_all.faa")
+        old_faa_path = os.path.join(input_seq_dir, "old_all.faa")
+        new_faa_path = os.path.join(input_seq_dir, "new_all.faa")
 
-        with open(ref_faa_path, 'w') as f:
-            for h, s in PAVprot.fasta2dict(args.ref_faa, is_query=False):
+        with open(old_faa_path, 'w') as f:
+            for h, s in PAVprot.fasta2dict(args.old_faa, is_new=False):
                 f.write(f">{h}\n{s}\n")
-        with open(qry_faa_path, 'w') as f:
-            for h, s in PAVprot.fasta2dict(args.qry_faa, is_query=True):
+        with open(new_faa_path, 'w') as f:
+            for h, s in PAVprot.fasta2dict(args.new_faa, is_new=True):
                 f.write(f">{h}\n{s}\n")
 
         diamond = DiamondRunner(threads=args.diamond_threads, output_prefix=args.output_prefix, output_dir=args.output_dir)
 
         if args.run_bbh:
             # Run bidirectional DIAMOND for BBH analysis
-            fwd_diamond, rev_diamond = diamond.run_bidirectional(ref_faa_path, qry_faa_path)
+            fwd_diamond, rev_diamond = diamond.run_bidirectional(old_faa_path, new_faa_path)
             data = diamond.enrich_blastp(data, fwd_diamond)
 
             # Run BBH analysis
@@ -1764,7 +1908,7 @@ def main():
                 print("  Warning: No BBH pairs found", file=sys.stderr)
         else:
             # Run forward-only DIAMOND (original behavior)
-            diamond_tsv_gz = diamond.diamond_blastp(ref_faa_path, qry_faa_path)
+            diamond_tsv_gz = diamond.diamond_blastp(old_faa_path, new_faa_path)
             data = diamond.enrich_blastp(data, diamond_tsv_gz)
 
     # =========================================================================
@@ -1783,7 +1927,7 @@ def main():
     os.makedirs(pavprot_out, exist_ok=True)
 
     data, has_interproscan, _, _ = process_interproscan_integration(
-        args, data, interproscan_files, ref_gff_list, pavprot_out
+        args, data, interproscan_files, gff_list, pavprot_out
     )
 
     # =========================================================================
@@ -1791,12 +1935,12 @@ def main():
     # =========================================================================
     has_pairwise = False
     if args.run_pairwise:
-        if not args.ref_faa or not args.qry_faa:
-            print("Error: --run-pairwise requires --prot with 2 comma-separated files (ref.faa,query.faa)", file=sys.stderr)
+        if not args.old_faa or not args.new_faa:
+            print("Error: --run-pairwise requires --prot with 2 comma-separated files (old.faa,new.faa)", file=sys.stderr)
             sys.exit(1)
 
         print(f"\nRunning Biopython pairwise alignment...", file=sys.stderr)
-        data = enrich_pairwise_alignment(data, args.ref_faa, args.qry_faa)
+        data = enrich_pairwise_alignment(data, args.old_faa, args.new_faa)
         has_pairwise = True
 
     # =========================================================================
@@ -1820,22 +1964,22 @@ def main():
     pavprot_out = os.path.join(os.getcwd(), args.output_dir)
 
     # Get GFF files for unmapped gene detection
-    ref_gff, query_gff = None, None
+    old_gff, new_gff = None, None
     if args.gff:
         gff_files = [f.strip() for f in args.gff.split(',')]
         if len(gff_files) >= 1:
-            ref_gff = gff_files[0]
+            old_gff = gff_files[0]
         if len(gff_files) >= 2:
-            query_gff = gff_files[1]
+            new_gff = gff_files[1]
 
     try:
         gene_level_file = aggregate_to_gene_level(
             transcript_level_file=output_file,
             output_dir=pavprot_out,
-            ref_faa=args.ref_faa,
-            qry_faa=args.qry_faa,
-            ref_gff=ref_gff,
-            query_gff=query_gff
+            old_faa=args.old_faa,
+            new_faa=args.new_faa,
+            old_gff=old_gff,
+            new_gff=new_gff
         )
         print(f"\n{'='*60}", file=sys.stderr)
         print(f"Pipeline complete!", file=sys.stderr)
@@ -1846,6 +1990,18 @@ def main():
         print(f"Warning: Gene-level aggregation failed: {e}", file=sys.stderr)
         import traceback
         traceback.print_exc()
+
+    # =========================================================================
+    # Step 9: Export to Excel (if enabled)
+    # =========================================================================
+    if args.output_excel:
+        excel_file = export_to_excel(
+            output_dir=pavprot_out,
+            main_output_file=output_file,
+            output_prefix=args.output_prefix
+        )
+        if excel_file:
+            print(f"  Excel export:     {excel_file}", file=sys.stderr)
 
 
 if __name__ == '__main__':
