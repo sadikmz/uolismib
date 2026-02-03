@@ -1206,3 +1206,58 @@ new       gene-FOBCDRAFT_100165      368
 ```
 
 **Commit:** e9bdb68
+
+---
+
+## Active TODOs
+
+### 1. Parameter Defaults ✓
+
+| Parameter | Change | Status |
+|-----------|--------|--------|
+| `--output-dir` | Optional, default: `pavprot_out` | ✓ Already implemented |
+| `--run-pairwise` | Optional, default: `True` | ✓ Done |
+| `--run-bbh` | Optional, default: `True` | ✓ Done |
+| `--bbh-min-pident` | Optional, default: `30` | ✓ Already implemented |
+| `--bbh-min-coverage` | Optional, default: `50` | ✓ Already implemented |
+
+### 2. Column Renaming ✓
+
+| Current | Proposed | Status |
+|---------|----------|--------|
+| `class_code_pair` | `gene_pair_class_code` | ✓ Done |
+| `class_code` | `transcript_pair_class_code` | ✓ Done |
+| `old_new_count` | `old2newCount` | ✓ Done |
+| `new_old_count` | `new2oldCount` | ✓ Done |
+| `emckmnje` | Dynamic from `--class-code` | ✓ Column removed |
+
+### 3. Columns to Remove ✓
+
+Removed from header and output:
+- `exons`, `emckmnj`, `emckmnje`
+- `old_multi_new`, `new_multi_old`
+- `class_code_multi_new`, `class_code_multi_old`
+- `class_type_transcript`, `class_type_gene`
+
+### 4. Missing Columns to Add ✓
+
+Already present in code (conditionally added when enabled):
+- DIAMOND: `pident`, `qcovhsp`, `scovhsp`, `identical_aa`, `mismatched_aa`, `indels_aa`, `aligned_aa`
+- BBH: `is_bbh`, `bbh_avg_pident`, `bbh_avg_coverage`
+- Pairwise: `pairwise_identity`, `pairwise_coverage_old`, `pairwise_coverage_new`, `pairwise_aligned_length`
+
+### 5. Class Code Filtering Validation ✓
+
+- [x] Verify filtering works for both single and multi-transcript genes (old and new)
+- Pipeline run successful with filtering
+
+### 6. Other ✓
+
+- [x] Run pipeline with new output directory (`pavprot_out`)
+- Output files verified with correct column structure
+
+### Deferred (Low Priority)
+
+- [ ] Refine plotting scripts
+- [ ] External tools integration
+- [ ] Fix pre-existing test failures in test_pavprot.py

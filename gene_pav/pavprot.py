@@ -279,15 +279,15 @@ class PAVprot:
                 - class_code_multi_old: aggregated class codes for old_gene
 
             Gene-pair level:
-                - class_code_pair: aggregated class codes for (old_gene, new_gene) pair
+                - gene_pair_class_code: aggregated class codes for (old_gene, new_gene) pair
                 - class_type_gene: class_type at gene-pair level
                 - exact_match: 1 if ALL transcripts in pair are 'em'
                 - old_multi_transcript: 1 if old_gene has >1 transcripts globally
                 - new_multi_transcript: 1 if new_gene has >1 transcripts globally
                 - old_multi_new: 0=exclusive 1:1, 1=one-to-many, 2=partner has others
                 - new_multi_old: 0=exclusive 1:1, 1=many-to-one, 2=partner has others
-                - old_new_count: number of new genes this old gene maps to
-                - new_old_count: number of old genes this new gene maps to
+                - old2newCount: number of new genes this old gene maps to
+                - new2oldCount: number of old genes this new gene maps to
 
         Args:
             full_dict: Dictionary of entries keyed by old_gene
@@ -360,7 +360,7 @@ class PAVprot:
         for (old_gene, new_gene_var), pair_entries in gene_pair_entries.items():
             class_codes = {e['class_code'] for e in pair_entries}
             exact_match = 1 if class_codes == {'em'} else 0
-            class_code_pair = ';'.join(sorted(class_codes))
+            gene_pair_class_code = ';'.join(sorted(class_codes))
             class_type_gene = cls._assign_class_type(class_codes)
 
             num_new_for_old = len(old_to_new_genes[old_gene])
@@ -384,12 +384,12 @@ class PAVprot:
 
             gene_pair_metrics[(old_gene, new_gene_var)] = {
                 'exact_match': exact_match,
-                'class_code_pair': class_code_pair,
+                'gene_pair_class_code': gene_pair_class_code,
                 'class_type_gene': class_type_gene,
                 'old_multi_new': old_multi_new,
                 'new_multi_old': new_multi_old,
-                'old_new_count': num_new_for_old,
-                'new_old_count': num_old_for_new
+                'old2newCount': num_new_for_old,
+                'new2oldCount': num_old_for_new
             }
 
         # =====================================================================
@@ -423,12 +423,12 @@ class PAVprot:
                 # Gene pair metrics
                 pair_metrics = gene_pair_metrics.get((old_gene, new_gene_var), {})
                 entry['exact_match'] = pair_metrics.get('exact_match', 0)
-                entry['class_code_pair'] = pair_metrics.get('class_code_pair', entry['class_code'])
+                entry['gene_pair_class_code'] = pair_metrics.get('gene_pair_class_code', entry['class_code'])
                 entry['class_type_gene'] = pair_metrics.get('class_type_gene', 'pru')
                 entry['old_multi_new'] = pair_metrics.get('old_multi_new', 0)
                 entry['new_multi_old'] = pair_metrics.get('new_multi_old', 0)
-                entry['old_new_count'] = pair_metrics.get('old_new_count', 1)
-                entry['new_old_count'] = pair_metrics.get('new_old_count', 1)
+                entry['old2newCount'] = pair_metrics.get('old2newCount', 1)
+                entry['new2oldCount'] = pair_metrics.get('new2oldCount', 1)
 
         return full_dict
 
@@ -915,13 +915,15 @@ def create_argument_parser() -> argparse.ArgumentParser:
 
     # DIAMOND options
     parser.add_argument('--run-diamond', action='store_true')
-    parser.add_argument('--run-bbh', action='store_true', help='Run bidirectional best hit analysis (requires --run-diamond)')
+    parser.add_argument('--run-bbh', action='store_true', default=True, help='Run bidirectional best hit analysis (requires --run-diamond, default: True)')
+    parser.add_argument('--no-run-bbh', action='store_false', dest='run_bbh', help='Disable BBH analysis')
     parser.add_argument('--bbh-min-pident', type=float, default=30.0, help='Minimum pident for BBH analysis (default: 30.0)')
     parser.add_argument('--bbh-min-coverage', type=float, default=50.0, help='Minimum coverage for BBH analysis (default: 50.0)')
     parser.add_argument('--diamond-threads', type=int, default=40)
 
     # Pairwise alignment options (Biopython local alignment)
-    parser.add_argument('--run-pairwise', action='store_true', help='Run Biopython pairwise alignment. Adds columns: pairwise_identity, pairwise_coverage_old, pairwise_coverage_new, pairwise_aligned_length')
+    parser.add_argument('--run-pairwise', action='store_true', default=True, help='Run Biopython pairwise alignment (default: True). Adds columns: pairwise_identity, pairwise_coverage_old, pairwise_coverage_new, pairwise_aligned_length')
+    parser.add_argument('--no-run-pairwise', action='store_false', dest='run_pairwise', help='Disable pairwise alignment')
 
     # Output options
     parser.add_argument('--output-prefix', default="synonym_mapping_liftover_gffcomp")
@@ -1423,7 +1425,7 @@ def _build_output_filename(
 
 def _build_header(args, has_interproscan: bool, has_bbh: bool, has_pairwise: bool = False) -> str:
     """Build the output file header."""
-    header = "old_gene\told_transcript\tnew_gene\tnew_transcript\tclass_code\texons\tclass_code_multi_new\tclass_code_multi_old\tclass_type_transcript\tclass_type_gene\temckmnj\temckmnje\told_multi_transcript\tnew_multi_transcript\texact_match\tclass_code_pair\told_multi_new\tnew_multi_old\told_new_count\tnew_old_count"
+    header = "old_gene\told_transcript\tnew_gene\tnew_transcript\ttranscript_pair_class_code\told_multi_transcript\tnew_multi_transcript\texact_match\tgene_pair_class_code\told2newCount\tnew2oldCount"
 
     if args.run_diamond:
         header += "\tpident\tqcovhsp\tscovhsp\tidentical_aa\tmismatched_aa\tindels_aa\taligned_aa"
@@ -1471,8 +1473,7 @@ def _write_output_file(
                     continue
 
                 # Build output line
-                exons = e.get('exons') if e.get('exons') is not None else '-'
-                base = f"{e['old_gene']}\t{e['old_transcript']}\t{e['new_gene']}\t{e['new_transcript']}\t{e['class_code']}\t{exons}\t{e['class_code_multi_new']}\t{e['class_code_multi_old']}\t{e['class_type_transcript']}\t{e['class_type_gene']}\t{e['ackmnj']}\t{e['ackmnje']}\t{e['old_multi_transcript']}\t{e['new_multi_transcript']}\t{e['exact_match']}\t{e['class_code_pair']}\t{e['old_multi_new']}\t{e['new_multi_old']}\t{e['old_new_count']}\t{e['new_old_count']}"
+                base = f"{e['old_gene']}\t{e['old_transcript']}\t{e['new_gene']}\t{e['new_transcript']}\t{e['class_code']}\t{e['old_multi_transcript']}\t{e['new_multi_transcript']}\t{e['exact_match']}\t{e['gene_pair_class_code']}\t{e['old2newCount']}\t{e['new2oldCount']}"
 
                 diamond_line = ""
                 if args.run_diamond:
@@ -1582,22 +1583,13 @@ def aggregate_to_gene_level(
     gene_pairs = df.groupby(['old_gene', 'new_gene']).agg({
         'old_transcript': agg_comma_join,
         'new_transcript': agg_comma_join,
-        'class_code': agg_comma_join,  # Combine all class codes
-        'exons': agg_first,
-        'class_code_multi_new': agg_first,
-        'class_code_multi_old': agg_first,
-        'class_type_transcript': agg_comma_join,
-        'class_type_gene': agg_first,
-        'emckmnj': agg_first,
-        'emckmnje': agg_first,
+        'transcript_pair_class_code': agg_comma_join,  # Combine all class codes
         'old_multi_transcript': agg_max,
         'new_multi_transcript': agg_max,
         'exact_match': agg_max,
-        'class_code_pair': agg_first,
-        'old_multi_new': agg_first,
-        'new_multi_old': agg_first,
-        'old_new_count': agg_first,
-        'new_old_count': agg_first,
+        'gene_pair_class_code': agg_first,
+        'old2newCount': agg_first,
+        'new2oldCount': agg_first,
     }).reset_index()
 
     # Rename transcript columns
