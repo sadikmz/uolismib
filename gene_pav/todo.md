@@ -1245,6 +1245,7 @@ Already present in code (conditionally added when enabled):
 - DIAMOND: `pident`, `qcovhsp`, `scovhsp`, `identical_aa`, `mismatched_aa`, `indels_aa`, `aligned_aa`
 - BBH: `is_bbh`, `bbh_avg_pident`, `bbh_avg_coverage`
 - Pairwise: `pairwise_identity`, `pairwise_coverage_old`, `pairwise_coverage_new`, `pairwise_aligned_length`
+- debug why the valuse for DIAMOND, BBH and Pairwise are either empty or not availabe  
 
 ### 5. Class Code Filtering Validation ✓
 
@@ -1255,6 +1256,14 @@ Already present in code (conditionally added when enabled):
 
 - [x] Run pipeline with new output directory (`pavprot_out`)
 - Output files verified with correct column structure
+
+### 7. XM→XP ID Mapping Fix ✓
+
+Fixed DIAMOND/BBH/Pairwise enrichment issue:
+- **Problem**: Tracking file uses mRNA IDs (XM_), but DIAMOND/FASTA use protein IDs (XP_)
+- **Solution**: Extract XM→XP mapping from GFF CDS features (Parent→protein_id)
+- **Modified files**: `pavprot.py`, `bidirectional_best_hits.py`
+- **Result**: All three metrics now populate correctly (14,414 BBH pairs identified)
 
 ### Deferred (Low Priority)
 

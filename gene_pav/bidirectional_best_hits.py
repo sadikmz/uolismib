@@ -361,7 +361,8 @@ class BidirectionalBestHits:
 def enrich_pavprot_with_bbh(pavprot_data: dict,
                             bbh_df: pd.DataFrame,
                             ref_col: str = 'old_transcript',
-                            query_col: str = 'new_transcript') -> dict:
+                            query_col: str = 'new_transcript',
+                            rna_to_protein: dict = None) -> dict:
     """
     Enrich pavprot data dictionary with BBH information.
 
@@ -372,7 +373,7 @@ def enrich_pavprot_with_bbh(pavprot_data: dict,
 
     Note on column mapping:
         BBH forward DIAMOND runs query→ref, so:
-        - bbh_df['ref_id'] = new_transcript in pavprot
+        - bbh_df['ref_id'] = new protein ID (XP_) which maps to new_transcript (XM_)
         - bbh_df['query_id'] = old_transcript in pavprot
 
     Args:
@@ -380,10 +381,12 @@ def enrich_pavprot_with_bbh(pavprot_data: dict,
         bbh_df: DataFrame from BidirectionalBestHits.find_bbh()
         ref_col: Column name in pavprot entries for reference ID
         query_col: Column name in pavprot entries for query ID
+        rna_to_protein: Optional mapping from mRNA IDs (XM_) to protein IDs (XP_)
 
     Returns:
         Enriched pavprot_data dictionary
     """
+    rna_to_protein = rna_to_protein or {}
     if bbh_df.empty:
         # No BBH data - mark all as non-BBH
         for entries in pavprot_data.values():
@@ -412,8 +415,11 @@ def enrich_pavprot_with_bbh(pavprot_data: dict,
             ref_id = entry.get(ref_col, '')
             query_id = entry.get(query_col, '')
 
-            # Match pavprot (new_transcript, old_transcript) to BBH (ref_id, query_id)
-            key = (query_id, ref_id)
+            # Translate mRNA ID to protein ID if mapping exists
+            query_prot_id = rna_to_protein.get(query_id, query_id)
+
+            # Match pavprot (new_protein, old_transcript) to BBH (ref_id, query_id)
+            key = (query_prot_id, ref_id)
             if key in bbh_lookup:
                 entry['is_bbh'] = 1
                 entry['bbh_avg_pident'] = bbh_lookup[key]['avg_pident']

@@ -776,8 +776,16 @@ class DiamondRunner:
         rev = self.diamond_blastp_reverse(old_faa_path, new_faa_path)
         return fwd, rev
 
-    def enrich_blastp(self, data: dict, diamond_tsv_gz: str):
-        """Parse DIAMOND output and enrich the dictionary"""
+    def enrich_blastp(self, data: dict, diamond_tsv_gz: str, rna_to_protein: Optional[Dict[str, str]] = None):
+        """Parse DIAMOND output and enrich the dictionary.
+
+        Args:
+            data: PAVprot data dictionary
+            diamond_tsv_gz: Path to gzipped DIAMOND output
+            rna_to_protein: Optional mapping from mRNA IDs (XM_) to protein IDs (XP_)
+        """
+        rna_to_protein = rna_to_protein or {}
+
         hits = {}
         with gzip.open(diamond_tsv_gz, 'rt') as f:
             for line in f:
@@ -795,7 +803,7 @@ class DiamondRunner:
                 qid = hit["qseqid"]
                 if qid not in hits or hit["bitscore"] > hits[qid]["bitscore"]:
                     hits[qid] = hit
-        
+
         # add pidentCov_9090
         new_to_high_hits = defaultdict(list)
 
@@ -804,11 +812,13 @@ class DiamondRunner:
                 new_to_high_hits[hit["qseqid"]].append(hit['sallseqid'])
 
         # Only keep new transcripts with multiple high-quality hits
-        multi_match_new = {q for q, olds in new_to_high_hits.items() if len(olds) > 1} 
+        multi_match_new = {q for q, olds in new_to_high_hits.items() if len(olds) > 1}
 
         for entries in data.values():
             for entry in entries:
-                qid = entry["new_transcript"]
+                # Translate mRNA ID to protein ID if mapping exists
+                transcript_id = entry["new_transcript"]
+                qid = rna_to_protein.get(transcript_id, transcript_id)
                 if qid in hits:
                     h = hits[qid]
                     entry["diamond"] = h
@@ -834,7 +844,12 @@ class DiamondRunner:
         return data
 
 
-def enrich_pairwise_alignment(data: dict, old_faa: str, new_faa: str) -> dict:
+def enrich_pairwise_alignment(
+    data: dict,
+    old_faa: str,
+    new_faa: str,
+    rna_to_protein: Optional[Dict[str, str]] = None
+) -> dict:
     """
     Enrich PAVprot data with Biopython pairwise alignment results.
 
@@ -848,10 +863,13 @@ def enrich_pairwise_alignment(data: dict, old_faa: str, new_faa: str) -> dict:
         data: PAVprot data dictionary (old_gene -> list of entries)
         old_faa: Path to old annotation protein FASTA
         new_faa: Path to new annotation protein FASTA
+        rna_to_protein: Optional mapping from mRNA IDs (XM_) to protein IDs (XP_)
 
     Returns:
         Enriched data dictionary
     """
+    rna_to_protein = rna_to_protein or {}
+
     print("Loading sequences for pairwise alignment...", file=sys.stderr)
     old_seqs = read_all_sequences(old_faa)
     new_seqs = read_all_sequences(new_faa)
@@ -869,9 +887,12 @@ def enrich_pairwise_alignment(data: dict, old_faa: str, new_faa: str) -> dict:
             old_trans = entry.get('old_transcript', '')
             new_trans = entry.get('new_transcript', '')
 
+            # Translate mRNA ID to protein ID if mapping exists
+            new_prot_id = rna_to_protein.get(new_trans, new_trans)
+
             # Get sequences
             old_seq = old_seqs.get(old_trans)
-            new_seq = new_seqs.get(new_trans)
+            new_seq = new_seqs.get(new_prot_id)
 
             if old_seq is not None and new_seq is not None:
                 # Perform local alignment
@@ -1847,6 +1868,14 @@ def main():
     full, filtered = PAVprot.parse_tracking(args.gff_comp, old_gff_for_tracking, filter_set)
     data = filtered if filtered else full
 
+    # Load mRNA→protein ID mapping from new GFF (for DIAMOND/pairwise enrichment)
+    new_rna_to_protein: Dict[str, str] = {}
+    if len(gff_list) >= 2:
+        new_gff_path = gff_list[1]
+        print(f"Loading mRNA→protein ID mapping from {new_gff_path}...", file=sys.stderr)
+        new_rna_to_protein, _ = PAVprot.load_gff(new_gff_path)
+        print(f"  Loaded {len(new_rna_to_protein)} mRNA→protein mappings", file=sys.stderr)
+
     # =========================================================================
     # Step 3: Run DIAMOND BLASTP if requested
     # =========================================================================
@@ -1876,7 +1905,7 @@ def main():
         if args.run_bbh:
             # Run bidirectional DIAMOND for BBH analysis
             fwd_diamond, rev_diamond = diamond.run_bidirectional(old_faa_path, new_faa_path)
-            data = diamond.enrich_blastp(data, fwd_diamond)
+            data = diamond.enrich_blastp(data, fwd_diamond, new_rna_to_protein)
 
             # Run BBH analysis
             print(f"\nRunning Bidirectional Best Hit analysis...", file=sys.stderr)
@@ -1895,13 +1924,13 @@ def main():
                 has_bbh = True
 
                 # Enrich pavprot data with BBH info
-                data = enrich_pavprot_with_bbh(data, bbh_df)
+                data = enrich_pavprot_with_bbh(data, bbh_df, rna_to_protein=new_rna_to_protein)
             else:
                 print("  Warning: No BBH pairs found", file=sys.stderr)
         else:
             # Run forward-only DIAMOND (original behavior)
             diamond_tsv_gz = diamond.diamond_blastp(old_faa_path, new_faa_path)
-            data = diamond.enrich_blastp(data, diamond_tsv_gz)
+            data = diamond.enrich_blastp(data, diamond_tsv_gz, new_rna_to_protein)
 
     # =========================================================================
     # Step 4: Compute all metrics in a single pass
@@ -1932,7 +1961,7 @@ def main():
             sys.exit(1)
 
         print(f"\nRunning Biopython pairwise alignment...", file=sys.stderr)
-        data = enrich_pairwise_alignment(data, args.old_faa, args.new_faa)
+        data = enrich_pairwise_alignment(data, args.old_faa, args.new_faa, new_rna_to_protein)
         has_pairwise = True
 
     # =========================================================================
