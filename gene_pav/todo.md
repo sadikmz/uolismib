@@ -2663,6 +2663,53 @@ pip install plotly                       # Interactive plots (optional)
 pip install memory_profiler              # Memory diagnostics (optional)
 ```
 
+### O.7 Plot Migration from project_scripts (TODO)
+
+**Task:** Consolidate all plotting scripts into the `plot/` directory.
+
+#### O.7.1 Scripts to Migrate from `project_scripts/`
+
+| Status | Source Script | Target | Description |
+|--------|---------------|--------|-------------|
+| [ ] | `plot_ipr_1to1_comparison.py` | `plot/` | IPR 1:1 comparison plots |
+| [ ] | `plot_oldvsnew_psauron_plddt.py` | `plot/` | pSauron/pLDDT comparison plots |
+| [ ] | `plot_psauron_distribution.py` | `plot/` | pSauron score distribution |
+| [ ] | `run_pipeline.py` (plotting funcs) | `plot/` | Extract and refactor plot functions |
+
+#### O.7.2 Plot Functions to Extract from `run_pipeline.py`
+
+| Status | Function | Target Module | Description |
+|--------|----------|---------------|-------------|
+| [ ] | Identify all `plot_*` functions | TBD | Audit run_pipeline.py |
+| [ ] | Identify all `plt.savefig` calls | TBD | Find standalone plots |
+| [ ] | Refactor into modular scripts | `plot/*.py` | Split by plot type |
+
+#### O.7.3 Integration Checklist
+
+| Status | Task |
+|--------|------|
+| [ ] | Audit `project_scripts/run_pipeline.py` for plotting functions |
+| [ ] | Identify unique plots not in current `plot/` directory |
+| [ ] | Copy/migrate scripts to `plot/` directory |
+| [ ] | Update imports and paths for new location |
+| [ ] | Integrate with `--plot` CLI argument |
+| [ ] | Add new plot types to `generate_plots()` function |
+| [ ] | Test all plots with actual data |
+| [ ] | Update documentation |
+
+#### O.7.4 Existing Scripts in `plot/` (for reference)
+
+Already present:
+- `plot_domain_comparison.py` - Before/after domain comparison
+- `plot_ipr_advanced.py` - Advanced IPR visualizations
+- `plot_ipr_comparison.py` - IPR comparison (query vs ref)
+- `plot_ipr_gene_level.py` - Gene-level visualization
+- `plot_ipr_proportional_bias.py` - Proportional bias analysis
+- `plot_ipr_shapes.py` - Shape-encoded scatter plots
+- `scenarios.py` - Scenario distribution (NEW)
+- `alignments.py` - BBH scatter plots (NEW)
+- `domains.py` - IPR domain length histograms (NEW)
+
 ---
 
 *End of Extended Hardcoding Audit*
