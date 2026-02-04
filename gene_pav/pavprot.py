@@ -1024,6 +1024,13 @@ def create_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument('--no-output-excel', action='store_false', dest='output_excel',
                         help='Disable Excel export')
 
+    # Plotting options
+    parser.add_argument('--plot', nargs='*', default=None, metavar='TYPE',
+                        help="Generate plots. Without arguments: all plots. "
+                             "Options: 'scenarios' (scenario distribution), "
+                             "'bbh' (BBH scatter), 'ipr' (IPR domain comparison). "
+                             "Output saved to {output_dir}/plots/")
+
     return parser
 
 
@@ -2125,6 +2132,58 @@ def main():
         )
         if excel_file:
             print(f"  Excel export:     {excel_file}", file=sys.stderr)
+
+    # =========================================================================
+    # Step 10: Generate plots (if --plot is specified)
+    # =========================================================================
+    if args.plot is not None:
+        from plot import generate_plots
+
+        # Determine plot types (empty list means all)
+        plot_types = args.plot if args.plot else None
+
+        # Find IPR files
+        old_ipr_file = None
+        new_ipr_file = None
+        ipr_files = list(Path(pavprot_out).glob('*_total_ipr_length.tsv'))
+        for f in ipr_files:
+            if getattr(args, 'old_ipr_basename', None) and args.old_ipr_basename in f.name:
+                old_ipr_file = str(f)
+            elif getattr(args, 'new_ipr_basename', None) and args.new_ipr_basename in f.name:
+                new_ipr_file = str(f)
+            elif not old_ipr_file:
+                old_ipr_file = str(f)
+            elif not new_ipr_file:
+                new_ipr_file = str(f)
+
+        # Find BBH file
+        bbh_file = None
+        bbh_files = list(Path(pavprot_out).glob('**/compareprot_out/*_bbh_results.tsv'))
+        if bbh_files:
+            bbh_file = str(bbh_files[0])
+
+        print(f"\n{'='*60}", file=sys.stderr)
+        print("Generating plots...", file=sys.stderr)
+        print(f"{'='*60}", file=sys.stderr)
+
+        try:
+            generated_files = generate_plots(
+                output_dir=pavprot_out,
+                plot_types=plot_types,
+                transcript_level_file=output_file,
+                gene_level_file=gene_level_file if 'gene_level_file' in dir() else None,
+                bbh_file=bbh_file,
+                old_ipr_file=old_ipr_file,
+                new_ipr_file=new_ipr_file,
+            )
+            if generated_files:
+                print(f"  Generated {len(generated_files)} plot(s):", file=sys.stderr)
+                for f in generated_files:
+                    print(f"    - {f}", file=sys.stderr)
+            else:
+                print("  No plots generated (missing data or dependencies)", file=sys.stderr)
+        except Exception as e:
+            print(f"  Warning: Plot generation failed: {e}", file=sys.stderr)
 
 
 if __name__ == '__main__':
