@@ -1582,3 +1582,1025 @@ Update README.md and help text to show unquoted examples.
 4. **Output file naming is functional.** While `old_all.faa` is technically hardcoded, it's intentional and clear. Deriving from input filenames adds complexity without significant benefit.
 
 5. **The fix is simple:** Change `--class-code` to use `nargs='*'` for space-separated input, which avoids shell interpretation issues with `=`.
+
+---
+
+## Hardcoding Audit Report: Input/Output Parsing
+
+> **Generated:** 2026-02-04
+> **Scope:** Line-by-line assessment of hardcoded values in parsing, reading, and writing
+
+---
+
+### 1. INPUT PARSING HARDCODING
+
+#### 1.1 GFF ID Format Assumptions
+
+| File | Lines | Code | Classification | Risk |
+|------|-------|------|----------------|------|
+| `pavprot.py` | 131-140 | `if parent.startswith('rna-'): rna_id = parent[4:]` | NEEDS REVIEW | HIGH |
+| `pavprot.py` | 139 | `gene_id = f"gene-{locus_tag}"` | NEEDS REVIEW | HIGH |
+| `pavprot.py` | 200 | `new_trans_clean = new_trans_raw.replace('rna-', '')` | TECHNICAL | MEDIUM |
+
+**Problem:** Assumes NCBI-style `rna-` and `gene-` prefixes. Fails silently on VEuPathDB/FungiDB annotations.
+
+**Implementation Strategy:**
+```python
+# Add annotation source detection
+def detect_annotation_source(gff_path: str) -> str:
+    """Detect annotation source from GFF format."""
+    with open(gff_path) as f:
+        for line in f:
+            if 'ID=rna-' in line:
+                return 'NCBI'
+            if 'ID=gene-' in line and 'locus_tag=' in line:
+                return 'NCBI'
+    return 'VEuPathDB'  # Default fallback
+
+# Then use conditionally:
+if source == 'NCBI':
+    rna_id = parent.replace('rna-', '')
+else:
+    rna_id = parent  # No prefix stripping for VEuPathDB
+```
+
+---
+
+#### 1.2 FASTA Header Parsing
+
+| File | Lines | Code | Classification | Risk |
+|------|-------|------|----------------|------|
+| `pavprot.py` | 89-90 | `transcript_id = header.split()[0].split('|')[0]` | NEEDS REVIEW | MEDIUM |
+| `pavprot.py` | 92-94 | `if transcript_id[-3] == '-' and transcript_id[-2] == 'p'` | NEEDS REVIEW | HIGH |
+
+**Problem:** Magic numbers (-3, -2) for Liftoff `-pN` suffix detection. Hard-assumes header format.
+
+**Implementation Strategy:**
+```python
+# Replace magic numbers with regex pattern
+import re
+
+def strip_liftoff_suffix(transcript_id: str) -> str:
+    """Strip Liftoff -pN suffix from transcript ID."""
+    # Pattern: ends with -p followed by digit(s)
+    return re.sub(r'-p\d+$', '', transcript_id)
+
+# Usage:
+if is_new:
+    transcript_id = strip_liftoff_suffix(transcript_id)
+```
+
+---
+
+#### 1.3 GFF Attribute Field Assumptions
+
+| File | Lines | Code | Classification | Risk |
+|------|-------|------|----------------|------|
+| `pavprot.py` | 133 | `attr_dict.get('GenBank') or attr_dict.get('protein_id')` | INTENTIONAL | LOW |
+| `pavprot.py` | 121 | `'\tCDS\t' not in line` | TECHNICAL | LOW |
+
+**Status:** These are format-specific and acceptable. CDS feature type is standard for protein extraction.
+
+---
+
+#### 1.4 GffCompare Tracking Format
+
+| File | Lines | Code | Classification | Risk |
+|------|-------|------|----------------|------|
+| `pavprot.py` | 186-206 | Pipe-delimited field parsing | TECHNICAL | LOW |
+| `pavprot.py` | 204 | `old_gene_full.split(':')[-1]` | TECHNICAL | LOW |
+
+**Status:** GffCompare format is standardized. Cannot be configurable.
+
+---
+
+#### 1.5 InterProScan Format
+
+| File | Lines | Code | Classification | Risk |
+|------|-------|------|----------------|------|
+| `parse_interproscan.py` | 164-169 | 15-column format definition | TECHNICAL | LOW |
+
+**Status:** InterProScan TSV format is standardized (15 columns). Cannot be changed.
+
+---
+
+### 2. OUTPUT WRITING HARDCODING
+
+#### 2.1 Output File Names
+
+| File | Lines | Code | Classification | Risk |
+|------|-------|------|----------------|------|
+| `pavprot.py` | 1893 | `"old_all.faa"` | INTENTIONAL | LOW |
+| `pavprot.py` | 1894 | `"new_all.faa"` | INTENTIONAL | LOW |
+| `pavprot.py` | 950 | `default="synonym_mapping_liftover_gffcomp"` | CONFIGURABLE | LOW |
+
+**Status:** Internal temporary files. Low priority to change.
+
+**Optional Enhancement:**
+```python
+# Derive from input filenames
+old_basename = Path(args.old_faa).stem
+new_basename = Path(args.new_faa).stem
+old_faa_path = os.path.join(input_seq_dir, f"{old_basename}_processed.faa")
+new_faa_path = os.path.join(input_seq_dir, f"{new_basename}_processed.faa")
+```
+
+---
+
+#### 2.2 Output Directory Structure
+
+| File | Lines | Code | Classification | Risk |
+|------|-------|------|----------------|------|
+| `pavprot.py` | 1889-1891 | `compareprot_out/input_seq_dir/` | INTENTIONAL | LOW |
+
+**Status:** Part of documented output schema. Should not change.
+
+---
+
+#### 2.3 Output Column Headers
+
+| File | Lines | Code | Classification | Risk |
+|------|-------|------|----------------|------|
+| `pavprot.py` | 1449-1462 | Column header string | INTENTIONAL | LOW |
+
+**Columns:**
+- Core: `old_gene`, `old_transcript`, `new_gene`, `new_transcript`, etc.
+- Optional: Added conditionally based on CLI flags
+
+**Status:** Part of output schema. MUST NOT CHANGE (would break downstream scripts).
+
+---
+
+#### 2.4 Multiple Mapping File Names
+
+| File | Lines | Code | Classification | Risk |
+|------|-------|------|----------------|------|
+| `mapping_multiplicity.py` | 73 | `f"{output_prefix}_old_to_multiple_new.tsv"` | INTENTIONAL | LOW |
+| `mapping_multiplicity.py` | 87 | `f"{output_prefix}_old_to_multiple_new_detailed.tsv"` | INTENTIONAL | LOW |
+| `mapping_multiplicity.py` | 129 | `f"{output_prefix}_new_to_multiple_old.tsv"` | INTENTIONAL | LOW |
+| `mapping_multiplicity.py` | 143 | `f"{output_prefix}_new_to_multiple_old_detailed.tsv"` | INTENTIONAL | LOW |
+
+**Status:** Naming pattern uses configurable `output_prefix`. File suffixes are part of schema.
+
+---
+
+### 3. VARIABLE NAMING HARDCODING
+
+#### 3.1 Dictionary Keys
+
+| File | Lines | Code | Classification | Risk |
+|------|-------|------|----------------|------|
+| `pavprot.py` | 214-221 | Entry dict keys (`old_gene`, `new_gene`, etc.) | INTENTIONAL | LOW |
+| `gsmc.py` | 54-60 | DataFrame column references | INTENTIONAL | LOW |
+
+**Status:** Internal schema. Consistent across all modules. Should not change.
+
+---
+
+#### 3.2 Terminology Confusion (ref/query vs old/new)
+
+| File | Lines | Code | Classification | Risk |
+|------|-------|------|----------------|------|
+| `bidirectional_best_hits.py` | 363-364 | `ref_col='old_transcript', query_col='new_transcript'` | NEEDS REVIEW | MEDIUM |
+
+**Problem:** Parameter names (`ref_col`, `query_col`) conflict with values (`old_transcript`, `new_transcript`).
+
+**Implementation Strategy:**
+```python
+# Option 1: Rename parameters to match convention
+def enrich_pavprot_with_bbh(pavprot_data: dict,
+                            bbh_df: pd.DataFrame,
+                            old_col: str = 'old_transcript',  # was ref_col
+                            new_col: str = 'new_transcript',  # was query_col
+                            ...):
+
+# Option 2: Add docstring clarification
+"""
+Note: In BBH context, 'ref' maps to PAVprot 'new' (query genome)
+and 'query' maps to PAVprot 'old' (reference genome).
+"""
+```
+
+---
+
+### 4. ANNOTATION SOURCE ASSUMPTIONS
+
+#### 4.1 Format Detection (Good Practice)
+
+| File | Lines | Code | Classification | Risk |
+|------|-------|------|----------------|------|
+| `parse_interproscan.py` | 40-50, 76-96 | NCBI vs VEuPathDB detection | INTENTIONAL | LOW |
+
+**Status:** Already implements format detection. Good practice.
+
+---
+
+### 5. IMPLEMENTATION PRIORITY
+
+| Priority | Issue | File | Lines | Effort | Impact |
+|----------|-------|------|-------|--------|--------|
+| **HIGH** | `rna-`/`gene-` prefix assumptions | pavprot.py | 131-140, 200 | Medium | High |
+| **HIGH** | Magic numbers in suffix stripping | pavprot.py | 92-94 | Low | Medium |
+| **MEDIUM** | ref/query terminology confusion | bidirectional_best_hits.py | 363-377 | Low | Low |
+| **LOW** | Derive output filenames from input | pavprot.py | 1893-1894 | Low | Low |
+
+---
+
+### 6. RECOMMENDED IMPLEMENTATION PLAN
+
+#### Phase 1: Add Annotation Source Detection (HIGH PRIORITY)
+
+**Files to modify:** `pavprot.py`
+
+```python
+# Add to create_argument_parser() after line 931:
+parser.add_argument('--annotation-source',
+                    choices=['auto', 'NCBI', 'VEuPathDB', 'FungiDB'],
+                    default='auto',
+                    help="Annotation source format (default: auto-detect)")
+
+# Add detection function:
+def detect_annotation_source(gff_path: str) -> str:
+    """Auto-detect annotation source from GFF format."""
+    with open(gff_path) as f:
+        for line in f:
+            if line.startswith('#'):
+                continue
+            if 'ID=rna-' in line or 'ID=gene-' in line:
+                return 'NCBI'
+            if '\tmRNA\t' in line:
+                attrs = line.split('\t')[8] if len(line.split('\t')) > 8 else ''
+                if 'ID=' in attrs and 'rna-' not in attrs:
+                    return 'VEuPathDB'
+    return 'VEuPathDB'  # Default
+
+# Modify load_gff() to use source:
+def load_gff(gff_path: str, source: str = 'auto') -> Tuple[Dict, Dict]:
+    if source == 'auto':
+        source = detect_annotation_source(gff_path)
+
+    # Then conditional parsing based on source
+```
+
+#### Phase 2: Fix Magic Numbers (HIGH PRIORITY)
+
+**Files to modify:** `pavprot.py`
+
+```python
+# Replace lines 92-94 with:
+import re
+LIFTOFF_SUFFIX_PATTERN = re.compile(r'-p\d+$')
+
+def strip_liftoff_suffix(transcript_id: str) -> str:
+    """Strip Liftoff -pN suffix from transcript ID if present."""
+    return LIFTOFF_SUFFIX_PATTERN.sub('', transcript_id)
+
+# In fasta2dict():
+if is_new:
+    transcript_id = strip_liftoff_suffix(transcript_id)
+```
+
+#### Phase 3: Fix Terminology Confusion (MEDIUM PRIORITY)
+
+**Files to modify:** `bidirectional_best_hits.py`
+
+```python
+# Rename parameters in enrich_pavprot_with_bbh():
+def enrich_pavprot_with_bbh(
+    pavprot_data: dict,
+    bbh_df: pd.DataFrame,
+    old_col: str = 'old_transcript',   # renamed from ref_col
+    new_col: str = 'new_transcript',   # renamed from query_col
+    rna_to_protein: Optional[Dict[str, str]] = None
+) -> dict:
+    """
+    Enrich PAVprot data with BBH information.
+
+    Note: DIAMOND BBH uses 'ref' for new genome (forward search query)
+    and 'query' for old genome (reverse search query).
+    """
+```
+
+#### Phase 4: Optional Enhancements (LOW PRIORITY)
+
+- Derive internal FASTA filenames from input basenames
+- Add `--prefix-old` and `--prefix-new` CLI options for custom column prefixes (future)
+
+---
+
+### 7. TESTING CHECKLIST
+
+After implementation:
+
+- [ ] Test with NCBI GFF (RefSeq format)
+- [ ] Test with VEuPathDB GFF (FungiDB format)
+- [ ] Test with mixed formats
+- [ ] Verify auto-detection works correctly
+- [ ] Run existing test suite (47 tests)
+- [ ] Verify output columns unchanged
+- [ ] Check BBH enrichment still works
+
+---
+
+### 8. CONCLUSION
+
+**Current State:**
+- Most hardcoding is **intentional** (part of output schema)
+- Main issues are ID format assumptions for NCBI vs VEuPathDB
+- Output column names should **NOT** change (breaking change)
+
+**Recommended Actions:**
+1. Add annotation source auto-detection (Phase 1)
+2. Replace magic numbers with regex patterns (Phase 2)
+3. Fix terminology confusion in BBH module (Phase 3)
+
+**Effort Estimate:**
+- Phase 1: ~50 lines of code
+- Phase 2: ~10 lines of code
+- Phase 3: ~20 lines of code (mostly renaming)
+
+---
+
+## COMPLETE Hardcoding Inventory (Extended Audit)
+
+> **Generated:** 2026-02-04 (Extended)
+> **Scope:** Complete line-by-line inventory of ALL hardcoded values
+
+---
+
+### A. COLUMN NAMES HARDCODING (All Files)
+
+#### A.1 Core Output Columns (`pavprot.py`)
+
+| Line | Hardcoded Value | Context | Classification |
+|------|-----------------|---------|----------------|
+| 215 | `"old_gene"` | Entry dict key | INTENTIONAL (schema) |
+| 216 | `"old_transcript"` | Entry dict key | INTENTIONAL (schema) |
+| 217 | `"new_gene"` | Entry dict key | INTENTIONAL (schema) |
+| 218 | `"new_transcript"` | Entry dict key | INTENTIONAL (schema) |
+| 219 | `"class_code"` | Entry dict key | INTENTIONAL (schema) |
+| 220 | `"exons"` | Entry dict key | INTENTIONAL (schema) |
+| 341 | `'class_code_multi_new'` | Aggregated field | INTENTIONAL |
+| 342 | `'class_type_transcript'` | Classification field | INTENTIONAL |
+| 343 | `'ackmnj'` | Boolean flag | INTENTIONAL |
+| 344 | `'ackmnje'` | Boolean flag | INTENTIONAL |
+| 354 | `'class_code_multi_old'` | Aggregated field | INTENTIONAL |
+| 386 | `'exact_match'` | Boolean field | INTENTIONAL |
+| 387 | `'gene_pair_class_code'` | Aggregated field | INTENTIONAL |
+| 388 | `'class_type_gene'` | Classification field | INTENTIONAL |
+| 389 | `'old_multi_new'` | Mapping flag | INTENTIONAL |
+| 390 | `'new_multi_old'` | Mapping flag | INTENTIONAL |
+| 391 | `'old2newCount'` | Count field | INTENTIONAL |
+| 392 | `'new2oldCount'` | Count field | INTENTIONAL |
+| 420 | `'old_multi_transcript'` | Boolean field | INTENTIONAL |
+| 421 | `'new_multi_transcript'` | Boolean field | INTENTIONAL |
+| 490 | `"extra_copy_number"` | Liftoff field | INTENTIONAL |
+
+#### A.2 DIAMOND Columns (`pavprot.py`)
+
+| Line | Hardcoded Value | Context | Classification |
+|------|-----------------|---------|----------------|
+| 796-801 | `"qseqid"`, `"qlen"`, `"sallseqid"`, etc. | DIAMOND parsing | TECHNICAL |
+| 824 | `"diamond"` | Entry field | INTENTIONAL |
+| 828 | `"identical_aa"` | Output column | INTENTIONAL |
+| 829 | `"mismatched_aa"` | Output column | INTENTIONAL |
+| 830 | `"indels_aa"` | Output column | INTENTIONAL |
+| 831 | `"aligned_aa"` | Output column | INTENTIONAL |
+| 825 | `"pident"` | Output column | INTENTIONAL |
+| 826 | `"qcovhsp"` | Output column | INTENTIONAL |
+| 827 | `"scovhsp"` | Output column | INTENTIONAL |
+
+#### A.3 BBH Columns (`bidirectional_best_hits.py`)
+
+| Line | Hardcoded Value | Context | Classification |
+|------|-----------------|---------|----------------|
+| 215-216 | `'ref_id'`, `'query_id'`, `'pident_fwd'`, etc. | BBH DataFrame columns | INTENTIONAL |
+| 222-223 | `'pident_rev'`, `'evalue_rev'`, etc. | BBH DataFrame columns | INTENTIONAL |
+| 234 | `'avg_pident'` | Computed column | INTENTIONAL |
+| 235 | `'avg_coverage'` | Computed column | INTENTIONAL |
+| 237 | `'is_bbh'` | Boolean flag | INTENTIONAL |
+| 407-408 | `'avg_pident'`, `'avg_coverage'` | Enrichment fields | INTENTIONAL |
+
+#### A.4 Pairwise Alignment Columns (`gsmc.py`)
+
+| Line | Hardcoded Value | Context | Classification |
+|------|-----------------|---------|----------------|
+| 98 | `'avg_pairwise_identity'` | Aggregation field | INTENTIONAL |
+| 99 | `'avg_pairwise_coverage_old'` | Aggregation field | INTENTIONAL |
+| 100 | `'avg_pairwise_coverage_new'` | Aggregation field | INTENTIONAL |
+| 101 | `'avg_pairwise_aligned_length'` | Aggregation field | INTENTIONAL |
+| 102-105 | `'pairwise_*_all'` patterns | Detail fields | INTENTIONAL |
+
+#### A.5 InterProScan Columns (`pavprot.py`, `parse_interproscan.py`)
+
+| Line | Hardcoded Value | Context | Classification |
+|------|-----------------|---------|----------------|
+| 630 | `'new_gene_total_iprdom_len'` | IPR sum field | INTENTIONAL |
+| 637 | `'old_gene_total_iprdom_len'` | IPR sum field | INTENTIONAL |
+| 506-507 | `'analysis'`, `'signature_accession'` | IPR fields | INTENTIONAL |
+| 569-570 | Dict keys for IPR data | Internal | INTENTIONAL |
+
+#### A.6 Output Header (`pavprot.py:1449-1460`)
+
+```python
+header = "old_gene\told_transcript\tnew_gene\tnew_transcript\ttranscript_pair_class_code\told_multi_transcript\tnew_multi_transcript\texact_match\tgene_pair_class_code\told2newCount\tnew2oldCount"
+# + conditional columns for DIAMOND, BBH, pairwise, liftoff, interproscan
+```
+
+**Classification:** INTENTIONAL - Part of documented output schema
+
+---
+
+### B. CLASS CODE CATEGORIES HARDCODING
+
+| File | Line | Hardcoded Value | Context | Classification |
+|------|------|-----------------|---------|----------------|
+| `pavprot.py` | 171-175 | `'='` → `'em'` conversion | Filter normalization | INTENTIONAL |
+| `pavprot.py` | 191 | `class_code = 'em'` | Default for `=` | INTENTIONAL |
+| `pavprot.py` | 244 | `{'em'}` | Class type detection | INTENTIONAL |
+| `pavprot.py` | 246 | `{'c', 'k', 'm', 'n', 'j'}` | Class set | INTENTIONAL |
+| `pavprot.py` | 247 | `'ckmnj'` | Class type string | INTENTIONAL |
+| `pavprot.py` | 250 | `{'em', 'c', 'k', 'm', 'n', 'j'}` | Class set | INTENTIONAL |
+| `pavprot.py` | 251 | `'ackmnj'` | Class type string | INTENTIONAL |
+| `pavprot.py` | 252 | `{'em', 'c', 'k', 'm', 'n', 'j', 'e'}` | Class set | INTENTIONAL |
+| `pavprot.py` | 253 | `'ackmnje'` | Class type string | INTENTIONAL |
+| `pavprot.py` | 254 | `{'o'}` | Class set | INTENTIONAL |
+| `pavprot.py` | 256 | `{'s', 'x'}` → `'sx'` | Class set | INTENTIONAL |
+| `pavprot.py` | 258 | `{'i', 'y'}` → `'iy'` | Class set | INTENTIONAL |
+| `pavprot.py` | 261 | `'pru'` | Default class type | INTENTIONAL |
+| `pavprot.py` | 337-338 | Class code checks | Boolean flags | INTENTIONAL |
+| `pavprot.py` | 362 | `{'em'}` | Exact match check | INTENTIONAL |
+| `pavprot.py` | 406-408 | Default values | Fallback | INTENTIONAL |
+| `pavprot.py` | 427 | `'pru'` default | Fallback | INTENTIONAL |
+| `pavprot.py` | 1492 | `'pru'` default | Filter default | INTENTIONAL |
+
+**Classification:** INTENTIONAL - GffCompare class codes are standardized
+
+---
+
+### C. OUTPUT FILE PATTERNS HARDCODING
+
+| File | Line | Pattern | Classification |
+|------|------|---------|----------------|
+| `pavprot.py` | 716 | `"synonym_mapping_liftover_gffcomp"` default | CONFIGURABLE |
+| `pavprot.py` | 716 | `"pavprot_out"` default dir | CONFIGURABLE |
+| `pavprot.py` | 725 | `'compareprot_out'` subdir | INTENTIONAL |
+| `pavprot.py` | 727 | `f"{self.output_prefix}_{output_name}.tsv.gz"` | INTENTIONAL |
+| `pavprot.py` | 754 | `"diamond_blastp_fwd"` | INTENTIONAL |
+| `pavprot.py` | 763 | `"diamond_blastp_rev"` | INTENTIONAL |
+| `pavprot.py` | 1438 | `"_diamond_blastp.tsv"` suffix | INTENTIONAL |
+| `pavprot.py` | 1699 | `f"{output_basename}_gene_level.tsv"` | INTENTIONAL |
+| `pavprot.py` | 1747 | `f"{main_basename}_gene_level.tsv"` | INTENTIONAL |
+| `pavprot.py` | 1893 | `"old_all.faa"` | INTENTIONAL |
+| `pavprot.py` | 1894 | `"new_all.faa"` | INTENTIONAL |
+| `mapping_multiplicity.py` | 73 | `f"{output_prefix}_old_to_multiple_new.tsv"` | INTENTIONAL |
+| `mapping_multiplicity.py` | 87 | `f"{output_prefix}_old_to_multiple_new_detailed.tsv"` | INTENTIONAL |
+| `mapping_multiplicity.py` | 129 | `f"{output_prefix}_new_to_multiple_old.tsv"` | INTENTIONAL |
+| `mapping_multiplicity.py` | 143 | `f"{output_prefix}_new_to_multiple_old_detailed.tsv"` | INTENTIONAL |
+| `mapping_multiplicity.py` | 151 | `f"{output_prefix}_multiple_mappings_summary.txt"` | INTENTIONAL |
+
+---
+
+### D. DIRECTORY STRUCTURE HARDCODING
+
+| File | Line | Path | Classification |
+|------|------|------|----------------|
+| `pavprot.py` | 1889 | `os.path.join(os.getcwd(), args.output_dir)` | CONFIGURABLE |
+| `pavprot.py` | 1890 | `'compareprot_out'` | INTENTIONAL |
+| `pavprot.py` | 1891 | `'input_seq_dir'` | INTENTIONAL |
+
+---
+
+### E. ID PREFIX/SUFFIX HARDCODING
+
+| File | Line | Pattern | Classification | Risk |
+|------|------|---------|----------------|------|
+| `pavprot.py` | 131 | `parent.startswith('rna-')` | NEEDS REVIEW | HIGH |
+| `pavprot.py` | 132 | `parent[4:]` (strip 4 chars) | NEEDS REVIEW | HIGH |
+| `pavprot.py` | 139 | `f"gene-{locus_tag}"` | NEEDS REVIEW | HIGH |
+| `pavprot.py` | 200 | `.replace('rna-', '')` | NEEDS REVIEW | MEDIUM |
+| `pavprot.py` | 92-94 | `-p` suffix detection (magic numbers) | NEEDS REVIEW | HIGH |
+| `parse_interproscan.py` | 77 | `'ID=rna'` detection | INTENTIONAL | LOW |
+
+---
+
+### F. DIAMOND PARAMETERS HARDCODING
+
+| File | Line | Parameter | Classification |
+|------|------|-----------|----------------|
+| `pavprot.py` | 733 | `--ultra-sensitive` | INTENTIONAL |
+| `pavprot.py` | 734 | `--masking none` | INTENTIONAL |
+| `pavprot.py` | 736 | `--outfmt 6 ...` (21 columns) | TECHNICAL |
+| `pavprot.py` | 737 | `--evalue 1e-6` | INTENTIONAL |
+| `pavprot.py` | 739 | `--max-hsps 1` | INTENTIONAL |
+| `pavprot.py` | 740 | `--unal 1` | INTENTIONAL |
+| `pavprot.py` | 741 | `--compress 1` | INTENTIONAL |
+| `pavprot.py` | 811 | `pident >= 90.0`, `qcovhsp >= 90.0` | INTENTIONAL |
+| `bidirectional_best_hits.py` | default | `min_pident=30.0`, `min_coverage=50.0` | CONFIGURABLE |
+
+---
+
+### G. VARIABLE NAMING (ref/query vs old/new)
+
+| File | Line | Variable | Terminology | Classification |
+|------|------|----------|-------------|----------------|
+| `mapping_multiplicity.py` | 39 | `ref_to_qry` | ref/qry | NEEDS REVIEW |
+| `mapping_multiplicity.py` | 51-56 | `ref_multi`, `ref_output` | ref | NEEDS REVIEW |
+| `mapping_multiplicity.py` | 95 | `qry_to_ref` | qry/ref | NEEDS REVIEW |
+| `mapping_multiplicity.py` | 107-112 | `qry_multi`, `qry_output` | qry | NEEDS REVIEW |
+| `gsmc.py` | 54 | `ref_tx` | ref | NEEDS REVIEW |
+| `gsmc.py` | 58 | `query_tx` | query | NEEDS REVIEW |
+| `gsmc.py` | 217-218 | `cdi_old_genes`, `cdi_new_genes` | old/new | CONSISTENT |
+| `bidirectional_best_hits.py` | 363 | `ref_col='old_transcript'` | MIXED | NEEDS REVIEW |
+| `bidirectional_best_hits.py` | 364 | `query_col='new_transcript'` | MIXED | NEEDS REVIEW |
+
+---
+
+### H. SCENARIO CODES HARDCODING (`gsmc.py`)
+
+| Line | Code | Description | Classification |
+|------|------|-------------|----------------|
+| 294 | `'E'` | 1:1 orthologs | INTENTIONAL |
+| 295 | `'1to1'` | Mapping type | INTENTIONAL |
+| 376 | `'A'` | 1:N scenario | INTENTIONAL |
+| 377 | `'1to2N'` | Mapping type | INTENTIONAL |
+| 458 | `'B'` | N:1 scenario | INTENTIONAL |
+| 459 | `'Nto1'` | Mapping type | INTENTIONAL |
+
+---
+
+### I. SUMMARY: HARDCODING BY CLASSIFICATION
+
+| Classification | Count | Action Required |
+|----------------|-------|-----------------|
+| **INTENTIONAL (schema)** | ~85 | None - part of output format |
+| **INTENTIONAL (config)** | ~15 | None - already configurable via CLI |
+| **TECHNICAL** | ~20 | None - format-specific parsing |
+| **NEEDS REVIEW** | ~12 | Implement solutions |
+| **CONFIGURABLE** | ~5 | Already parameterized |
+
+---
+
+### J. IMPLEMENTATION STRATEGY FOR "NEEDS REVIEW" ITEMS
+
+#### J.1 ID Prefix Handling (HIGH PRIORITY)
+
+**Current problem locations:**
+- `pavprot.py:131-140` - NCBI `rna-`/`gene-` prefix assumptions
+- `pavprot.py:200` - `rna-` stripping
+- `pavprot.py:92-94` - Magic numbers for Liftoff `-pN` suffix
+
+**Solution: Create ID normalization module**
+
+```python
+# New file: id_normalizer.py
+
+import re
+from enum import Enum
+
+class AnnotationSource(Enum):
+    NCBI = "ncbi"
+    VEUPATHDB = "veupathdb"
+    AUTO = "auto"
+
+# Patterns
+LIFTOFF_SUFFIX = re.compile(r'-p\d+$')
+NCBI_RNA_PREFIX = re.compile(r'^rna-')
+NCBI_GENE_PREFIX = re.compile(r'^gene-')
+
+def detect_source(gff_path: str) -> AnnotationSource:
+    """Auto-detect annotation source from GFF format."""
+    with open(gff_path) as f:
+        for line in f:
+            if line.startswith('#'):
+                continue
+            if 'ID=rna-' in line:
+                return AnnotationSource.NCBI
+    return AnnotationSource.VEUPATHDB
+
+def normalize_rna_id(rna_id: str, source: AnnotationSource) -> str:
+    """Normalize RNA ID based on annotation source."""
+    if source == AnnotationSource.NCBI:
+        return NCBI_RNA_PREFIX.sub('', rna_id)
+    return rna_id
+
+def strip_liftoff_suffix(transcript_id: str) -> str:
+    """Strip Liftoff -pN suffix from transcript ID."""
+    return LIFTOFF_SUFFIX.sub('', transcript_id)
+```
+
+#### J.2 Terminology Standardization (MEDIUM PRIORITY)
+
+**Current problem locations:**
+- `mapping_multiplicity.py` uses `ref_`/`qry_` variables
+- `gsmc.py` uses `ref_tx`/`query_tx`
+- `bidirectional_best_hits.py` has mixed terminology
+
+**Solution: Standardize on `old_`/`new_` internally**
+
+```python
+# In mapping_multiplicity.py, rename:
+# ref_to_qry → old_to_new
+# qry_to_ref → new_to_old
+# ref_multi → old_multi
+# qry_multi → new_multi
+
+# In gsmc.py, rename:
+# ref_tx → old_tx
+# query_tx → new_tx
+
+# In bidirectional_best_hits.py:
+# ref_col → old_col
+# query_col → new_col
+```
+
+#### J.3 DIAMOND Parameters (LOW PRIORITY - Optional)
+
+**Current:** Hardcoded in `DiamondRunner._run_diamond()`
+
+**Optional enhancement:** Make configurable via CLI
+
+```python
+parser.add_argument('--diamond-sensitivity',
+                    choices=['fast', 'mid-sensitive', 'sensitive', 'more-sensitive', 'very-sensitive', 'ultra-sensitive'],
+                    default='ultra-sensitive')
+parser.add_argument('--diamond-evalue', type=float, default=1e-6)
+parser.add_argument('--diamond-max-hsps', type=int, default=1)
+```
+
+---
+
+### K. FINAL RECOMMENDATIONS
+
+1. **DO NOT CHANGE** output column names (would break downstream scripts)
+2. **DO NOT CHANGE** class code categories (GffCompare standard)
+3. **DO NOT CHANGE** output file naming patterns (documented schema)
+4. **DO IMPLEMENT** annotation source auto-detection
+5. **DO IMPLEMENT** ID normalization module
+6. **DO STANDARDIZE** internal terminology (old/new everywhere)
+7. **CONSIDER** making DIAMOND parameters configurable
+8. **DO FIX** organism-specific hardcoding in Excel export (see L.1)
+
+---
+
+### L. ADDITIONAL HARDCODING IDENTIFIED (2026-02-04)
+
+> **Added during extended audit**
+
+#### L.1 Organism-Specific String Matching in Excel Export (CRITICAL)
+
+**Location:** `pavprot.py:1795-1798` and `pavprot.py:1813-1816`
+
+**Current Code (BROKEN FOR OTHER ORGANISMS):**
+
+```python
+# Line 1795: Domain distribution sheets
+if 'foc' in basename.lower() or 'fozg' in basename.lower():
+    sheet_name = "old_domain_dist"
+else:
+    sheet_name = "new_domain_dist"
+
+# Line 1813: IPR length sheets
+if 'foc' in basename.lower() or 'fozg' in basename.lower():
+    source = "old"
+else:
+    source = "new"
+```
+
+**Problem:**
+- `'foc'` = *Fusarium oxysporum* organism prefix
+- `'fozg'` = FungiDB gene naming convention
+- **This is project-specific hardcoding that will SILENTLY FAIL for any other organism**
+- Files may be assigned to wrong sheets (old vs new swapped)
+
+**Classification:** **CRITICAL** - Silent failure for other projects
+
+**Risk Level:** **HIGH** - No error, just wrong results
+
+---
+
+#### L.2 Proposed Fix: Use Positional Input Tracking
+
+**Solution:** Track which InterProScan files belong to old vs new during input parsing
+
+**Implementation:**
+
+```python
+# Step 1: Store file basenames during input validation (validate_inputs)
+# Add to args or return from validate_inputs():
+args.old_ipr_basename = None
+args.new_ipr_basename = None
+
+if args.interproscan_out:
+    ipr_files = [f.strip() for f in args.interproscan_out.split(',')]
+    if len(ipr_files) == 1:
+        # Single IPR file - old annotation only
+        args.old_ipr_basename = Path(ipr_files[0]).stem
+    elif len(ipr_files) == 2:
+        # Position 1 = old, Position 2 = new
+        args.old_ipr_basename = Path(ipr_files[0]).stem
+        args.new_ipr_basename = Path(ipr_files[1]).stem
+
+# Step 2: Use tracked basenames in export_to_excel()
+# Replace lines 1795-1798:
+for domain_file in sorted(domain_dist_files):
+    basename = Path(domain_file).stem
+    # Match against tracked basenames
+    if args.old_ipr_basename and args.old_ipr_basename in basename:
+        sheet_name = "old_domain_dist"
+    elif args.new_ipr_basename and args.new_ipr_basename in basename:
+        sheet_name = "new_domain_dist"
+    else:
+        # Fallback: first file is old, second is new (by sort order)
+        sheet_name = "old_domain_dist" if not old_written else "new_domain_dist"
+        old_written = True
+```
+
+**Alternative Fix (Simpler):**
+
+```python
+# Use file order from sorted glob (alphabetically stable)
+for idx, domain_file in enumerate(sorted(domain_dist_files)):
+    sheet_name = "old_domain_dist" if idx == 0 else "new_domain_dist"
+```
+
+**Testing:**
+- [ ] Test with Fusarium oxysporum data (current project)
+- [ ] Test with other organisms (e.g., Aspergillus, Saccharomyces)
+- [ ] Verify sheets are correctly assigned
+
+---
+
+### M. SYSTEMATIC HARDCODING DETECTION METHODS
+
+#### M.1 Pattern-Based Grep Searches
+
+```bash
+# 1. Find project-specific organism/database names
+grep -rn "fozg\|foc\|FungiDB\|VEuPathDB\|FOBCDRAFT" --include="*.py"
+
+# 2. Find ID prefix assumptions
+grep -rn "rna-\|gene-\|cds-\|ID=rna\|ID=gene" --include="*.py"
+
+# 3. Find magic numbers (indexes, slicing)
+grep -rn "\[4:\]\|\[5:\]\|\[:4\]\|\[:-3\]" --include="*.py"
+
+# 4. Find hardcoded file extensions/patterns
+grep -rn "'\.tsv'\|'\.gff'\|'\.faa'" --include="*.py"
+
+# 5. Find string matching in if statements
+grep -rn "if.*in.*lower()\|if.*startswith\|if.*endswith" --include="*.py"
+
+# 6. Find format-specific detection
+grep -rn "RefSeq\|GenBank\|NCBI\|Ensembl" --include="*.py"
+```
+
+#### M.2 Static Analysis Tools
+
+##### Installation
+
+```bash
+# Add to requirements-dev.txt or install directly
+pip install ruff mypy bandit vulture flake8 isort black
+```
+
+##### Tool Reference
+
+| Tool | Purpose | Install | Command |
+|------|---------|---------|---------|
+| `ruff` | Fast linting + auto-fix | `pip install ruff` | `ruff check . --select=ALL` |
+| `mypy` | Static type checking | `pip install mypy` | `mypy --strict *.py` |
+| `bandit` | Security vulnerability scanner | `pip install bandit` | `bandit -r . -ll` |
+| `vulture` | Dead code detection | `pip install vulture` | `vulture *.py` |
+| `flake8` | Style guide enforcement | `pip install flake8` | `flake8 --max-line-length=120` |
+| `isort` | Import sorting | `pip install isort` | `isort --check-only .` |
+| `black` | Code formatting | `pip install black` | `black --check .` |
+
+##### Ruff Rules for Hardcoding Detection
+
+```bash
+# Check for hardcoded strings and magic numbers
+ruff check . --select=PLR2004,S105,S106,S107
+
+# PLR2004: Magic value used in comparison
+# S105: Possible hardcoded password
+# S106: Possible hardcoded password in function argument
+# S107: Possible hardcoded password in function default
+```
+
+##### Mypy Strict Mode Benefits
+
+```bash
+mypy --strict pavprot.py
+
+# Catches:
+# - Implicit Any types (often hide hardcoded assumptions)
+# - Missing return types
+# - Untyped function definitions
+# - Invalid type assignments
+```
+
+##### Bandit Security Checks
+
+```bash
+bandit -r . -ll -ii
+
+# -ll: Only show medium and higher severity
+# -ii: Only show medium and higher confidence
+
+# Detects:
+# - Hardcoded passwords/secrets
+# - SQL injection vulnerabilities
+# - Command injection patterns
+# - Insecure file operations
+```
+
+##### Custom Grep-Based Hardcoding Scanner Script
+
+```bash
+#!/bin/bash
+# save as: scripts/detect_hardcoding.sh
+
+echo "=== Hardcoding Detection Report ==="
+echo ""
+
+echo "1. Project-specific organism/database names:"
+grep -rn --include="*.py" -E "fozg|foc|FungiDB|VEuPathDB|FOBCDRAFT|Fusarium" .
+echo ""
+
+echo "2. ID prefix assumptions (NCBI format):"
+grep -rn --include="*.py" -E "rna-|gene-|cds-|ID=rna|ID=gene" .
+echo ""
+
+echo "3. Magic numbers in slicing (potential ID parsing):"
+grep -rn --include="*.py" -E "\[[0-9]+:\]|\[:[0-9]+\]|\[-[0-9]+:\]" .
+echo ""
+
+echo "4. String matching in conditionals:"
+grep -rn --include="*.py" -E "if.+in.+\.lower\(\)|\.startswith\(|\.endswith\(" .
+echo ""
+
+echo "5. Hardcoded file paths:"
+grep -rn --include="*.py" -E "'/[a-zA-Z]|\"\/[a-zA-Z]|~/|/home/|/Users/" .
+echo ""
+
+echo "6. Hardcoded column/field names (potential schema coupling):"
+grep -rn --include="*.py" -E "'[a-z]+_[a-z]+'" . | grep -v "def \|#\|import"
+echo ""
+
+echo "=== End Report ==="
+```
+
+---
+
+#### M.3 Manual Code Review Checklist
+
+##### M.3.1 Organism/Project-Specific Hardcoding
+
+| Check | What to Look For | Risk Level |
+|-------|------------------|------------|
+| [ ] Organism names | Species, strain names (e.g., `foc`, `Fo47`, `oxysporum`) | **CRITICAL** |
+| [ ] Database names | `FungiDB`, `VEuPathDB`, `NCBI`, `RefSeq`, `Ensembl` | **HIGH** |
+| [ ] Gene ID prefixes | `FOZG_`, `FOBCDRAFT_`, `LOC`, `AT1G` | **CRITICAL** |
+| [ ] Accession patterns | `XM_`, `XP_`, `NM_`, `NP_`, `rna-`, `gene-` | **HIGH** |
+| [ ] Project paths | `/home/user/`, `~/projects/`, absolute paths | **MEDIUM** |
+
+##### M.3.2 Format/Schema Assumptions
+
+| Check | What to Look For | Risk Level |
+|-------|------------------|------------|
+| [ ] GFF attribute parsing | `ID=rna-`, `Parent=gene-`, specific attribute names | **HIGH** |
+| [ ] Column indices | `[4:]`, `[:5]`, `split()[3]` without validation | **HIGH** |
+| [ ] Delimiter assumptions | Hardcoded `\t`, `,`, `;` without configuration | **MEDIUM** |
+| [ ] File extension checks | `.gff3`, `.tsv`, `.faa` without flexibility | **LOW** |
+
+##### M.3.3 Excel/Output Export Functions
+
+| Check | What to Look For | Risk Level |
+|-------|------------------|------------|
+| [ ] Sheet name logic | String matching to determine old/new | **CRITICAL** |
+| [ ] File sorting assumptions | Alphabetical order = old/new order | **HIGH** |
+| [ ] Filename parsing | Extracting metadata from filenames | **MEDIUM** |
+| [ ] Column ordering | Hardcoded column order in exports | **MEDIUM** |
+
+##### M.3.4 ID Transformation Logic
+
+| Check | What to Look For | Risk Level |
+|-------|------------------|------------|
+| [ ] Prefix stripping | `.replace('rna-', '')`, `[4:]` | **HIGH** |
+| [ ] Suffix handling | `-p1`, `-t36_1`, version suffixes | **HIGH** |
+| [ ] ID mapping | XM→XP, transcript→protein, gene→mRNA | **HIGH** |
+| [ ] Case sensitivity | `.lower()`, `.upper()` assumptions | **MEDIUM** |
+
+##### M.3.5 Conditional Logic Review
+
+| Check | What to Look For | Risk Level |
+|-------|------------------|------------|
+| [ ] `if X in string` | String containment checks | **CRITICAL** |
+| [ ] `startswith()`/`endswith()` | Prefix/suffix assumptions | **HIGH** |
+| [ ] `== 'specific_value'` | Exact string comparisons | **HIGH** |
+| [ ] Regex patterns | Format-specific regex without alternatives | **MEDIUM** |
+
+##### M.3.6 Positional/Ordering Logic
+
+| Check | What to Look For | Risk Level |
+|-------|------------------|------------|
+| [ ] "First file is X" | Implicit position = meaning | **HIGH** |
+| [ ] Sorted file order | Sort order determines semantics | **CRITICAL** |
+| [ ] Index-based access | `files[0]` = old, `files[1]` = new | **MEDIUM** |
+| [ ] Enumeration logic | `idx == 0` conditional behavior | **MEDIUM** |
+
+---
+
+#### M.4 Automated Pre-Commit Hooks
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.1.6
+    hooks:
+      - id: ruff
+        args: [--fix, --select=PLR2004,S105,S106,S107]
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.7.1
+    hooks:
+      - id: mypy
+        args: [--ignore-missing-imports]
+
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.6
+    hooks:
+      - id: bandit
+        args: [-ll, -ii]
+
+  - repo: local
+    hooks:
+      - id: hardcoding-check
+        name: Check for hardcoded values
+        entry: bash -c 'grep -rn --include="*.py" -E "fozg|foc|FungiDB|FOBCDRAFT" . && exit 1 || exit 0'
+        language: system
+        pass_filenames: false
+```
+
+##### Installation
+
+```bash
+pip install pre-commit
+pre-commit install
+pre-commit run --all-files  # Run on all files
+```
+
+---
+
+#### M.5 CI/CD Integration (GitHub Actions)
+
+```yaml
+# .github/workflows/lint.yml
+name: Lint and Check Hardcoding
+
+on: [push, pull_request]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install ruff mypy bandit vulture
+
+      - name: Run Ruff
+        run: ruff check . --select=PLR2004,S105,S106,S107
+
+      - name: Run Bandit
+        run: bandit -r . -ll -ii
+
+      - name: Check for project-specific hardcoding
+        run: |
+          if grep -rn --include="*.py" -E "fozg|foc|FungiDB|FOBCDRAFT" .; then
+            echo "ERROR: Project-specific hardcoding detected!"
+            exit 1
+          fi
+```
+
+---
+
+### N. HARDCODING PREVENTION PRINCIPLES
+
+1. **Input-Driven**: Use input filenames to derive all identifiers
+2. **Positional**: Use input order (old,new) not string matching
+3. **Configurable**: Expose frequently-changing values as CLI args
+4. **Detected**: Auto-detect format from file content, not filename
+5. **Documented**: If hardcoding is intentional, document why
+
+---
+
+*End of Extended Hardcoding Audit*
