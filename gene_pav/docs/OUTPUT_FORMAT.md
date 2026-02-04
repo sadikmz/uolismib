@@ -92,7 +92,7 @@ gene-FOBCDRAFT_430	XM_031180643.3	FOZG_02018	FOZG_02018-t36_3	em	5	em;j;n	0	1	1	
 python gene_pav/pavprot.py \
   --gff-comp gffcompare.tracking \
   --gff reference.gff3 \
-  --class-code em,j \
+  --class-code em j \
   --output-prefix my_analysis
 ```
 
@@ -103,7 +103,7 @@ Output: `pavprot_out/my_analysis_em_j.tsv`
 python gene_pav/pavprot.py \
   --gff-comp gffcompare.tracking \
   --gff reference.gff3 \
-  --class-code em,j \
+  --class-code em j \
   --prot reference.faa \
   --prot query.faa \
   --run-diamond \
@@ -120,7 +120,7 @@ python gene_pav/pavprot.py \
   --gff-comp gffcompare.tracking \
   --gff reference.gff3 \
   --liftoff-gff liftoff_output.gff3 \
-  --class-code em,j \
+  --class-code em j \
   --output-prefix my_analysis
 ```
 
@@ -133,7 +133,7 @@ python gene_pav/pavprot.py \
   --gff-comp gffcompare.tracking \
   --gff reference.gff3 \
   --interproscan-out reference_interproscan.tsv \
-  --class-code em,j \
+  --class-code em j \
   --output-prefix my_analysis
 ```
 
@@ -146,7 +146,7 @@ python gene_pav/pavprot.py \
   --gff-comp gffcompare.tracking \
   --gff reference.gff3,query.gff3 \
   --interproscan-out reference_interproscan.tsv,query_interproscan.tsv \
-  --class-code em,j \
+  --class-code em j \
   --output-prefix my_analysis
 ```
 
@@ -160,7 +160,7 @@ python gene_pav/pavprot.py \
   --gff reference.gff3,query.gff3 \
   --liftoff-gff liftoff_output.gff3 \
   --interproscan-out reference_interproscan.tsv,query_interproscan.tsv \
-  --class-code em,j \
+  --class-code em j \
   --prot reference.faa \
   --prot query.faa \
   --run-diamond \

@@ -48,7 +48,7 @@ python gene_pav/pavprot.py \
   --gff-comp gffcompare.tracking \
   --gff reference.gff3 \
   --interproscan-out reference_interproscan.tsv \
-  --class-code em,j \
+  --class-code em j \
   --output-prefix my_output
 ```
 
@@ -58,7 +58,7 @@ python gene_pav/pavprot.py \
   --gff-comp gffcompare.tracking \
   --gff reference.gff3,query.gff3 \
   --interproscan-out reference_interproscan.tsv,query_interproscan.tsv \
-  --class-code em,j \
+  --class-code em j \
   --output-prefix my_output
 ```
 

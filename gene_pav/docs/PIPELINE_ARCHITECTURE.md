@@ -253,7 +253,7 @@ Standalone:
 
 ### Filtering
 ```bash
---class-code CODES   # Filter by class codes (e.g., "=,c,k,m,n,j,e")
+--class-code CODES   # Filter by class codes, space-separated (e.g., = c k m n j e)
 --filter-exact-match # Only exact matches
 --filter-exclusive-1to1  # Only 1:1 orthologs
 ```

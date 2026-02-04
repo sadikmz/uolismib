@@ -32,7 +32,7 @@ python gene_pav/pavprot.py \
   --gff-comp gffcompare.tracking \
   --ref-gff reference.gff3 \
   --liftoff-gff liftoff_output.gff3 \
-  --class-code em,j \
+  --class-code em j \
   --output-prefix my_analysis
 ```
 
@@ -46,7 +46,7 @@ python gene_pav/pavprot.py \
   --ref-gff reference.gff3,query.gff3 \
   --interproscan-out ref_interproscan.tsv,query_interproscan.tsv \
   --liftoff-gff liftoff_output.gff3 \
-  --class-code em,j \
+  --class-code em j \
   --output-prefix my_analysis
 ```
 
@@ -60,7 +60,7 @@ python gene_pav/pavprot.py \
   --ref-gff GCF_013085055.1.gff3,foc67_v68.gff3 \
   --interproscan-out GCF_013085055.1_interpro.tsv,foc67_v68_interpro.tsv \
   --liftoff-gff liftoff_foc67.gff3 \
-  --class-code em,j \
+  --class-code em j \
   --prot GCF_013085055.1.prot.faa \
   --prot foc67_v68.prot.faa \
   --run-diamond \
@@ -228,7 +228,7 @@ python gene_pav/pavprot.py \
   --ref-gff reference.gff3,query.gff3 \
   --interproscan-out ref_interpro.tsv,qry_interpro.tsv \
   --liftoff-gff liftoff_output.gff3 \
-  --class-code em,j \
+  --class-code em j \
   --prot reference.prot.faa \
   --prot query.prot.faa \
   --run-diamond \
