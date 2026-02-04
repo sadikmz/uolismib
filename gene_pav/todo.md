@@ -2603,4 +2603,68 @@ jobs:
 
 ---
 
+## O. Debugging & Plotting Module
+
+### O.1 Visualization Features
+
+| Status | Feature | Description | Priority |
+|--------|---------|-------------|----------|
+| [ ] | Scenario distribution plot | Bar chart of E/A/B/J/CDI scenarios | **HIGH** |
+| [ ] | Class code heatmap | Distribution of class codes across gene pairs | **MEDIUM** |
+| [ ] | BBH coverage scatter | Plot BBH pident vs coverage | **HIGH** |
+| [ ] | IPR domain length comparison | Old vs new annotation domain lengths | **MEDIUM** |
+| [ ] | Pairwise identity histogram | Distribution of alignment identities | **MEDIUM** |
+| [ ] | Gene mapping Sankey | Flow diagram: old genes → scenarios → new genes | **LOW** |
+
+### O.2 Diagnostic/Debug Plots
+
+| Status | Feature | Description | Priority |
+|--------|---------|-------------|----------|
+| [ ] | Missing ID tracker | Visualize unmapped IDs at each stage | **HIGH** |
+| [ ] | Pipeline flow diagram | Sankey diagram of data flow through pipeline | **LOW** |
+| [ ] | Memory usage profiler | Track memory at each stage | **MEDIUM** |
+| [ ] | Timing breakdown | Bar chart of time per pipeline stage | **MEDIUM** |
+| [ ] | ID transformation trace | Debug view of ID mapping chain | **HIGH** |
+
+### O.3 Proposed Module Structure
+
+```python
+# plotting/
+# ├── __init__.py
+# ├── scenarios.py      # Scenario distribution plots
+# ├── alignments.py     # BBH, pairwise, DIAMOND plots
+# ├── domains.py        # InterProScan/IPR plots
+# └── diagnostics.py    # Debug and profiling plots
+```
+
+### O.4 CLI Integration
+
+| Status | Option | Description |
+|--------|--------|-------------|
+| [ ] | `--plot-scenarios` | Generate scenario distribution plot |
+| [ ] | `--plot-bbh` | Generate BBH scatter plot |
+| [ ] | `--plot-ipr` | Generate IPR domain comparison plot |
+| [ ] | `--plot-all` | Generate all available plots |
+| [ ] | `--plot-dir DIR` | Output directory for plots (default: `{output_dir}/plots`) |
+
+### O.5 Debug Output Options
+
+| Status | Option | Description |
+|--------|--------|-------------|
+| [ ] | `--debug-ids` | Log all ID transformations and mappings |
+| [ ] | `--debug-stages` | Print intermediate data counts per stage |
+| [ ] | `--save-intermediates` | Save intermediate DataFrames to debug dir |
+| [ ] | `--profile` | Enable timing and memory profiling |
+
+### O.6 Dependencies
+
+```bash
+# Required packages for plotting
+pip install matplotlib seaborn          # Core plotting
+pip install plotly                       # Interactive plots (optional)
+pip install memory_profiler              # Memory diagnostics (optional)
+```
+
+---
+
 *End of Extended Hardcoding Audit*
