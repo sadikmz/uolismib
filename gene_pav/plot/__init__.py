@@ -10,12 +10,16 @@ Modules:
     - scenarios: Scenario distribution plots (E/A/B/J/CDI)
     - alignments: BBH and pairwise alignment plots
     - domains: IPR domain length comparison plots
+    - advanced: Advanced plots (log-log, quadrant analysis, detailed scenarios)
     - plot_ipr_comparison: InterPro domain comparison plots
     - plot_ipr_gene_level: Gene-level visualization
     - plot_ipr_shapes: Shape-encoded scatter plots
     - plot_ipr_advanced: Advanced visualizations
     - plot_ipr_proportional_bias: Bias analysis plots
     - plot_domain_comparison: Before/after domain comparison
+    - plot_ipr_1to1_comparison: IPR 1:1 comparison (from project_scripts)
+    - plot_psauron_distribution: Psauron score distribution (from project_scripts)
+    - plot_oldvsnew_psauron_plddt: Old vs New Psauron/pLDDT (from project_scripts)
 """
 
 from pathlib import Path
@@ -42,7 +46,8 @@ def generate_plots(
 
     Args:
         output_dir: Main output directory (plots saved to {output_dir}/plots)
-        plot_types: List of plot types to generate. Options: 'scenarios', 'bbh', 'ipr'.
+        plot_types: List of plot types to generate.
+                   Options: 'scenarios', 'bbh', 'ipr', 'advanced', 'all'
                    If None or empty, generates all available plots.
         transcript_level_file: Path to transcript-level TSV output
         gene_level_file: Path to gene-level TSV output
@@ -53,7 +58,7 @@ def generate_plots(
     Returns:
         List of generated plot file paths
     """
-    from . import scenarios, alignments, domains
+    from . import scenarios, alignments, domains, advanced
 
     # Create plots directory
     plots_dir = Path(output_dir) / "plots"
@@ -63,7 +68,7 @@ def generate_plots(
 
     # Default to all plot types if none specified
     if not plot_types:
-        plot_types = ['scenarios', 'bbh', 'ipr']
+        plot_types = ['scenarios', 'bbh', 'ipr', 'advanced']
 
     # Generate scenario plots
     if 'scenarios' in plot_types:
@@ -109,6 +114,19 @@ def generate_plots(
                 logger.warning(f"Failed to generate IPR plots: {e}")
         else:
             logger.warning("Skipping IPR plots: no domain data found")
+
+    # Generate advanced plots (log-log, quadrant analysis, etc.)
+    if 'advanced' in plot_types:
+        try:
+            files = advanced.generate_advanced_plots(
+                output_dir=output_dir,
+                gene_level_file=gene_level_file,
+                transcript_level_file=transcript_level_file,
+            )
+            generated_files.extend(files)
+            logger.info(f"Generated advanced plots: {len(files)} files")
+        except Exception as e:
+            logger.warning(f"Failed to generate advanced plots: {e}")
 
     return generated_files
 

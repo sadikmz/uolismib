@@ -1028,7 +1028,8 @@ def create_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument('--plot', nargs='*', default=None, metavar='TYPE',
                         help="Generate plots. Without arguments: all plots. "
                              "Options: 'scenarios' (scenario distribution), "
-                             "'bbh' (BBH scatter), 'ipr' (IPR domain comparison). "
+                             "'bbh' (BBH scatter), 'ipr' (IPR domain comparison), "
+                             "'advanced' (log-log, quadrant analysis). "
                              "Output saved to {output_dir}/plots/")
 
     return parser
