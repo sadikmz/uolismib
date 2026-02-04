@@ -4,22 +4,25 @@ Plotting modules for PAVprot output visualization.
 This package provides visualization tools for analyzing PAVprot pipeline output,
 including scatter plots, distribution plots, and comparative visualizations.
 
+CLI Plot Types (via --plot argument):
+    - scenarios: Scenario distribution plots (E/A/B/J/CDI)
+    - bbh: BBH and pairwise alignment scatter plots
+    - ipr: IPR domain length comparison plots
+    - advanced: Log-log scale, quadrant analysis, detailed scenarios
+    - 1to1: IPR comparison for 1:1 ortholog pairs (Scenario E)
+    - psauron: Psauron score distribution histograms
+    - quality: Quality score scatter plots (new vs old annotation)
+
 Modules:
     - config: Plot configuration and styling
     - utils: Shared utility functions for data loading
-    - scenarios: Scenario distribution plots (E/A/B/J/CDI)
+    - scenarios: Scenario distribution plots
     - alignments: BBH and pairwise alignment plots
     - domains: IPR domain length comparison plots
-    - advanced: Advanced plots (log-log, quadrant analysis, detailed scenarios)
-    - plot_ipr_comparison: InterPro domain comparison plots
-    - plot_ipr_gene_level: Gene-level visualization
-    - plot_ipr_shapes: Shape-encoded scatter plots
-    - plot_ipr_advanced: Advanced visualizations
-    - plot_ipr_proportional_bias: Bias analysis plots
-    - plot_domain_comparison: Before/after domain comparison
-    - plot_ipr_1to1_comparison: IPR 1:1 comparison (from project_scripts)
-    - plot_psauron_distribution: Psauron score distribution (from project_scripts)
-    - plot_oldvsnew_psauron_plddt: Old vs New Psauron/pLDDT (from project_scripts)
+    - advanced: Advanced plots (log-log, quadrant analysis)
+    - plot_ipr_1to1_comparison: IPR 1:1 comparison for Scenario E pairs
+    - plot_psauron_distribution: Psauron score distribution comparison
+    - plot_oldvsnew_psauron_plddt: Old vs New quality score scatter plots
 """
 
 from pathlib import Path
@@ -47,7 +50,7 @@ def generate_plots(
     Args:
         output_dir: Main output directory (plots saved to {output_dir}/plots)
         plot_types: List of plot types to generate.
-                   Options: 'scenarios', 'bbh', 'ipr', 'advanced', 'all'
+                   Options: 'scenarios', 'bbh', 'ipr', 'advanced', '1to1', 'psauron', 'quality', 'all'
                    If None or empty, generates all available plots.
         transcript_level_file: Path to transcript-level TSV output
         gene_level_file: Path to gene-level TSV output
@@ -59,6 +62,9 @@ def generate_plots(
         List of generated plot file paths
     """
     from . import scenarios, alignments, domains, advanced
+    from .plot_ipr_1to1_comparison import generate_1to1_plots
+    from .plot_psauron_distribution import generate_psauron_plots
+    from .plot_oldvsnew_psauron_plddt import generate_quality_score_plots
 
     # Create plots directory
     plots_dir = Path(output_dir) / "plots"
@@ -68,7 +74,7 @@ def generate_plots(
 
     # Default to all plot types if none specified
     if not plot_types:
-        plot_types = ['scenarios', 'bbh', 'ipr', 'advanced']
+        plot_types = ['scenarios', 'bbh', 'ipr', 'advanced', '1to1', 'psauron', 'quality']
 
     # Generate scenario plots
     if 'scenarios' in plot_types:
@@ -127,6 +133,42 @@ def generate_plots(
             logger.info(f"Generated advanced plots: {len(files)} files")
         except Exception as e:
             logger.warning(f"Failed to generate advanced plots: {e}")
+
+    # Generate 1:1 ortholog IPR comparison plots
+    if '1to1' in plot_types:
+        if gene_level_file and Path(gene_level_file).exists():
+            try:
+                files = generate_1to1_plots(gene_level_file, plots_dir)
+                generated_files.extend([str(f) for f in files])
+                logger.info(f"Generated 1:1 IPR plots: {len(files)} files")
+            except Exception as e:
+                logger.warning(f"Failed to generate 1:1 plots: {e}")
+        else:
+            logger.warning("Skipping 1:1 plots: gene-level file not found")
+
+    # Generate Psauron distribution plots
+    if 'psauron' in plot_types:
+        if gene_level_file and Path(gene_level_file).exists():
+            try:
+                files = generate_psauron_plots(gene_level_file, plots_dir)
+                generated_files.extend([str(f) for f in files])
+                logger.info(f"Generated Psauron distribution plots: {len(files)} files")
+            except Exception as e:
+                logger.warning(f"Failed to generate Psauron plots: {e}")
+        else:
+            logger.warning("Skipping Psauron plots: gene-level file not found")
+
+    # Generate quality score scatter plots (Psauron new vs old)
+    if 'quality' in plot_types:
+        if gene_level_file and Path(gene_level_file).exists():
+            try:
+                files = generate_quality_score_plots(gene_level_file, plots_dir)
+                generated_files.extend([str(f) for f in files])
+                logger.info(f"Generated quality score plots: {len(files)} files")
+            except Exception as e:
+                logger.warning(f"Failed to generate quality plots: {e}")
+        else:
+            logger.warning("Skipping quality plots: gene-level file not found")
 
     return generated_files
 

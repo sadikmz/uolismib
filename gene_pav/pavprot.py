@@ -1029,7 +1029,10 @@ def create_argument_parser() -> argparse.ArgumentParser:
                         help="Generate plots. Without arguments: all plots. "
                              "Options: 'scenarios' (scenario distribution), "
                              "'bbh' (BBH scatter), 'ipr' (IPR domain comparison), "
-                             "'advanced' (log-log, quadrant analysis). "
+                             "'advanced' (log-log, quadrant analysis), "
+                             "'1to1' (1:1 ortholog IPR comparison), "
+                             "'psauron' (Psauron score distribution), "
+                             "'quality' (quality score scatter). "
                              "Output saved to {output_dir}/plots/")
 
     return parser

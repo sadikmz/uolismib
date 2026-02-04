@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
 from scipy import stats
+from typing import List, Optional
 
 
 def add_regression_line(ax, x, y, color='red', linestyle='-', alpha=0.8, label_pos='lower right'):
@@ -321,6 +322,137 @@ def main():
         fig_comb.savefig(comb_path, dpi=DPI, bbox_inches='tight')
         plt.close(fig_comb)
         print(f"[DONE] Saved: {comb_path}")
+
+
+def plot_psauron_scatter(
+    df: pd.DataFrame,
+    output_path: Path,
+    ref_col: str = 'ref_psauron_score_mean',
+    qry_col: str = 'qry_psauron_score_mean',
+    color_by: Optional[str] = None,
+    config: dict = None
+) -> Optional[Path]:
+    """
+    Generate Psauron score scatter plot (new vs old annotation).
+
+    Args:
+        df: DataFrame with Psauron score columns
+        output_path: Path to save the figure
+        ref_col: Column name for new annotation (NCBI RefSeq)
+        qry_col: Column name for old annotation (FungiDB)
+        color_by: Optional column to color by (mapping_type or class_type_gene)
+        config: Optional configuration
+
+    Returns:
+        Path to output file, or None if failed
+    """
+    config = config or {'figure_dpi': 150}
+
+    # Filter valid data
+    valid = df.dropna(subset=[ref_col, qry_col])
+    if len(valid) == 0:
+        print("  [ERROR] No valid Psauron data")
+        return None
+
+    fig, ax = plt.subplots(figsize=(10, 8))
+
+    if color_by and color_by in valid.columns:
+        categories = valid[color_by].value_counts().head(6).index.tolist()
+        for i, cat in enumerate(categories):
+            subset = valid[valid[color_by] == cat]
+            ax.scatter(subset[ref_col], subset[qry_col],
+                      alpha=0.4, s=20, color=plt.cm.tab10(i/10),
+                      label=f'{cat} (n={len(subset)})')
+        ax.legend(fontsize=8, loc='upper left')
+    else:
+        ax.scatter(valid[ref_col], valid[qry_col],
+                  alpha=0.3, s=15, c='#1f77b4')
+
+    # Diagonal and regression
+    ax.plot([0, 1], [0, 1], 'k--', alpha=0.3, label='y=x')
+    add_regression_line(ax, valid[ref_col].values, valid[qry_col].values, color='red')
+
+    ax.set_xlabel('New annotation (NCBI RefSeq) Psauron Score')
+    ax.set_ylabel('Old annotation (FungiDB) Psauron Score')
+    ax.set_title(f'Psauron Score: New vs Old (n={len(valid)} gene pairs)')
+    ax.set_xlim(0, 1.05)
+    ax.set_ylim(0, 1.05)
+
+    plt.tight_layout()
+    fig.savefig(output_path, dpi=config.get('figure_dpi', 150), bbox_inches='tight')
+    plt.close(fig)
+
+    print(f"  [DONE] Saved: {output_path}")
+    return output_path
+
+
+def generate_quality_score_plots(
+    gene_level_file: str,
+    output_dir: Path,
+    config: dict = None
+) -> List[Path]:
+    """
+    Generate quality score comparison plots for CLI integration.
+
+    Args:
+        gene_level_file: Path to gene-level TSV with Psauron columns
+        output_dir: Directory to save plots
+        config: Optional configuration
+
+    Returns:
+        List of generated plot file paths
+    """
+    generated_files = []
+    config = config or {'figure_dpi': 150}
+
+    if not Path(gene_level_file).exists():
+        print(f"  [ERROR] File not found: {gene_level_file}")
+        return generated_files
+
+    print(f"  Loading: {gene_level_file}")
+    df = pd.read_csv(gene_level_file, sep='\t')
+    print(f"    Loaded {len(df):,} gene pairs")
+
+    # Check for Psauron columns
+    ref_col = 'ref_psauron_score_mean'
+    qry_col = 'qry_psauron_score_mean'
+
+    if ref_col not in df.columns or qry_col not in df.columns:
+        print("  [WARN] Psauron columns not found, skipping quality plots")
+        return generated_files
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Basic scatter plot
+    path = plot_psauron_scatter(
+        df, output_dir / 'psauron_scatter.png',
+        ref_col=ref_col, qry_col=qry_col, config=config
+    )
+    if path:
+        generated_files.append(path)
+
+    # By mapping type
+    if 'mapping_type' in df.columns:
+        path = plot_psauron_scatter(
+            df, output_dir / 'psauron_by_mapping_type.png',
+            ref_col=ref_col, qry_col=qry_col,
+            color_by='mapping_type', config=config
+        )
+        if path:
+            generated_files.append(path)
+
+    # By class type
+    if 'class_type_gene' in df.columns:
+        path = plot_psauron_scatter(
+            df, output_dir / 'psauron_by_class_type.png',
+            ref_col=ref_col, qry_col=qry_col,
+            color_by='class_type_gene', config=config
+        )
+        if path:
+            generated_files.append(path)
+
+    return generated_files
 
 
 if __name__ == "__main__":

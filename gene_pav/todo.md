@@ -2663,7 +2663,7 @@ pip install plotly                       # Interactive plots (optional)
 pip install memory_profiler              # Memory diagnostics (optional)
 ```
 
-### O.7 Plot Migration from project_scripts (TODO)
+### O.7 Plot Migration from project_scripts (COMPLETED 2026-02-04)
 
 **Task:** Consolidate all plotting scripts into the `plot/` directory.
 
@@ -2671,31 +2671,38 @@ pip install memory_profiler              # Memory diagnostics (optional)
 
 | Status | Source Script | Target | Description |
 |--------|---------------|--------|-------------|
-| [ ] | `plot_ipr_1to1_comparison.py` | `plot/` | IPR 1:1 comparison plots |
-| [ ] | `plot_oldvsnew_psauron_plddt.py` | `plot/` | pSauron/pLDDT comparison plots |
-| [ ] | `plot_psauron_distribution.py` | `plot/` | pSauron score distribution |
-| [ ] | `run_pipeline.py` (plotting funcs) | `plot/` | Extract and refactor plot functions |
+| [x] | `plot_ipr_1to1_comparison.py` | `plot/` | IPR 1:1 comparison plots |
+| [x] | `plot_oldvsnew_psauron_plddt.py` | `plot/` | pSauron/pLDDT comparison plots |
+| [x] | `plot_psauron_distribution.py` | `plot/` | pSauron score distribution |
+| [x] | `run_pipeline.py` (plotting funcs) | `plot/advanced.py` | Extract and refactor plot functions |
 
 #### O.7.2 Plot Functions to Extract from `run_pipeline.py`
 
 | Status | Function | Target Module | Description |
 |--------|----------|---------------|-------------|
-| [ ] | Identify all `plot_*` functions | TBD | Audit run_pipeline.py |
-| [ ] | Identify all `plt.savefig` calls | TBD | Find standalone plots |
-| [ ] | Refactor into modular scripts | `plot/*.py` | Split by plot type |
+| [x] | Identify all `plot_*` functions | `plot/advanced.py` | Audit run_pipeline.py |
+| [x] | Identify all `plt.savefig` calls | Various | Find standalone plots |
+| [x] | Refactor into modular scripts | `plot/*.py` | Split by plot type |
 
 #### O.7.3 Integration Checklist
 
 | Status | Task |
 |--------|------|
-| [ ] | Audit `project_scripts/run_pipeline.py` for plotting functions |
-| [ ] | Identify unique plots not in current `plot/` directory |
-| [ ] | Copy/migrate scripts to `plot/` directory |
-| [ ] | Update imports and paths for new location |
-| [ ] | Integrate with `--plot` CLI argument |
-| [ ] | Add new plot types to `generate_plots()` function |
+| [x] | Audit `project_scripts/run_pipeline.py` for plotting functions |
+| [x] | Identify unique plots not in current `plot/` directory |
+| [x] | Copy/migrate scripts to `plot/` directory |
+| [x] | Update imports and paths for new location |
+| [x] | Integrate with `--plot` CLI argument |
+| [x] | Add new plot types to `generate_plots()` function |
 | [ ] | Test all plots with actual data |
-| [ ] | Update documentation |
+| [x] | Update documentation |
+
+**New CLI plot types added:** `1to1`, `psauron`, `quality`
+
+**Functions added:**
+- `generate_1to1_plots()` - IPR comparison for Scenario E pairs
+- `generate_psauron_plots()` - Psauron score distribution
+- `generate_quality_score_plots()` - Quality score scatter plots
 
 #### O.7.4 Existing Scripts in `plot/` (for reference)
 

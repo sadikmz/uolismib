@@ -15,6 +15,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
+from typing import List
 
 # Configuration
 GENE_LEVEL_ALL = Path("output/figures_out/120126_all_out/gene_level_with_psauron.tsv")
@@ -194,6 +195,62 @@ def main():
     print("\n" + "=" * 60)
     print("Psauron Distribution Plots Complete!")
     print("=" * 60)
+
+
+def generate_psauron_plots(
+    gene_level_file: str,
+    output_dir: Path,
+    filter_desc: str = "Gene Pairs",
+    config: dict = None
+) -> List[Path]:
+    """
+    Generate Psauron distribution plots for CLI integration.
+
+    Args:
+        gene_level_file: Path to gene-level TSV with Psauron columns
+        output_dir: Directory to save plots
+        filter_desc: Description for plot title
+        config: Optional configuration (figure_dpi, etc.)
+
+    Returns:
+        List of generated plot file paths
+    """
+    generated_files = []
+    config = config or {'figure_dpi': FIGURE_DPI}
+
+    if not Path(gene_level_file).exists():
+        print(f"  [ERROR] File not found: {gene_level_file}")
+        return generated_files
+
+    print(f"  Loading: {gene_level_file}")
+    df = pd.read_csv(gene_level_file, sep='\t')
+    print(f"    Loaded {len(df):,} gene pairs")
+
+    # Check for Psauron columns
+    if REF_PSAURON_COL not in df.columns or QRY_PSAURON_COL not in df.columns:
+        print("  [ERROR] Psauron columns not found in dataset")
+        return generated_files
+
+    # Filter to rows with valid Psauron scores
+    df_valid = df.dropna(subset=[REF_PSAURON_COL, QRY_PSAURON_COL])
+    print(f"    Valid Psauron pairs: {len(df_valid):,}")
+
+    if len(df_valid) == 0:
+        print("  [WARN] No valid Psauron data found")
+        return generated_files
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    output_path = output_dir / "psauron_comparison.png"
+    generate_psauron_comparison_plot(
+        df_valid,
+        output_path,
+        filter_desc=f"{filter_desc} (n={len(df_valid):,})"
+    )
+    generated_files.append(output_path)
+
+    return generated_files
 
 
 if __name__ == "__main__":

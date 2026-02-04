@@ -19,6 +19,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import stats
 from pathlib import Path
+from typing import List, Optional
 
 # Configuration
 GENE_LEVEL_ALL = Path("output/figures_out/120126_all_out/gene_level_with_psauron.tsv")
@@ -289,6 +290,66 @@ def main():
 
     print("\nIPR 1:1 Comparison Plots Complete!")
     print("=" * 60)
+
+
+def generate_1to1_plots(
+    gene_level_file: str,
+    output_dir: Path,
+    config: dict = None
+) -> List[Path]:
+    """
+    Generate 1:1 IPR comparison plots for CLI integration.
+
+    Args:
+        gene_level_file: Path to gene-level TSV with scenario and IPR columns
+        output_dir: Directory to save plots
+        config: Optional configuration (figure_dpi, etc.)
+
+    Returns:
+        List of generated plot file paths
+    """
+    generated_files = []
+    config = config or {'figure_dpi': FIGURE_DPI}
+
+    if not Path(gene_level_file).exists():
+        print(f"  [ERROR] File not found: {gene_level_file}")
+        return generated_files
+
+    print(f"  Loading: {gene_level_file}")
+    df = pd.read_csv(gene_level_file, sep='\t')
+    print(f"    Total gene pairs: {len(df):,}")
+
+    # Filter to scenario E (1:1)
+    df_e = df[df['scenario'] == 'E'].copy()
+    print(f"    Scenario E (1:1) pairs: {len(df_e):,}")
+
+    if len(df_e) == 0:
+        print("  [WARN] No 1:1 gene pairs found")
+        return generated_files
+
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Generate 4 variants: with/without class, linear/log
+    variants = [
+        ('ipr_1to1_by_class_type.png', True, False),
+        ('ipr_1to1_no_class.png', False, False),
+        ('ipr_1to1_by_class_type_log.png', True, True),
+        ('ipr_1to1_no_class_log.png', False, True),
+    ]
+
+    for filename, color_by_class, log_scale in variants:
+        result = plot_ipr_comparison(
+            df_e,
+            output_dir / filename,
+            "1:1 Ortholog IPR Domain Comparison",
+            color_by_class=color_by_class,
+            log_scale=log_scale
+        )
+        if result:
+            generated_files.append(output_dir / filename)
+
+    return generated_files
 
 
 if __name__ == "__main__":
