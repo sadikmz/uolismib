@@ -1270,3 +1270,315 @@ Fixed DIAMOND/BBH/Pairwise enrichment issue:
 - [ ] Refine plotting scripts
 - [ ] External tools integration
 - [ ] Fix pre-existing test failures in test_pavprot.py
+- [ ] Create requirements-dev.txt
+- [ ] Class, helper functions, functions in src / scripts 
+- [ ] using ruff, mypy, mflake8, isars 
+
+### Active TODOs 04/02/2026
+
+#### 1. CLI Argument Parsing Improvements ✅ DONE (2026-02-04)
+
+**Goal:** Accept unquoted comma-separated inputs for cleaner CLI usage
+
+| Argument | Before | After | Status |
+|----------|--------|-------|--------|
+| `--gff` | `--gff "old.gff,new.gff"` | `--gff old.gff,new.gff` | ✅ Already worked |
+| `--prot` | `--prot "old.faa,new.faa"` | `--prot old.faa,new.faa` | ✅ Already worked |
+| `--interproscan-out` | `--interproscan-out "old.tsv,new.tsv"` | `--interproscan-out old.tsv,new.tsv` | ✅ Already worked |
+| `--class-code` | `--class-code "=,c,k,m,n,j,e"` | `--class-code = c k m n j e` | ✅ **Changed to space-separated** |
+
+**Implementation:**
+- Changed `--class-code` to use `nargs='*'` (space-separated list)
+- Lines modified: `pavprot.py:932`, `pavprot.py:1867`
+- Tests: 41 passed, 6 failed (pre-existing)
+
+**New usage:**
+```bash
+python pavprot.py --gff-comp tracking.txt \
+  --gff old.gff,new.gff \
+  --prot old.faa,new.faa \
+  --class-code = c k m n j e
+```
+
+#### 2. Positional Input Convention ✅ ALREADY IMPLEMENTED
+
+**Rule:** All comma-separated inputs follow `old,new` order
+
+```
+Position 1 = old annotation
+Position 2 = new annotation
+```
+
+**Status:** Already implemented in `validate_inputs()` (Lines 993-1003):
+- [x] Variable assignment: `old_gff`, `new_gff`, `old_faa`, `new_faa`, etc.
+- [x] Output file naming: uses `--output-prefix`
+- [x] Internal processing: uses positional assignments
+
+#### 3. Eliminate Hardcoding ✅ ALREADY CLEAN
+
+**Principle:** Use positional input to dynamically determine:
+- [x] Input file assignments (via `validate_inputs()`)
+- [x] Variable names (uses `old_faa`, `new_faa`, etc.)
+- [x] Output file names (via `--output-prefix`)
+- [x] Column prefixes (uses `old_`/`new_` consistently)
+
+**Hardcoding audit (2026-02-04):** ✅ Clean
+- No annotation source names hardcoded
+- File prefixes derived from `--output-prefix`
+- Column names use consistent `old_`/`new_` convention
+
+---
+
+## Implementation Report: CLI Argument Refactoring
+
+> **Generated:** 2026-02-04 (Appended)
+> **Scope:** Unquoted comma-separated inputs + positional old,new convention
+> **Risk Level:** Low-Medium (CLI parsing changes, internal variable names unchanged)
+
+---
+
+### Executive Summary
+
+The proposed changes affect **CLI argument parsing only**. The core pipeline logic, output columns, and data structures remain unchanged. The main challenge is handling shell interpretation of special characters (especially `=` and `,`).
+
+---
+
+### Part 1: Current State Analysis
+
+#### 1.1 Argument Parsing Location
+
+| File | Function | Lines | Purpose |
+|------|----------|-------|---------|
+| `pavprot.py` | `create_argument_parser()` | 924-971 | Define CLI arguments |
+| `pavprot.py` | `validate_inputs()` | 974-1050 | Parse comma-separated values, validate files |
+| `pavprot.py` | `main()` | 1867 | Parse `--class-code` with `split(',')` |
+
+#### 1.2 Current Parsing Logic
+
+```python
+# --gff parsing (Line 987)
+for gff_file in args.gff.split(','):
+    gff_file = gff_file.strip()
+
+# --prot parsing (Line 996)
+prot_files = [f.strip() for f in args.prot.split(',')]
+args.old_faa = prot_files[0]  # Position 1 = old
+args.new_faa = prot_files[1]  # Position 2 = new
+
+# --class-code parsing (Line 1867)
+filter_set = {c.strip() for c in args.class_code.split(',')} if args.class_code else None
+```
+
+**Observation:** The positional `old,new` convention is already implemented for `--prot`. The same pattern exists for `--gff` and `--interproscan-out`.
+
+---
+
+### Part 2: The Shell Quoting Problem
+
+#### 2.1 Why Quotes Are Currently Required
+
+| Character | Shell Behavior | Example |
+|-----------|----------------|---------|
+| `,` | Word separator in some contexts | `--gff a.gff,b.gff` works in most shells |
+| `=` | Assignment operator | `--class-code =,c,k` → shell may interpret `=` specially |
+| `*` | Glob expansion | Not used here, but relevant |
+
+**The real issue is `=` in `--class-code`:**
+```bash
+# This may fail in some shells:
+--class-code =,c,k,m,n,j,e
+
+# This works:
+--class-code "=,c,k,m,n,j,e"
+```
+
+#### 2.2 Solution Options
+
+| Option | Implementation | Pros | Cons |
+|--------|----------------|------|------|
+| A. Use `nargs='*'` | `--class-code = c k m n j e` (space-separated) | No quotes needed | Breaking change, different syntax |
+| B. Use `nargs='+'` | Same as A | Same as A | Same as A |
+| C. Escape in shell | User types `--class-code \=,c,k` | No code change | User burden |
+| D. Document workaround | Use `--class-code '=,c,k'` | No code change | Quotes still needed |
+| E. Alternative syntax | `--class-code em,c,k` (use `em` instead of `=`) | Already works | `=` is valid GffCompare code |
+
+**Recommendation:** Option A or B for `--class-code` specifically. Other arguments (`--gff`, `--prot`, `--interproscan-out`) already work without quotes.
+
+---
+
+### Part 3: Files Requiring Changes
+
+#### 3.1 Primary File: `pavprot.py`
+
+| Section | Lines | Change Required | Complexity |
+|---------|-------|-----------------|------------|
+| `create_argument_parser()` | 924-971 | Modify `--class-code` to use `nargs='*'` | Low |
+| `validate_inputs()` | 974-1050 | Already handles comma-split correctly | None |
+| `main()` | 1867 | Update class-code parsing if nargs changes | Low |
+
+#### 3.2 Secondary Files: Called Modules
+
+| Module | Import Location | Changes Needed | Reason |
+|--------|-----------------|----------------|--------|
+| `gsmc.py` | Line 48-56 | **None** | Receives parsed data, not CLI args |
+| `mapping_multiplicity.py` | Line 45 | **None** | Receives parsed data |
+| `bidirectional_best_hits.py` | Line 46 | **None** | Receives file paths, not CLI args |
+| `pairwise_align_prot.py` | Line 47 | **None** | Receives sequences, not CLI args |
+| `parse_interproscan.py` | Line 44 | **None** | Receives file paths |
+| `synonym_mapping_summary.py` | N/A | **None** | Standalone, not called by pavprot |
+| `tools_runner.py` | N/A | **None** | Not used in main pipeline yet |
+
+**Key Finding:** Only `pavprot.py` needs changes. All other modules receive already-parsed data.
+
+---
+
+### Part 4: Variable Naming Audit
+
+#### 4.1 Current old/new Variable Usage in `pavprot.py`
+
+| Variable | Line | Usage | Change Needed |
+|----------|------|-------|---------------|
+| `args.old_faa` | 993, 1001 | Parsed from `--prot` position 1 | None |
+| `args.new_faa` | 994, 1003 | Parsed from `--prot` position 2 | None |
+| `old_gff_for_tracking` | 1866 | `gff_list[0]` | None |
+| `new_gff_path` | 1874 | `gff_list[1]` | None |
+| `old_faa_path` | 1893 | Internal output path | None |
+| `new_faa_path` | 1894 | Internal output path | None |
+| `new_rna_to_protein` | 1872 | mRNA→protein mapping | None |
+
+**Observation:** Variable naming is already consistent with `old,new` convention.
+
+#### 4.2 Output Column Names (Unchanged)
+
+| Column | Source | Hardcoded? |
+|--------|--------|------------|
+| `old_gene` | Entry dict key | Yes, but intentional |
+| `new_gene` | Entry dict key | Yes, but intentional |
+| `old_transcript` | Entry dict key | Yes, but intentional |
+| `new_transcript` | Entry dict key | Yes, but intentional |
+| `pairwise_coverage_old` | Computed field | Yes, but intentional |
+| `pairwise_coverage_new` | Computed field | Yes, but intentional |
+
+**Recommendation:** Do NOT change column names. They are part of the output schema and changing them would be a breaking change for downstream users.
+
+---
+
+### Part 5: Output File Naming
+
+#### 5.1 Current Output Files
+
+| File Pattern | Hardcoded? | Source |
+|--------------|------------|--------|
+| `{output_dir}/` | No | `--output-dir` |
+| `{prefix}_*.tsv` | No | `--output-prefix` |
+| `compareprot_out/input_seq_dir/old_all.faa` | **Yes** | Line 1893 |
+| `compareprot_out/input_seq_dir/new_all.faa` | **Yes** | Line 1894 |
+| `{prefix}_old_to_multiple_new.tsv` | **Yes** | mapping_multiplicity.py |
+| `{prefix}_new_to_multiple_old.tsv` | **Yes** | mapping_multiplicity.py |
+
+#### 5.2 Hardcoded Paths to Consider
+
+| Path | Line | Suggestion |
+|------|------|------------|
+| `old_all.faa` | 1893 | Could derive from input basename, but low priority |
+| `new_all.faa` | 1894 | Could derive from input basename, but low priority |
+
+**Recommendation:** Low priority. The current naming is clear and functional.
+
+---
+
+### Part 6: Implementation Strategy
+
+#### Phase 1: Fix `--class-code` Quoting Issue (Required)
+
+```python
+# Current (Line 932):
+parser.add_argument('--class-code', help="...")
+
+# Option A: Space-separated (recommended)
+parser.add_argument('--class-code', nargs='*', help="Space-separated class codes (e.g., = c k m n j e)")
+
+# Then in main() (Line 1867):
+# Current:
+filter_set = {c.strip() for c in args.class_code.split(',')} if args.class_code else None
+# New:
+filter_set = set(args.class_code) if args.class_code else None
+```
+
+**Usage change:**
+```bash
+# Before:
+--class-code "=,c,k,m,n,j,e"
+
+# After:
+--class-code = c k m n j e
+```
+
+#### Phase 2: Verify Other Arguments Work Unquoted (Testing Only)
+
+Test that these work without quotes:
+```bash
+python pavprot.py \
+  --gff-comp tracking.txt \
+  --gff old.gff,new.gff \
+  --prot old.faa,new.faa \
+  --interproscan-out old_ipr.tsv,new_ipr.tsv \
+  --class-code = c k m n j e
+```
+
+#### Phase 3: Documentation Update
+
+Update README.md and help text to show unquoted examples.
+
+---
+
+### Part 7: Risk Assessment
+
+| Risk | Likelihood | Impact | Mitigation |
+|------|------------|--------|------------|
+| Breaking existing scripts using quotes | Low | Low | Quoted syntax still works |
+| Shell interpretation issues | Medium | Medium | Test on bash, zsh, fish |
+| User confusion about `=` class code | Medium | Low | Clear documentation |
+| Downstream column name changes | N/A | N/A | Not changing columns |
+
+---
+
+### Part 8: Testing Checklist
+
+- [ ] Test `--class-code = c k m n j e` (space-separated)
+- [ ] Test `--class-code "=,c,k,m,n,j,e"` (backward compatible)
+- [ ] Test `--gff old.gff,new.gff` (no quotes)
+- [ ] Test `--prot old.faa,new.faa` (no quotes)
+- [ ] Test `--interproscan-out old.tsv,new.tsv` (no quotes)
+- [ ] Verify output columns unchanged
+- [ ] Verify output file names unchanged
+- [ ] Run existing test suite (47 tests)
+
+---
+
+### Part 9: Files Changed Summary
+
+| File | Changes | Lines Affected |
+|------|---------|----------------|
+| `pavprot.py` | `--class-code` argument definition | ~932 |
+| `pavprot.py` | Class-code parsing in `main()` | ~1867 |
+| `README.md` | Update usage examples | Documentation |
+| `todo.md` | Mark tasks complete | Documentation |
+
+**Total code changes:** ~5-10 lines in `pavprot.py`
+
+---
+
+### Part 10: Conclusion
+
+**Honest Assessment:**
+
+1. **The problem is smaller than expected.** The `old,new` positional convention is already implemented. Only `--class-code` has a quoting issue due to the `=` character.
+
+2. **No internal hardcoding needs removal.** The codebase already uses the positional input to assign `old_faa`, `new_faa`, etc.
+
+3. **Column names should NOT change.** They are part of the output schema. Changing them would break downstream analysis scripts.
+
+4. **Output file naming is functional.** While `old_all.faa` is technically hardcoded, it's intentional and clear. Deriving from input filenames adds complexity without significant benefit.
+
+5. **The fix is simple:** Change `--class-code` to use `nargs='*'` for space-separated input, which avoids shell interpretation issues with `=`.

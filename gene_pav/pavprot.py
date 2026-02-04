@@ -929,7 +929,7 @@ def create_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument('--gff-comp', required=True)
     parser.add_argument('--gff', help="GFF3 CDS feature table. Single file or comma-separated 'old.gff,new.gff'. Order: old annotation first, new annotation second")
     parser.add_argument('--liftoff-gff', help="Liftoff GFF3 with extra_copy_number (optional)")
-    parser.add_argument('--class-code', help="Comma-separated class codes (e.g. em,j)")
+    parser.add_argument('--class-code', nargs='*', help="Space-separated class codes to filter (e.g., = c k m n j e). Use '=' for exact match class code.")
 
     # Protein FASTA options
     parser.add_argument('--prot', help="Protein FASTA file(s). Single file or comma-separated 'old.faa,new.faa'. Order must match --gff")
@@ -1864,7 +1864,7 @@ def main():
     # Step 2: Parse tracking file and apply class code filter
     # =========================================================================
     old_gff_for_tracking = gff_list[0] if gff_list else None
-    filter_set = {c.strip() for c in args.class_code.split(',')} if args.class_code else None
+    filter_set = set(args.class_code) if args.class_code else None
     full, filtered = PAVprot.parse_tracking(args.gff_comp, old_gff_for_tracking, filter_set)
     data = filtered if filtered else full
 
