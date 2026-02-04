@@ -37,8 +37,47 @@ import sys
 import os
 import subprocess
 import gzip
+import re
 import pandas as pd
 from pathlib import Path
+
+# Regex patterns for ID normalization (avoids magic numbers)
+LIFTOFF_SUFFIX_PATTERN = re.compile(r'-p\d+$')  # Matches -p1, -p2, etc.
+NCBI_RNA_PREFIX = re.compile(r'^rna-')
+NCBI_GENE_PREFIX = re.compile(r'^gene-')
+
+
+def strip_liftoff_suffix(transcript_id: str) -> str:
+    """Strip Liftoff -pN suffix from transcript ID if present."""
+    return LIFTOFF_SUFFIX_PATTERN.sub('', transcript_id)
+
+
+def detect_annotation_source(gff_path: str) -> str:
+    """
+    Auto-detect annotation source from GFF format.
+
+    Args:
+        gff_path: Path to GFF3 file
+
+    Returns:
+        'NCBI' for RefSeq/GenBank format, 'VEuPathDB' for FungiDB/other formats
+    """
+    try:
+        with open(gff_path) as f:
+            for line in f:
+                if line.startswith('#'):
+                    continue
+                # Check for NCBI format indicators (check all indicators first)
+                if 'ID=rna-' in line or 'ID=gene-' in line:
+                    return 'NCBI'
+                if 'Parent=rna-' in line or 'Parent=gene-' in line:
+                    return 'NCBI'
+                if ';GenBank=' in line or ';protein_id=' in line:
+                    # These attributes strongly indicate NCBI format
+                    return 'NCBI'
+    except Exception:
+        pass
+    return 'VEuPathDB'  # Default fallback
 
 # Import InterProParser and run_interproscan from same directory
 from parse_interproscan import InterProParser, run_interproscan
@@ -90,8 +129,8 @@ class PAVprot:
                     transcript_id = header.split()[0].split('|')[0]
 
                     if is_new:
-                        if len(transcript_id) >= 3 and transcript_id[-3] == '-' and transcript_id[-2] == 'p':
-                            transcript_id = transcript_id[:-3]
+                        # Strip Liftoff -pN suffix (e.g., gene-p1 -> gene)
+                        transcript_id = strip_liftoff_suffix(transcript_id)
 
                     current_header = transcript_id
                     current_seq = []
@@ -102,16 +141,23 @@ class PAVprot:
                 yield current_header, ''.join(current_seq)
 
     @staticmethod
-    def load_gff(gff_path: str) -> Tuple[Dict[str, str], Dict[str, str]]:
+    def load_gff(gff_path: str, source: str = 'auto') -> Tuple[Dict[str, str], Dict[str, str]]:
         """
         Parse GFF3 file to extract RNA-to-protein and locus-to-gene mappings.
 
+        Supports both NCBI (RefSeq) and VEuPathDB (FungiDB) GFF formats.
+
         Args:
             gff_path: Path to GFF3 file
+            source: Annotation source ('auto', 'NCBI', or 'VEuPathDB')
 
         Returns:
             Tuple of (rna_to_protein, locus_to_gene) dictionaries
         """
+        # Auto-detect annotation source if not specified
+        if source == 'auto':
+            source = detect_annotation_source(gff_path)
+
         rna_to_protein: Dict[str, str] = {}
         locus_to_gene: Dict[str, str] = {}
 
@@ -128,16 +174,25 @@ class PAVprot:
                         attr_dict[k] = v
 
                 parent = attr_dict.get('Parent', '')
-                if parent.startswith('rna-'):
-                    rna_id = parent[4:]
-                    protein_id = attr_dict.get('GenBank') or attr_dict.get('protein_id')
-                    if protein_id:
-                        rna_to_protein[rna_id] = protein_id
 
-                locus_tag = attr_dict.get('locus_tag', '')
-                if locus_tag:
-                    gene_id = f"gene-{locus_tag}"
-                    locus_to_gene[locus_tag] = gene_id
+                if source == 'NCBI':
+                    # NCBI format: Parent=rna-XM_123456, protein_id=XP_123456
+                    if NCBI_RNA_PREFIX.match(parent):
+                        rna_id = NCBI_RNA_PREFIX.sub('', parent)
+                        protein_id = attr_dict.get('GenBank') or attr_dict.get('protein_id')
+                        if protein_id:
+                            rna_to_protein[rna_id] = protein_id
+
+                    locus_tag = attr_dict.get('locus_tag', '')
+                    if locus_tag:
+                        gene_id = f"gene-{locus_tag}"
+                        locus_to_gene[locus_tag] = gene_id
+                else:
+                    # VEuPathDB format: Parent=FOZG_00001-t36_1 (no prefix stripping)
+                    if parent:
+                        protein_id = attr_dict.get('protein_id') or attr_dict.get('Name')
+                        if protein_id:
+                            rna_to_protein[parent] = protein_id
 
         return rna_to_protein, locus_to_gene
 
@@ -197,7 +252,8 @@ class PAVprot:
 
                 # gffcomp_new_field contains: new_gene|new_transcript (GCF annotation)
                 new_gene_raw, new_trans_raw = [x.strip() for x in gffcomp_new_field.split('|')]
-                new_trans_clean = new_trans_raw.replace('rna-', '')
+                # Strip NCBI 'rna-' prefix if present (format-aware)
+                new_trans_clean = NCBI_RNA_PREFIX.sub('', new_trans_raw)
                 new_trans_final = rna_to_protein.get(new_trans_clean, new_trans_clean)
                 new_gene_id = locus_to_gene.get(new_gene_raw, new_gene_raw)
 
@@ -1028,6 +1084,14 @@ def _run_interproscan_pipeline(args, parser, gff_list: List[str], num_gffs: int)
 
     input_prot_files = [f.strip() for f in args.prot.split(',')]
 
+    # Track IPR file basenames for Excel export (avoids hardcoding organism names)
+    args.old_ipr_basename = None
+    args.new_ipr_basename = None
+    if len(input_prot_files) >= 1:
+        args.old_ipr_basename = Path(input_prot_files[0]).stem + "_interproscan"
+    if len(input_prot_files) >= 2:
+        args.new_ipr_basename = Path(input_prot_files[1]).stem + "_interproscan"
+
     # Validate file counts match
     if args.gff:
         if num_gffs == 2 and len(input_prot_files) != 2:
@@ -1091,21 +1155,37 @@ def _validate_interproscan_files(args, parser, num_gffs: int) -> List[str]:
     """Validate existing InterProScan output files."""
     interproscan_files = [f.strip() for f in args.interproscan_out.split(',')]
 
+    # Track IPR file basenames for Excel export (avoids hardcoding organism names)
+    args.old_ipr_basename = None
+    args.new_ipr_basename = None
+
     # Validate counts based on GFF configuration
     if num_gffs == 2:
         if len(interproscan_files) == 1:
             print(f"Note: Single InterProScan file provided with 2 GFFs - will be treated as old annotation only", file=sys.stderr)
+            args.old_ipr_basename = Path(interproscan_files[0]).stem
         elif len(interproscan_files) != 2:
             parser.error(f"--interproscan-out must have 1 or 2 comma-separated files when --gff has 2 GFFs. Got {len(interproscan_files)} files.")
+        else:
+            # Position 1 = old, Position 2 = new
+            args.old_ipr_basename = Path(interproscan_files[0]).stem
+            args.new_ipr_basename = Path(interproscan_files[1]).stem
     elif num_gffs == 1:
         if len(interproscan_files) == 1:
             print(f"Note: Single InterProScan file provided with 1 GFF - will be treated as old annotation only", file=sys.stderr)
+            args.old_ipr_basename = Path(interproscan_files[0]).stem
         elif len(interproscan_files) == 2:
             print(f"Note: Two InterProScan files provided with 1 GFF - first for old annotation (with gene mapping), second for new annotation (protein-level only)", file=sys.stderr)
+            args.old_ipr_basename = Path(interproscan_files[0]).stem
+            args.new_ipr_basename = Path(interproscan_files[1]).stem
         elif len(interproscan_files) > 2:
             parser.error(f"--interproscan-out can have at most 2 files when --gff has 1 GFF. Got {len(interproscan_files)} files.")
     elif num_gffs == 0 and len(interproscan_files) > 0:
         print(f"Note: {len(interproscan_files)} InterProScan file(s) provided without GFF - protein-level data only (no gene mapping)", file=sys.stderr)
+        if len(interproscan_files) >= 1:
+            args.old_ipr_basename = Path(interproscan_files[0]).stem
+        if len(interproscan_files) >= 2:
+            args.new_ipr_basename = Path(interproscan_files[1]).stem
 
     # Validate files exist
     for f in interproscan_files:
@@ -1720,7 +1800,9 @@ def aggregate_to_gene_level(
     return gene_level_file
 
 
-def export_to_excel(output_dir: str, main_output_file: str, output_prefix: str) -> str:
+def export_to_excel(output_dir: str, main_output_file: str, output_prefix: str,
+                    old_ipr_basename: Optional[str] = None,
+                    new_ipr_basename: Optional[str] = None) -> str:
     """
     Export all TSV output files to a single Excel workbook.
 
@@ -1728,6 +1810,8 @@ def export_to_excel(output_dir: str, main_output_file: str, output_prefix: str) 
         output_dir: Directory containing the output files
         main_output_file: Path to the main transcript-level output file
         output_prefix: Prefix for the Excel output filename (e.g., 'FocTst')
+        old_ipr_basename: Basename of old annotation InterProScan file (for sheet assignment)
+        new_ipr_basename: Basename of new annotation InterProScan file (for sheet assignment)
 
     Returns:
         Path to the generated Excel file
@@ -1765,6 +1849,15 @@ def export_to_excel(output_dir: str, main_output_file: str, output_prefix: str) 
 
     print(f"\nExporting results to Excel: {excel_file}", file=sys.stderr)
 
+    def _determine_old_or_new(basename: str, old_basename: Optional[str], new_basename: Optional[str]) -> str:
+        """Determine if a file belongs to old or new annotation using tracked basenames."""
+        if old_basename and old_basename in basename:
+            return "old"
+        if new_basename and new_basename in basename:
+            return "new"
+        # Fallback: cannot determine, return None to use positional assignment
+        return None
+
     try:
         with pd.ExcelWriter(excel_file, engine='openpyxl') as writer:
             sheets_written = 0
@@ -1789,13 +1882,17 @@ def export_to_excel(output_dir: str, main_output_file: str, output_prefix: str) 
                         print(f"  Warning: Could not add {sheet_name}: {e}", file=sys.stderr)
 
             # Write domain distribution sheets (old and new)
-            for domain_file in sorted(domain_dist_files):
+            # Use positional assignment: first file = old, second = new (by sorted order)
+            sorted_domain_files = sorted(domain_dist_files)
+            for idx, domain_file in enumerate(sorted_domain_files):
                 basename = Path(domain_file).stem
-                # Determine if it's old or new based on filename
-                if 'foc' in basename.lower() or 'fozg' in basename.lower():
-                    sheet_name = "old_domain_dist"
+                # Try to match against tracked basenames first
+                assignment = _determine_old_or_new(basename, old_ipr_basename, new_ipr_basename)
+                if assignment:
+                    sheet_name = f"{assignment}_domain_dist"
                 else:
-                    sheet_name = "new_domain_dist"
+                    # Fallback: use positional assignment (first=old, second=new)
+                    sheet_name = "old_domain_dist" if idx == 0 else "new_domain_dist"
                 try:
                     df = pd.read_csv(domain_file, sep='\t')
                     df.to_excel(writer, sheet_name=sheet_name, index=False)
@@ -1807,13 +1904,16 @@ def export_to_excel(output_dir: str, main_output_file: str, output_prefix: str) 
             # Combine and write IPR length sheets
             if ipr_length_files:
                 combined_ipr = []
-                for ipr_file in sorted(ipr_length_files):
+                sorted_ipr_files = sorted(ipr_length_files)
+                for idx, ipr_file in enumerate(sorted_ipr_files):
                     basename = Path(ipr_file).stem
-                    # Determine source (old or new)
-                    if 'foc' in basename.lower() or 'fozg' in basename.lower():
-                        source = "old"
+                    # Try to match against tracked basenames first
+                    assignment = _determine_old_or_new(basename, old_ipr_basename, new_ipr_basename)
+                    if assignment:
+                        source = assignment
                     else:
-                        source = "new"
+                        # Fallback: use positional assignment (first=old, second=new)
+                        source = "old" if idx == 0 else "new"
                     try:
                         df = pd.read_csv(ipr_file, sep='\t')
                         df.insert(0, 'source', source)
@@ -2019,7 +2119,9 @@ def main():
         excel_file = export_to_excel(
             output_dir=pavprot_out,
             main_output_file=output_file,
-            output_prefix=args.output_prefix
+            output_prefix=args.output_prefix,
+            old_ipr_basename=getattr(args, 'old_ipr_basename', None),
+            new_ipr_basename=getattr(args, 'new_ipr_basename', None)
         )
         if excel_file:
             print(f"  Excel export:     {excel_file}", file=sys.stderr)

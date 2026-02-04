@@ -360,8 +360,8 @@ class BidirectionalBestHits:
 
 def enrich_pavprot_with_bbh(pavprot_data: dict,
                             bbh_df: pd.DataFrame,
-                            ref_col: str = 'old_transcript',
-                            query_col: str = 'new_transcript',
+                            old_col: str = 'old_transcript',
+                            new_col: str = 'new_transcript',
                             rna_to_protein: dict = None) -> dict:
     """
     Enrich pavprot data dictionary with BBH information.
@@ -372,15 +372,15 @@ def enrich_pavprot_with_bbh(pavprot_data: dict,
         - bbh_avg_coverage: Average coverage from BBH analysis
 
     Note on column mapping:
-        BBH forward DIAMOND runs query→ref, so:
+        BBH forward DIAMOND runs new→old (new proteins as query, old as database), so:
         - bbh_df['ref_id'] = new protein ID (XP_) which maps to new_transcript (XM_)
         - bbh_df['query_id'] = old_transcript in pavprot
 
     Args:
         pavprot_data: PAVprot data dictionary (old_gene -> list of entries)
         bbh_df: DataFrame from BidirectionalBestHits.find_bbh()
-        ref_col: Column name in pavprot entries for reference ID
-        query_col: Column name in pavprot entries for query ID
+        old_col: Column name in pavprot entries for old transcript ID
+        new_col: Column name in pavprot entries for new transcript ID
         rna_to_protein: Optional mapping from mRNA IDs (XM_) to protein IDs (XP_)
 
     Returns:
@@ -412,14 +412,14 @@ def enrich_pavprot_with_bbh(pavprot_data: dict,
     bbh_count = 0
     for entries in pavprot_data.values():
         for entry in entries:
-            ref_id = entry.get(ref_col, '')
-            query_id = entry.get(query_col, '')
+            old_id = entry.get(old_col, '')
+            new_id = entry.get(new_col, '')
 
             # Translate mRNA ID to protein ID if mapping exists
-            query_prot_id = rna_to_protein.get(query_id, query_id)
+            new_prot_id = rna_to_protein.get(new_id, new_id)
 
             # Match pavprot (new_protein, old_transcript) to BBH (ref_id, query_id)
-            key = (query_prot_id, ref_id)
+            key = (new_prot_id, old_id)
             if key in bbh_lookup:
                 entry['is_bbh'] = 1
                 entry['bbh_avg_pident'] = bbh_lookup[key]['avg_pident']

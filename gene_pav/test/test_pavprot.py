@@ -40,7 +40,7 @@ class TestPAVprot(unittest.TestCase):
         with open(query_fasta_path, "w") as f:
             f.write(query_fasta_content)
         
-        result_query = dict(PAVprot.fasta2dict(query_fasta_path, is_query=True))
+        result_query = dict(PAVprot.fasta2dict(query_fasta_path, is_new=True))
         self.assertEqual(result_query, {"gene1-t1": "SEQ1"})
 
     def test_load_gff(self):
@@ -64,7 +64,17 @@ class TestPAVprot(unittest.TestCase):
         self.assertEqual(locus_to_gene, {"LOC1": "gene-LOC1", "LOC2": "gene-LOC2"})
 
     def test_parse_tracking(self):
-        """Test the parse_tracking class method."""
+        """Test the parse_tracking class method.
+
+        GffCompare tracking format:
+            Column 3: query annotation (new) = gene|transcript
+            Column 5: reference annotation (old) = prefix:gene|transcript|exons
+
+        PAVprot terminology:
+            - old = reference annotation (column 5)
+            - new = query annotation (column 3)
+            - Dictionary is keyed by old_gene
+        """
         tracking_content = (
             "TCONS_00000001\tXLOC_000001\tgene1|rna-T1\t=\tq1:geneA|T1.1|2\n"
             "TCONS_00000002\tXLOC_000002\t-\tj\tq2:geneB|T2.1|1\n"
@@ -74,15 +84,17 @@ class TestPAVprot(unittest.TestCase):
             f.write(tracking_content)
 
         full_dict, filtered_dict = PAVprot.parse_tracking(tracking_path)
-        
-        self.assertIn("gene1", full_dict)
-        self.assertEqual(len(full_dict["gene1"]), 1)
-        self.assertEqual(full_dict["gene1"][0]["class_code"], "em")
-        self.assertEqual(full_dict["gene1"][0]["new_gene"], "geneA")
-        
+
+        # Dictionary is keyed by old_gene (reference annotation from column 5)
+        self.assertIn("geneA", full_dict)
+        self.assertEqual(len(full_dict["geneA"]), 1)
+        self.assertEqual(full_dict["geneA"][0]["class_code"], "em")
+        self.assertEqual(full_dict["geneA"][0]["old_gene"], "geneA")
+        self.assertEqual(full_dict["geneA"][0]["new_gene"], "gene1")
+
         # Test filtering
         _, filtered_j = PAVprot.parse_tracking(tracking_path, filter_codes={'j'})
-        self.assertNotIn("gene1", filtered_j) # gene1 has 'em'
+        self.assertNotIn("geneA", filtered_j)  # geneA has 'em', not 'j'
 
     @unittest.skip("filter_multi_transcripts method removed - functionality integrated into parse_tracking")
     def test_filter_multi_transcripts(self):
