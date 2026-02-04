@@ -413,12 +413,14 @@ def generate_quality_score_plots(
     df = pd.read_csv(gene_level_file, sep='\t')
     print(f"    Loaded {len(df):,} gene pairs")
 
-    # Check for Psauron columns
-    ref_col = 'ref_psauron_score_mean'
-    qry_col = 'qry_psauron_score_mean'
+    # Check for Psauron columns (support both naming conventions)
+    ref_col = 'ref_psauron_score_mean' if 'ref_psauron_score_mean' in df.columns else 'new_psauron_score_mean'
+    qry_col = 'qry_psauron_score_mean' if 'qry_psauron_score_mean' in df.columns else 'old_psauron_score_mean'
 
     if ref_col not in df.columns or qry_col not in df.columns:
         print("  [WARN] Psauron columns not found, skipping quality plots")
+        print(f"    Looking for: ref_psauron_score_mean or new_psauron_score_mean")
+        print(f"    Looking for: qry_psauron_score_mean or old_psauron_score_mean")
         return generated_files
 
     output_dir = Path(output_dir)

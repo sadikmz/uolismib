@@ -24,8 +24,11 @@ OUTPUT_DIR = Path("output/figures_out/120126_all_out")
 FIGURE_DPI = 300
 
 # Column name mapping (ref=NCBI=New, qry=FungiDB=Old)
+# Support both old naming (ref/qry) and new naming (new/old)
 REF_PSAURON_COL = 'ref_psauron_score_mean'
 QRY_PSAURON_COL = 'qry_psauron_score_mean'
+ALT_REF_PSAURON_COL = 'new_psauron_score_mean'
+ALT_QRY_PSAURON_COL = 'old_psauron_score_mean'
 
 
 def generate_psauron_comparison_plot(
@@ -226,10 +229,19 @@ def generate_psauron_plots(
     df = pd.read_csv(gene_level_file, sep='\t')
     print(f"    Loaded {len(df):,} gene pairs")
 
-    # Check for Psauron columns
-    if REF_PSAURON_COL not in df.columns or QRY_PSAURON_COL not in df.columns:
+    # Check for Psauron columns (support both naming conventions)
+    ref_col = REF_PSAURON_COL if REF_PSAURON_COL in df.columns else ALT_REF_PSAURON_COL
+    qry_col = QRY_PSAURON_COL if QRY_PSAURON_COL in df.columns else ALT_QRY_PSAURON_COL
+
+    if ref_col not in df.columns or qry_col not in df.columns:
         print("  [ERROR] Psauron columns not found in dataset")
+        print(f"    Looking for: {REF_PSAURON_COL} or {ALT_REF_PSAURON_COL}")
+        print(f"    Looking for: {QRY_PSAURON_COL} or {ALT_QRY_PSAURON_COL}")
         return generated_files
+
+    # Temporarily rename columns if using alternative names
+    if ref_col != REF_PSAURON_COL:
+        df = df.rename(columns={ref_col: REF_PSAURON_COL, qry_col: QRY_PSAURON_COL})
 
     # Filter to rows with valid Psauron scores
     df_valid = df.dropna(subset=[REF_PSAURON_COL, QRY_PSAURON_COL])

@@ -47,15 +47,15 @@ def plot_ipr_comparison(df: pd.DataFrame, output_path: Path, title: str,
     Generate IPR domain length comparison scatter plot.
 
     Args:
-        df: DataFrame with ref_total_ipr_domain_length and query_total_ipr_domain_length
+        df: DataFrame with old_total_ipr_domain_length and new_total_ipr_domain_length
         output_path: Path to save the figure
         title: Plot title
         color_by_class: If True, color points by class_type_gene
         log_scale: If True, use log-log scale
     """
-    # Column names
-    ref_col = 'ref_total_ipr_domain_length'
-    qry_col = 'query_total_ipr_domain_length'
+    # Column names (support both old/new and ref/query naming)
+    ref_col = 'new_total_ipr_domain_length' if 'new_total_ipr_domain_length' in df.columns else 'ref_total_ipr_domain_length'
+    qry_col = 'old_total_ipr_domain_length' if 'old_total_ipr_domain_length' in df.columns else 'query_total_ipr_domain_length'
 
     # Filter to rows with valid IPR data
     if ref_col not in df.columns or qry_col not in df.columns:
