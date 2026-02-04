@@ -2639,13 +2639,11 @@ jobs:
 
 ### O.4 CLI Integration
 
-| Status | Option | Description |
-|--------|--------|-------------|
-| [ ] | `--plot-scenarios` | Generate scenario distribution plot |
-| [ ] | `--plot-bbh` | Generate BBH scatter plot |
-| [ ] | `--plot-ipr` | Generate IPR domain comparison plot |
-| [ ] | `--plot-all` | Generate all available plots |
-| [ ] | `--plot-dir DIR` | Output directory for plots (default: `{output_dir}/plots`) |
+- Use only an optional --plot argument  if it is used it will generates all available plots but setting it to  
+  -  `scenarios`, generates scenario distribution plot
+  - `bbh`, generates BBH scatter plots
+  - `ipr` , generates IPR domain comparison plots
+- Output directory for plots is defaul to under `plots` directory in the main ouput directory: eg `{output_dir}/plots` 
 
 ### O.5 Debug Output Options
 
