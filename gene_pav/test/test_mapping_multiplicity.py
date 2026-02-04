@@ -46,7 +46,7 @@ class TestMappingMultiplicity(unittest.TestCase):
             'old_transcript': ['ref_t1', 'ref_t1', 'ref_t2'],
             'new_gene': ['new_gene1', 'new_gene2', 'new_gene3'],
             'new_transcript': ['query_t1', 'query_t2', 'query_t3'],
-            'class_code': ['=', 'j', '=']
+            'transcript_pair_class_code': ['=', 'j', '=']
         }
         filepath = self._create_test_tsv(data)
         output_prefix = os.path.join(self.test_dir, "test_output")
@@ -54,7 +54,7 @@ class TestMappingMultiplicity(unittest.TestCase):
         detect_multiple_mappings(filepath, output_prefix)
 
         # Check that one-to-many output file was created
-        ref_multi_file = f"{output_prefix}_ref_to_multiple_query.tsv"
+        ref_multi_file = f"{output_prefix}_old_to_multiple_new.tsv"
         self.assertTrue(os.path.exists(ref_multi_file))
 
         # Read and verify content
@@ -71,7 +71,7 @@ class TestMappingMultiplicity(unittest.TestCase):
             'old_transcript': ['ref_t1', 'ref_t2', 'ref_t3'],
             'new_gene': ['new_gene1', 'new_gene1', 'new_gene2'],
             'new_transcript': ['query_t1', 'query_t1', 'query_t2'],
-            'class_code': ['=', 'j', '=']
+            'transcript_pair_class_code': ['=', 'j', '=']
         }
         filepath = self._create_test_tsv(data)
         output_prefix = os.path.join(self.test_dir, "test_output")
@@ -79,7 +79,7 @@ class TestMappingMultiplicity(unittest.TestCase):
         detect_multiple_mappings(filepath, output_prefix)
 
         # Check that many-to-one output file was created
-        qry_multi_file = f"{output_prefix}_query_to_multiple_ref.tsv"
+        qry_multi_file = f"{output_prefix}_new_to_multiple_old.tsv"
         self.assertTrue(os.path.exists(qry_multi_file))
 
         # Read and verify content
@@ -96,7 +96,7 @@ class TestMappingMultiplicity(unittest.TestCase):
             'old_transcript': ['ref_t1', 'ref_t2', 'ref_t3'],
             'new_gene': ['new_gene1', 'new_gene2', 'new_gene3'],
             'new_transcript': ['query_t1', 'query_t2', 'query_t3'],
-            'class_code': ['=', '=', '=']
+            'transcript_pair_class_code': ['=', '=', '=']
         }
         filepath = self._create_test_tsv(data)
         output_prefix = os.path.join(self.test_dir, "test_output")
@@ -104,8 +104,8 @@ class TestMappingMultiplicity(unittest.TestCase):
         detect_multiple_mappings(filepath, output_prefix)
 
         # Check that output files were created but are empty (header only)
-        ref_multi_file = f"{output_prefix}_ref_to_multiple_query.tsv"
-        qry_multi_file = f"{output_prefix}_query_to_multiple_ref.tsv"
+        ref_multi_file = f"{output_prefix}_old_to_multiple_new.tsv"
+        qry_multi_file = f"{output_prefix}_new_to_multiple_old.tsv"
 
         self.assertTrue(os.path.exists(ref_multi_file))
         self.assertTrue(os.path.exists(qry_multi_file))
@@ -123,7 +123,7 @@ class TestMappingMultiplicity(unittest.TestCase):
             'old_transcript': ['ref_t1'],
             'new_gene': ['new_gene1'],
             'new_transcript': ['query_t1'],
-            'class_code': ['=']
+            'transcript_pair_class_code': ['=']
         }
         filepath = self._create_test_tsv(data, "my_mapping_file.tsv")
 
@@ -132,7 +132,7 @@ class TestMappingMultiplicity(unittest.TestCase):
 
         # Check that output files use input filename as prefix
         expected_prefix = os.path.join(self.test_dir, "my_mapping_file")
-        ref_multi_file = f"{expected_prefix}_ref_to_multiple_query.tsv"
+        ref_multi_file = f"{expected_prefix}_old_to_multiple_new.tsv"
         self.assertTrue(os.path.exists(ref_multi_file))
 
 
