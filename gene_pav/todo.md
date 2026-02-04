@@ -1,7 +1,7 @@
 # PAVprot Pipeline - Development Todo
 
 > **Branch:** dev
-> **Last Updated:** 2026-02-02
+> **Last Updated:** 2026-02-04
 
 ---
 
@@ -17,6 +17,7 @@
 - [x] **Terminology update (2026-02-02)** - Changed ref/query to old/new across 19 files (breaking change)
 - [x] **Bug fix (2026-02-02)** - Fixed class code `=` filtering bug (was excluding 10,150 exact match entries)
 - [x] **Excel export (2026-02-02)** - Added `--output-excel` flag (default: True) to export all results to single Excel workbook
+- [x] **Plotting module (2026-02-04)** - Integrated standalone plot scripts with `--plot` CLI, added 7 plot types
 - [ ] In every section and action add Git, bash and other commands used and their descriptions, document suggessions on git and other command usage in in gene_pav/docs/SETUP_COMMANDS.md
   - [ ] help document commands as I go for a personal reference guide
 
@@ -2694,7 +2695,7 @@ pip install memory_profiler              # Memory diagnostics (optional)
 | [x] | Update imports and paths for new location |
 | [x] | Integrate with `--plot` CLI argument |
 | [x] | Add new plot types to `generate_plots()` function |
-| [ ] | Test all plots with actual data |
+| [x] | Test all plots with actual data |
 | [x] | Update documentation |
 
 **New CLI plot types added:** `1to1`, `psauron`, `quality`
