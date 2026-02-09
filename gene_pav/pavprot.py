@@ -1091,45 +1091,31 @@ def validate_inputs(args, parser: argparse.ArgumentParser) -> Tuple[List[str], L
     elif args.interproscan_out:
         interproscan_files = _validate_interproscan_files(args, parser, num_gffs)
 
-    # Handle ProteinX files (optional)
-    args.proteinx_old = None
-    args.proteinx_new = None
+    # Handle ProteinX files (optional) - positional parsing
+    args.proteinx_files = []
     if args.proteinx_out:
         proteinx_files = [f.strip() for f in args.proteinx_out.split(',')]
         if len(proteinx_files) > 2:
-            print(f"Warning: --proteinx-out accepts at most 2 files (old,new). Got {len(proteinx_files)}, using first 2.", file=sys.stderr)
+            print(f"Warning: --proteinx-out accepts at most 2 files. Got {len(proteinx_files)}, using first 2.", file=sys.stderr)
 
-        if len(proteinx_files) >= 1:
-            if os.path.exists(proteinx_files[0]):
-                args.proteinx_old = proteinx_files[0]
+        for i, proteinx_file in enumerate(proteinx_files[:2]):
+            if os.path.exists(proteinx_file):
+                args.proteinx_files.append(proteinx_file)
             else:
-                print(f"Warning: ProteinX old file not found: {proteinx_files[0]}. Task_5 will use available data only.", file=sys.stderr)
+                print(f"Warning: ProteinX file [{i}] not found: {proteinx_file}. Task_5 will use available data only.", file=sys.stderr)
 
-        if len(proteinx_files) >= 2:
-            if os.path.exists(proteinx_files[1]):
-                args.proteinx_new = proteinx_files[1]
-            else:
-                print(f"Warning: ProteinX new file not found: {proteinx_files[1]}. Task_5 will use available data only.", file=sys.stderr)
-
-    # Handle Psauron files (optional)
-    args.psauron_old = None
-    args.psauron_new = None
+    # Handle Psauron files (optional) - positional parsing
+    args.psauron_files = []
     if args.psauron_out:
         psauron_files = [f.strip() for f in args.psauron_out.split(',')]
         if len(psauron_files) > 2:
-            print(f"Warning: --psauron-out accepts at most 2 files (old,new). Got {len(psauron_files)}, using first 2.", file=sys.stderr)
+            print(f"Warning: --psauron-out accepts at most 2 files. Got {len(psauron_files)}, using first 2.", file=sys.stderr)
 
-        if len(psauron_files) >= 1:
-            if os.path.exists(psauron_files[0]):
-                args.psauron_old = psauron_files[0]
+        for i, psauron_file in enumerate(psauron_files[:2]):
+            if os.path.exists(psauron_file):
+                args.psauron_files.append(psauron_file)
             else:
-                print(f"Warning: Psauron old file not found: {psauron_files[0]}. Task_6/7 will use available data only.", file=sys.stderr)
-
-        if len(psauron_files) >= 2:
-            if os.path.exists(psauron_files[1]):
-                args.psauron_new = psauron_files[1]
-            else:
-                print(f"Warning: Psauron new file not found: {psauron_files[1]}. Task_6/7 will use available data only.", file=sys.stderr)
+                print(f"Warning: Psauron file [{i}] not found: {psauron_file}. Task_6/7 will use available data only.", file=sys.stderr)
 
     return gff_list, interproscan_files
 
@@ -2186,35 +2172,27 @@ def main():
     # =========================================================================
     # Step 9b: Copy ProteinX and Psauron files to output directory
     # =========================================================================
-    if args.proteinx_old:
+    if args.proteinx_files:
         import shutil
         proteinx_out_dir = os.path.join(pavprot_out, 'proteinx')
         os.makedirs(proteinx_out_dir, exist_ok=True)
 
-        if args.proteinx_old and os.path.exists(args.proteinx_old):
-            dst_old = os.path.join(proteinx_out_dir, Path(args.proteinx_old).name)
-            shutil.copy2(args.proteinx_old, dst_old)
-            print(f"  Copied ProteinX old: {dst_old}", file=sys.stderr)
+        for i, proteinx_file in enumerate(args.proteinx_files):
+            if os.path.exists(proteinx_file):
+                dst = os.path.join(proteinx_out_dir, Path(proteinx_file).name)
+                shutil.copy2(proteinx_file, dst)
+                print(f"  Copied ProteinX [{i}]: {dst}", file=sys.stderr)
 
-        if args.proteinx_new and os.path.exists(args.proteinx_new):
-            dst_new = os.path.join(proteinx_out_dir, Path(args.proteinx_new).name)
-            shutil.copy2(args.proteinx_new, dst_new)
-            print(f"  Copied ProteinX new: {dst_new}", file=sys.stderr)
-
-    if args.psauron_old:
+    if args.psauron_files:
         import shutil
         psauron_out_dir = os.path.join(pavprot_out, 'psauron')
         os.makedirs(psauron_out_dir, exist_ok=True)
 
-        if args.psauron_old and os.path.exists(args.psauron_old):
-            dst_old = os.path.join(psauron_out_dir, Path(args.psauron_old).name)
-            shutil.copy2(args.psauron_old, dst_old)
-            print(f"  Copied Psauron old: {dst_old}", file=sys.stderr)
-
-        if args.psauron_new and os.path.exists(args.psauron_new):
-            dst_new = os.path.join(psauron_out_dir, Path(args.psauron_new).name)
-            shutil.copy2(args.psauron_new, dst_new)
-            print(f"  Copied Psauron new: {dst_new}", file=sys.stderr)
+        for i, psauron_file in enumerate(args.psauron_files):
+            if os.path.exists(psauron_file):
+                dst = os.path.join(psauron_out_dir, Path(psauron_file).name)
+                shutil.copy2(psauron_file, dst)
+                print(f"  Copied Psauron [{i}]: {dst}", file=sys.stderr)
 
     # =========================================================================
     # Step 10: Generate plots (if --plot is specified)
