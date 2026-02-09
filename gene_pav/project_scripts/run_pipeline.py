@@ -58,17 +58,18 @@ CONFIG = {
     "output_dir": Path(__file__).parent.parent / "plot_out" / "refactored",  # Output to refactored plots
 
     # Dataset input directory (can be overridden via constructor)
-    "dataset_dir": Path(__file__).parent.parent / "pavprot_out_20260209_152204",  # Updated to latest output
+    "dataset_dir": Path(__file__).parent.parent / "pavprot_out_20260209_154955",  # Updated to latest output
 
-    # PAVprot output files (will auto-detect from dataset_dir)
+    # PAVprot output files (will auto-detect from dataset_dir, preferring enriched versions)
     "transcript_level_tsv": None,  # Will auto-detect from dataset_dir
     "gene_level_tsv": None,        # Will auto-detect from dataset_dir
 
     # External data files (optional - tasks will skip if not found)
-    "psauron_ref": Path("/Users/sadik/Documents/projects/FungiDB/foc47/output/psauron/ref_all.csv"),
-    "psauron_qry": Path("/Users/sadik/Documents/projects/FungiDB/foc47/output/psauron/qry_all.csv"),
-    "proteinx_ref": Path("/Users/sadik/Documents/projects/FungiDB/foc47/output/proteinx/GCF_013085055.1_proteinx.tsv"),
-    "proteinx_qry": Path("/Users/sadik/Documents/projects/FungiDB/foc47/output/proteinx/Foc47_013085055.1_proteinx.tsv"),
+    # These are copied to pavprot output directory by refactored --proteinx-out and --psauron-out parameters
+    "psauron_ref": Path(__file__).parent.parent / "pavprot_out_20260209_154955/psauron/ref_all.csv",
+    "psauron_qry": Path(__file__).parent.parent / "pavprot_out_20260209_154955/psauron/qry_all.csv",
+    "proteinx_ref": Path(__file__).parent.parent / "pavprot_out_20260209_154955/proteinx/GCF_013085055.1_proteinx.tsv",
+    "proteinx_qry": Path(__file__).parent.parent / "pavprot_out_20260209_154955/proteinx/Foc47_013085055.1_proteinx.tsv",
     "phytopathogen_list": Path("/Users/sadik/Documents/projects/data/disease_research_supported.csv"),
     "fungidb_gene_stats": Path("/Users/sadik/Documents/projects/data/fungidb_v68_gene_stats.tsv"),
 
@@ -97,10 +98,16 @@ def find_latest_output(dataset_dir: Path) -> tuple:
     gene_file = None
 
     if dataset_dir.exists():
-        # Look for enriched gene_level file first (with psauron scores)
-        for f in dataset_dir.glob("*gene_level_with_psauron.tsv"):
+        # Look for fully enriched gene_level file first
+        for f in dataset_dir.glob("gene_level_enriched_all.tsv"):
             gene_file = f
             break
+
+        # Look for enriched gene_level file with psauron scores
+        if not gene_file:
+            for f in dataset_dir.glob("*gene_level_with_psauron.tsv"):
+                gene_file = f
+                break
 
         # Fallback to raw gene_level file if enriched not found
         if not gene_file:
@@ -108,10 +115,16 @@ def find_latest_output(dataset_dir: Path) -> tuple:
                 gene_file = f
                 break
 
-        # Look for enriched transcript-level file first
-        for f in sorted(dataset_dir.glob("*transcript_level_with_psauron.tsv"), reverse=True):
+        # Look for fully enriched transcript-level file first
+        for f in dataset_dir.glob("transcript_level_enriched_all.tsv"):
             transcript_file = f
             break
+
+        # Look for enriched transcript-level file with psauron scores
+        if not transcript_file:
+            for f in sorted(dataset_dir.glob("*transcript_level_with_psauron.tsv"), reverse=True):
+                transcript_file = f
+                break
 
         # Fallback to main gffcomp file without "_gene_level" in name
         if not transcript_file:
