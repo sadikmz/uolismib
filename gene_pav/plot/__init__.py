@@ -31,6 +31,7 @@ import logging
 
 from .config import setup_plotting, get_class_type_palette, get_scenario_palette
 from .utils import load_data, load_pavprot_data
+from .data_prep import load_and_enrich, enrich_pavprot_data, validate_enrichment
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,23 @@ def generate_plots(
     plots_dir.mkdir(parents=True, exist_ok=True)
 
     generated_files = []
+
+    # Pre-enrich gene-level data if available
+    if gene_level_file and Path(gene_level_file).exists():
+        try:
+            import pandas as pd
+            df = load_and_enrich(
+                gene_level_file,
+                enrich_kwargs={
+                    'add_scenario': True,
+                    'add_class_type': True,
+                    'add_mapping_type': False,
+                }
+            )
+            enrichment_validation = validate_enrichment(df)
+            logger.info(f"Data enrichment validation: {enrichment_validation}")
+        except Exception as e:
+            logger.warning(f"Data enrichment failed: {e}. Continuing with original data.")
 
     # Default to all plot types if none specified
     if not plot_types:
@@ -179,5 +197,8 @@ __all__ = [
     'get_scenario_palette',
     'load_data',
     'load_pavprot_data',
+    'load_and_enrich',
+    'enrich_pavprot_data',
+    'validate_enrichment',
     'generate_plots',
 ]

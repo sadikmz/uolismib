@@ -46,8 +46,13 @@ def plot_scenario_distribution(gene_level_file: str, plots_dir: Path) -> List[st
 
     generated_files = []
 
-    # Load data
-    df = pd.read_csv(gene_level_file, sep='\t')
+    # Load data with enrichment
+    try:
+        from .data_prep import load_and_enrich
+        df = load_and_enrich(gene_level_file)
+    except Exception as e:
+        logger.warning(f"Data enrichment failed: {e}. Loading raw data instead.")
+        df = pd.read_csv(gene_level_file, sep='\t')
 
     # Check for scenario column
     scenario_col = None
