@@ -1412,11 +1412,23 @@ class PipelineRunner:
             gene_level_file = self.config.get("gene_level_enriched_file",
                                               self.output_dir / "gene_level_with_psauron.tsv")
             if Path(gene_level_file).exists():
-                generate_quality_score_plots(
-                    str(gene_level_file),
-                    self.output_dir,
-                    config=self.config
-                )
+                # Detect which scoring columns are available
+                import pandas as pd
+                df_check = pd.read_csv(gene_level_file, sep='\t', nrows=1)
+
+                # Find score column pairs (first and second, positionally)
+                score_cols = [c for c in df_check.columns if 'psauron_score_mean' in c]
+                if len(score_cols) >= 2:
+                    # Use first two scoring columns found, in order
+                    score_pair = (score_cols[0], score_cols[1])
+                    generate_quality_score_plots(
+                        str(gene_level_file),
+                        self.output_dir,
+                        score_columns=score_pair,
+                        config=self.config
+                    )
+                else:
+                    print(f"  [INFO] Not enough psauron score columns found ({len(score_cols)}), skipping plots")
             else:
                 print(f"  [WARN] Gene-level file not found: {gene_level_file}")
         except Exception as e:

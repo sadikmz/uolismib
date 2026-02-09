@@ -437,15 +437,21 @@ def plot_psauron_scatter(
 def generate_quality_score_plots(
     gene_level_file: str,
     output_dir: Path,
-    config: dict = None
+    score_columns: tuple = None,
+    config: dict = None,
+    detect_columns: bool = True
 ) -> List[Path]:
     """
     Generate quality score comparison plots for CLI integration.
 
     Args:
-        gene_level_file: Path to gene-level TSV with Psauron columns
+        gene_level_file: Path to gene-level TSV with score columns
         output_dir: Directory to save plots
+        score_columns: Tuple of (first_score_col, second_score_col) paired columns.
+                      Columns are used positionally (not by naming convention).
+                      If None and detect_columns=True, auto-detects based on column names.
         config: Optional configuration
+        detect_columns: If True and score_columns not provided, auto-detect columns
 
     Returns:
         List of generated plot file paths
@@ -461,14 +467,20 @@ def generate_quality_score_plots(
     df = pd.read_csv(gene_level_file, sep='\t')
     print(f"    Loaded {len(df):,} gene pairs")
 
-    # Check for Psauron columns (support both naming conventions)
-    ref_col = 'ref_psauron_score_mean' if 'ref_psauron_score_mean' in df.columns else 'new_psauron_score_mean'
-    qry_col = 'qry_psauron_score_mean' if 'qry_psauron_score_mean' in df.columns else 'old_psauron_score_mean'
+    # Require explicit column pairs - no hard-coded names
+    if not score_columns:
+        print("  [ERROR] score_columns parameter is required")
+        print("         Expected: score_columns=(first_col_name, second_col_name)")
+        return generated_files
 
-    if ref_col not in df.columns or qry_col not in df.columns:
-        print("  [WARN] Psauron columns not found, skipping quality plots")
-        print(f"    Looking for: ref_psauron_score_mean or new_psauron_score_mean")
-        print(f"    Looking for: qry_psauron_score_mean or old_psauron_score_mean")
+    first_col, second_col = score_columns
+
+    if first_col not in df.columns:
+        print(f"  [ERROR] Column not found: {first_col}")
+        return generated_files
+
+    if second_col not in df.columns:
+        print(f"  [ERROR] Column not found: {second_col}")
         return generated_files
 
     output_dir = Path(output_dir)
@@ -477,7 +489,7 @@ def generate_quality_score_plots(
     # Basic scatter plot
     path = plot_psauron_scatter(
         df, output_dir / 'psauron_scatter.png',
-        ref_col=ref_col, qry_col=qry_col, config=config
+        ref_col=first_col, qry_col=second_col, config=config
     )
     if path:
         generated_files.append(path)
@@ -486,7 +498,7 @@ def generate_quality_score_plots(
     if 'mapping_type' in df.columns:
         path = plot_psauron_scatter(
             df, output_dir / 'psauron_by_mapping_type.png',
-            ref_col=ref_col, qry_col=qry_col,
+            ref_col=first_col, qry_col=second_col,
             color_by='mapping_type', config=config
         )
         if path:
@@ -496,7 +508,7 @@ def generate_quality_score_plots(
     if 'class_type_gene' in df.columns:
         path = plot_psauron_scatter(
             df, output_dir / 'psauron_by_class_type.png',
-            ref_col=ref_col, qry_col=qry_col,
+            ref_col=first_col, qry_col=second_col,
             color_by='class_type_gene', config=config
         )
         if path:
