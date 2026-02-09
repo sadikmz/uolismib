@@ -4,6 +4,7 @@ archive/
 *_out/
 *_output/
 pavprot_out/
+plot_out/
 new_pavprot_output/
 fungidb_analysis_*/
 figures_out/
