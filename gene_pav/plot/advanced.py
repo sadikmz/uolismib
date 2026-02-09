@@ -133,7 +133,7 @@ def plot_ipr_scatter_by_class(
                 alpha=config['scatter_alpha'],
                 s=config['scatter_size']
             )
-        ax.legend(title='Class Type', bbox_to_anchor=(1.02, 1), loc='upper left')
+        ax.legend(title='Class Type', bbox_to_anchor=(0.02, 0.98), loc='upper left')
     else:
         ax.scatter(
             plot_df[x_col],
