@@ -163,10 +163,10 @@ def _plot_class_code_distribution(df: pd.DataFrame, plots_dir: Path) -> List[str
     if not all_codes:
         return []
 
-    # Normalize exact match codes: 'em', 'a', and '=' all map to '='
+    # Replace 'em' with '='
     normalized_codes = []
     for code in all_codes:
-        if code in ['em', 'a', '=']:
+        if code == 'em':
             normalized_codes.append('=')
         else:
             normalized_codes.append(code)
