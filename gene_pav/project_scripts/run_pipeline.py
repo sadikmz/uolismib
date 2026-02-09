@@ -1403,60 +1403,75 @@ class PipelineRunner:
         else:
             print("  [INFO] No gene pairs with both psauron scores - skipping comparison plot")
 
-        # ===== Psauron by Mapping Type (independent plot) =====
+        # ===== Psauron by Mapping Type (scatter plot with available data) =====
         if 'mapping_type' in df.columns:
-            fig_mt, ax_mt = plt.subplots(figsize=(10, 6))
-            mapping_types = ['1to1', '1to2N', '1to2N+', 'Nto1', 'complex']
-            mapping_colors = {
-                '1to1': '#1f77b4', '1to2N': '#ff7f0e', '1to2N+': '#2ca02c',
-                'Nto1': '#d62728', 'complex': '#9467bd'
-            }
+            # Filter data with qry_psauron scores
+            valid_qry = df[df[qry_col].notna()].copy()
+            if len(valid_qry) > 0:
+                fig_mt, ax_mt = plt.subplots(figsize=(12, 8))
 
-            data_by_type = df.groupby('mapping_type')[qry_col].apply(list)
-            for mtype in mapping_types:
-                if mtype in data_by_type.index:
-                    data = pd.Series(data_by_type[mtype]).dropna()
-                    if len(data) > 0:
-                        ax_mt.hist(data, bins=30, alpha=0.6, density=True,
-                                  label=f'{mapping_type_to_colon(mtype)} (n={len(data)})',
-                                  color=mapping_colors.get(mtype, 'gray'))
+                mapping_types = ['1to1', '1to2N', '1to2N+', 'Nto1', 'complex']
+                mapping_colors = {
+                    '1to1': '#1f77b4', '1to2N': '#ff7f0e', '1to2N+': '#2ca02c',
+                    'Nto1': '#d62728', 'complex': '#9467bd'
+                }
 
-            ax_mt.set_xlabel('Psauron Score')
-            ax_mt.set_ylabel('Density')
-            ax_mt.set_title('Psauron Score by Mapping Type')
-            ax_mt.legend(fontsize=9)
+                # Scatter plot: gene index vs qry_psauron score, colored by mapping type
+                for mtype in mapping_types:
+                    subset = valid_qry[valid_qry['mapping_type'] == mtype]
+                    if len(subset) > 0:
+                        ax_mt.scatter(range(len(subset)), subset[qry_col],
+                                    alpha=0.6, s=30,
+                                    label=f'{mapping_type_to_colon(mtype)} (n={len(subset)})',
+                                    color=mapping_colors.get(mtype, 'gray'))
 
-            plt.tight_layout()
-            mt_path = self.output_dir / "psauron_by_mapping_type.png"
-            fig_mt.savefig(mt_path, dpi=self.config["figure_dpi"], bbox_inches='tight')
-            plt.close(fig_mt)
-            print(f"  [DONE] Saved: {mt_path}")
+                ax_mt.set_xlabel('Gene Pair Index')
+                ax_mt.set_ylabel('Psauron Score (Old/FungiDB)')
+                ax_mt.set_title('Psauron Score Distribution by Mapping Type')
+                ax_mt.legend(fontsize=9, loc='upper right')
+                ax_mt.set_ylim(0, 1.05)
+                ax_mt.grid(True, alpha=0.3)
 
-        # ===== Psauron by Class Type (independent plot) =====
+                plt.tight_layout()
+                mt_path = self.output_dir / "psauron_by_mapping_type.png"
+                fig_mt.savefig(mt_path, dpi=self.config["figure_dpi"], bbox_inches='tight')
+                plt.close(fig_mt)
+                print(f"  [DONE] Saved: {mt_path}")
+
+        # ===== Psauron by Class Type (scatter plot with available data) =====
         if 'class_type_gene' in df.columns:
-            fig_ct, ax_ct = plt.subplots(figsize=(10, 6))
-            top_classes = df['class_type_gene'].value_counts().head(10).index.tolist()
-            class_colors = plt.cm.tab10(np.linspace(0, 1, len(top_classes)))
+            # Filter data with qry_psauron scores
+            valid_qry = df[df[qry_col].notna()].copy()
+            if len(valid_qry) > 0:
+                fig_ct, ax_ct = plt.subplots(figsize=(12, 8))
 
-            data_by_class = df.groupby('class_type_gene')[qry_col].apply(list)
-            for i, ctype in enumerate(top_classes):
-                if ctype in data_by_class.index:
-                    data = pd.Series(data_by_class[ctype]).dropna()
-                    if len(data) > 0:
-                        ax_ct.hist(data, bins=25, alpha=0.6, density=True,
-                                  label=f'{ctype} (n={len(data)})',
-                                  color=class_colors[i % len(class_colors)])
+                top_classes = valid_qry['class_type_gene'].value_counts().head(8).index.tolist()
+                class_colors = plt.cm.tab10(np.linspace(0, 1, len(top_classes)))
 
-            ax_ct.set_xlabel('Psauron Score')
-            ax_ct.set_ylabel('Density')
-            ax_ct.set_title('Psauron Score by Class Type')
-            ax_ct.legend(fontsize=8, loc='upper right')
+                # Scatter plot: gene index vs qry_psauron score, colored by class type
+                idx = 0
+                for i, ctype in enumerate(top_classes):
+                    subset = valid_qry[valid_qry['class_type_gene'] == ctype]
+                    if len(subset) > 0:
+                        indices = range(idx, idx + len(subset))
+                        ax_ct.scatter(indices, subset[qry_col],
+                                    alpha=0.6, s=30,
+                                    label=f'{ctype} (n={len(subset)})',
+                                    color=class_colors[i])
+                        idx += len(subset)
 
-            plt.tight_layout()
-            ct_path = self.output_dir / "psauron_by_class_type.png"
-            fig_ct.savefig(ct_path, dpi=self.config["figure_dpi"], bbox_inches='tight')
-            plt.close(fig_ct)
-            print(f"  [DONE] Saved: {ct_path}")
+                ax_ct.set_xlabel('Gene Pair Index')
+                ax_ct.set_ylabel('Psauron Score (Old/FungiDB)')
+                ax_ct.set_title('Psauron Score Distribution by Class Type')
+                ax_ct.legend(fontsize=8, loc='upper right')
+                ax_ct.set_ylim(0, 1.05)
+                ax_ct.grid(True, alpha=0.3)
+
+                plt.tight_layout()
+                ct_path = self.output_dir / "psauron_by_class_type.png"
+                fig_ct.savefig(ct_path, dpi=self.config["figure_dpi"], bbox_inches='tight')
+                plt.close(fig_ct)
+                print(f"  [DONE] Saved: {ct_path}")
 
         # ===== Psauron by Mapping Type x Class Type =====
         if 'mapping_type' in df.columns and 'class_type_gene' in df.columns and len(plot_df) > 0:
