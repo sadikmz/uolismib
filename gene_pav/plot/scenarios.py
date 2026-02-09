@@ -163,13 +163,15 @@ def _plot_class_code_distribution(df: pd.DataFrame, plots_dir: Path) -> List[str
     if not all_codes:
         return []
 
-    # Replace 'em' with '='
+    # Replace 'em' with '=' (handles both 'em' alone and in compound codes like 'em,j,k')
     normalized_codes = []
     for code in all_codes:
-        if code == 'em':
-            normalized_codes.append('=')
-        else:
-            normalized_codes.append(code)
+        # Replace 'em' as a complete code (considering comma separators)
+        normalized_code = code.replace('em,', '=,')  # em at start
+        normalized_code = normalized_code.replace(',em', ',=')  # em in middle or end
+        if normalized_code == 'em':  # em alone
+            normalized_code = '='
+        normalized_codes.append(normalized_code)
 
     code_counts = pd.Series(normalized_codes).value_counts()
 
