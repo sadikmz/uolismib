@@ -154,11 +154,11 @@ def _plot_class_code_distribution(df: pd.DataFrame, plots_dir: Path) -> List[str
     if class_col is None:
         return []
 
-    # Explode multi-value class codes (e.g., "em;j;n")
+    # Explode multi-value class codes (e.g., "em,j,n")
     all_codes = []
     for codes in df[class_col].dropna():
         if isinstance(codes, str):
-            all_codes.extend(codes.split(';'))
+            all_codes.extend(codes.split(','))
 
     if not all_codes:
         return []
