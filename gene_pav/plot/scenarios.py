@@ -165,8 +165,29 @@ def _plot_class_code_distribution(df: pd.DataFrame, plots_dir: Path) -> List[str
 
     code_counts = pd.Series(all_codes).value_counts()
 
+    # GFFcompare class code definitions
+    code_definitions = {
+        'a': 'Exact match (same exon structure)',
+        '=': 'Exact match (reference/query exon)',
+        'em': 'Exact match (cDNA/EST match)',
+        'e': 'Single exon transcript match',
+        'j': 'Junction overlap (partial)',
+        'o': 'Other/overlap',
+        'c': 'Contained',
+        'k': 'Contains',
+        'm': 'Exon overlap (main type)',
+        'n': 'Novel isoform',
+        'x': 'Exonic overlap',
+        's': 'Strand conflict',
+        'r': 'Repeat region',
+        'u': 'Unknown',
+        'p': 'Possible polymerase chain',
+        'y': 'Polymerase slippage',
+        'i': 'Intronic',
+    }
+
     # Create figure
-    fig, ax = plt.subplots(figsize=(12, 6))
+    fig, ax = plt.subplots(figsize=(12, 6.5))
 
     if HAS_SEABORN:
         colors = sns.color_palette("husl", len(code_counts))
@@ -184,10 +205,21 @@ def _plot_class_code_distribution(df: pd.DataFrame, plots_dir: Path) -> List[str
                     textcoords="offset points",
                     ha='center', va='bottom', fontsize=9)
 
-    ax.set_xlabel('Class Code', fontsize=12)
-    ax.set_ylabel('Count', fontsize=12)
+    ax.set_xlabel('GFFcompare Class Code', fontsize=12, fontweight='bold')
+    ax.set_ylabel('Count', fontsize=12, fontweight='bold')
     ax.set_title('GFFcompare Class Code Distribution', fontsize=14, fontweight='bold')
     plt.xticks(rotation=45, ha='right')
+
+    # Add legend box with code definitions
+    legend_text = "GFFcompare Codes:\n"
+    for code in sorted(code_counts.index):
+        definition = code_definitions.get(code, 'Unknown')
+        legend_text += f"  {code}: {definition}\n"
+
+    ax.text(0.98, 0.97, legend_text, transform=ax.transAxes,
+            fontsize=8, verticalalignment='top', horizontalalignment='right',
+            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+
     plt.tight_layout()
 
     output_file = plots_dir / 'class_code_distribution.png'

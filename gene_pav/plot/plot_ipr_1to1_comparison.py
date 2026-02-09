@@ -147,6 +147,18 @@ def plot_ipr_comparison(df: pd.DataFrame, output_path: Path, title: str,
     # Legend
     ax.legend(loc='upper left', fontsize=9)
 
+    # Add GFFcompare class code reference if showing by class type
+    if color_by_class and 'class_type_gene' in valid.columns:
+        class_code_info = (
+            "GFFcompare Class Types:\n"
+            "  exact (a/=): Exact exon structure match\n"
+            "  split (j/c): Intron overlap/contained\n"
+            "  novel (n/k): Novel isoform/not in ref"
+        )
+        ax.text(0.98, 0.05, class_code_info, transform=ax.transAxes,
+                fontsize=8, verticalalignment='bottom', horizontalalignment='right',
+                bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.7))
+
     plt.tight_layout()
     fig.savefig(output_path, dpi=FIGURE_DPI, bbox_inches='tight')
     plt.close(fig)
