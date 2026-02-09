@@ -3848,3 +3848,121 @@ Future-proof: Yes (extensible architecture)
 ---
 
 **END OF PROJECT DOCUMENTATION**
+
+---
+
+## P.17: PLOT REFINEMENT & VISUALIZATION IMPROVEMENTS
+
+**Date Started:** 2026-02-09
+**Status:** PENDING (Next Phase - Future Enhancement)
+**Primary Objective:** Refine generated plots with improved labels, legends, and formatting
+
+### P.17.1 Plot Editing Requirements Summary
+
+**Total Plots Requiring Edits:** 14
+**Total Edit Categories:** 6
+
+#### 1. Axis Labels & Legend Standardization (11 plots)
+
+**Plots requiring axis updates:**
+- psauron_scatter.png
+- psauron_by_mapping_type.png
+- psauron_by_class_type.png
+- ipr_scatter_by_class.png
+- ipr_quadrant_analysis.png
+- ipr_loglog_by_mapping.png
+- ipr_1to1_no_class.png
+- ipr_1to1_no_class_log.png
+- ipr_1to1_by_class_type.png
+- ipr_1to1_by_class_type_log.png
+
+**Changes needed:**
+- [ ] Set Y-axis label: "Old annotation" (FungiDB v68)
+- [ ] Set X-axis label: "New annotation" (NCBI RefSeq)
+- [ ] Remove hard-coded annotation source names (NCBI/FungiDB) from legend
+
+#### 2. Title Updates (4 plots - ipr_1to1 variants)
+
+**Plots affected:**
+- ipr_1to1_by_class_type.png
+- ipr_1to1_no_class.png
+- ipr_1to1_by_class_type_log.png
+- ipr_1to1_no_class_log.png
+
+**Changes needed:**
+- [ ] Rename title from "1:1 Ortholog IPR..." to "1:1 gene mapping..."
+
+#### 3. Legend Positioning (2 plots)
+
+**Plots affected:**
+- ipr_loglog_by_mapping.png
+
+**Changes needed:**
+- [ ] Move legend to top-left corner INSIDE the plot area
+- [ ] Match positioning style used in psauron plots
+
+#### 4. Class Code Documentation (3 plots)
+
+**class_code_distribution.png:**
+- [ ] Replace 'em' code with 'a' in class code display
+- [ ] Add legend note explaining all class codes
+
+**ipr_1to1_by_class_type.png & ipr_1to1_by_class_type_log.png:**
+- [ ] Add legend note explaining GFFcompare class-code meanings
+
+#### 5. Source Attribution Removal (1 plot)
+
+**psauron_comparison.png:**
+- [ ] Remove hard-coded source labels (NCBI/FungiDB) from legend
+- [ ] Use generic labels: "Old annotation" and "New annotation"
+
+#### 6. Directory Organization
+
+**Proposed structure:**
+- [ ] Create `plot_out/refined/` directory for edited figures
+- [ ] Keep original plots in `plot_out/` for reference
+- [ ] Document all refinements applied
+
+### P.17.2 Implementation Approach (Recommended: Code-Level Fixes)
+
+**Strategy: Modify plot generation code instead of manual edits**
+
+**Advantages:**
+- Reproducible - plots regenerate with improvements automatically
+- Maintainable - single source of truth
+- Scalable - applies to all future plots
+- Consistent - standardized formatting
+
+**Code files to modify:**
+- `plot/scenarios.py` - class_code_distribution labels
+- `plot/advanced.py` - axis labels and legend positioning
+- `plot/plot_ipr_1to1_comparison.py` - titles and legends
+- `plot/plot_psauron_distribution.py` - source attribution
+- `plot/plot_oldvsnew_psauron_plddt.py` - axis labels
+
+**Data enrichment updates:**
+- Update axis label generation to use generic terms
+- Pass annotation source info as parameters (not hardcoded)
+- Standardize legend formatting conventions
+
+### P.17.3 Estimated Effort & Priority
+
+**Code implementation:** 2-3 hours
+**Testing & validation:** 1 hour
+**Total estimated time:** 3-4 hours
+
+**Priority:** Medium (improves presentation, not critical to function)
+**Blocking issues:** None (plots functional without edits)
+**Dependencies:** None (standalone refinement phase)
+**Recommendation:** Include in Phase 5 optimization pass
+
+### P.17.4 Quality Checklist
+
+- [ ] All 11 axis labels standardized (Old/New format)
+- [ ] All 4 titles updated (gene mapping terminology)
+- [ ] Legend positioning consistent (2 plots updated)
+- [ ] Class codes documented (3 plots with explanations)
+- [ ] Source attribution removed (1 plot cleaned)
+- [ ] Directory structure organized (plot_out/refined/)
+- [ ] All changes reproducible from code
+- [ ] Visual quality validated on all 14 plots
