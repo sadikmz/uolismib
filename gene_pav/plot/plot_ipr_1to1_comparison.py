@@ -139,8 +139,8 @@ def plot_ipr_comparison(df: pd.DataFrame, output_path: Path, title: str,
         scale_label = ""
 
     # Labels and title
-    ax.set_xlabel(f'New annotation (NCBI RefSeq) total IPR domain length (aa){scale_label}', fontsize=11)
-    ax.set_ylabel(f'Old annotation (FungiDB v68) total IPR domain length (aa){scale_label}', fontsize=11)
+    ax.set_xlabel(f'New annotation total IPR domain length (aa){scale_label}', fontsize=11)
+    ax.set_ylabel(f'Old annotation total IPR domain length (aa){scale_label}', fontsize=11)
     ax.set_title(f'{title}\n(Pearson r = {corr:.3f}, R² = {r_squared:.3f}, n = {len(valid):,})',
                 fontsize=12)
 
