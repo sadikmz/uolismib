@@ -1,0 +1,20 @@
+================================================================================
+MULTIPLE MAPPINGS DETECTION SUMMARY
+================================================================================
+
+Input file: /Users/sadik/projects/github_prj/uolismib/gene_pav/pavprot_out_20260204_125349/test_interproscan_liftoff_gffcomp_mapping_test_full_=_c_e_j_k_m_n_diamond_blastp.tsv
+Total mappings: 7
+Unique old genes: 3
+Unique new genes: 3
+
+================================================================================
+OLD GENES MAPPING TO MULTIPLE NEW GENES (1-to-many)
+================================================================================
+Total old genes with multiple mappings: 0
+
+================================================================================
+NEW GENES MAPPING TO MULTIPLE OLD GENES (many-to-1)
+================================================================================
+Total new genes with multiple mappings: 0
+
+================================================================================

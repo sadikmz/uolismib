@@ -1,0 +1,48 @@
+================================================================================
+MULTIPLE MAPPINGS DETECTION SUMMARY
+================================================================================
+
+Input file: /Users/sadik/projects/github_prj/uolismib/gene_pav/pavprot_out_20260204_171713/liftoff_gffcomp_mapping_FocTst_=_c_e_j_k_m_n_diamond_blastp.tsv
+Total mappings: 21857
+Unique old genes: 15802
+Unique new genes: 15021
+
+================================================================================
+OLD GENES MAPPING TO MULTIPLE NEW GENES (1-to-many)
+================================================================================
+Total old genes with multiple mappings: 14
+Max new genes per old: 2
+Average new genes per old: 2.00
+
+Top 10 old genes by number of new genes:
+  FOZG_00494: 2 new genes
+  FOZG_00698: 2 new genes
+  FOZG_00718: 2 new genes
+  FOZG_03103: 2 new genes
+  FOZG_04999: 2 new genes
+  FOZG_05210: 2 new genes
+  FOZG_05881: 2 new genes
+  FOZG_05882: 2 new genes
+  FOZG_07631: 2 new genes
+  FOZG_08527: 2 new genes
+
+================================================================================
+NEW GENES MAPPING TO MULTIPLE OLD GENES (many-to-1)
+================================================================================
+Total new genes with multiple mappings: 729
+Max old genes per new: 7
+Average old genes per new: 2.09
+
+Top 10 new genes by number of old genes:
+  gene-FOBCDRAFT_240783: 7 old genes
+  gene-FOBCDRAFT_239639: 4 old genes
+  gene-FOBCDRAFT_245315: 4 old genes
+  gene-FOBCDRAFT_177239: 4 old genes
+  gene-FOBCDRAFT_254749: 4 old genes
+  gene-FOBCDRAFT_251754: 4 old genes
+  gene-FOBCDRAFT_167034: 3 old genes
+  gene-FOBCDRAFT_145538: 3 old genes
+  gene-FOBCDRAFT_240009: 3 old genes
+  gene-FOBCDRAFT_252756: 3 old genes
+
+================================================================================

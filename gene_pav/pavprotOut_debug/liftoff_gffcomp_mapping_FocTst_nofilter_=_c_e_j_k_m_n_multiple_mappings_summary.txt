@@ -1,0 +1,45 @@
+================================================================================
+MULTIPLE MAPPINGS DETECTION SUMMARY
+================================================================================
+
+Input file: /Users/sadik/projects/github_prj/uolismib/gene_pav/pavprotOut_debug/liftoff_gffcomp_mapping_FocTst_nofilter_=_c_e_j_k_m_n.tsv
+Total mappings: 11707
+Unique ref genes: 6899
+Unique query genes: 7686
+
+================================================================================
+REF GENES MAPPING TO MULTIPLE QUERY GENES (1-to-many)
+================================================================================
+Total ref genes with multiple mappings: 728
+Max query genes per ref: 7
+Average query genes per ref: 2.09
+
+Top 10 ref genes by number of query genes:
+  gene-FOBCDRAFT_240783: 7 query genes
+  gene-FOBCDRAFT_177239: 4 query genes
+  gene-FOBCDRAFT_245315: 4 query genes
+  gene-FOBCDRAFT_251754: 4 query genes
+  gene-FOBCDRAFT_254749: 4 query genes
+  gene-FOBCDRAFT_239639: 4 query genes
+  gene-FOBCDRAFT_167034: 3 query genes
+  gene-FOBCDRAFT_238530: 3 query genes
+  gene-FOBCDRAFT_237763: 3 query genes
+  gene-FOBCDRAFT_237955: 3 query genes
+
+================================================================================
+QUERY GENES MAPPING TO MULTIPLE REF GENES (many-to-1)
+================================================================================
+Total query genes with multiple mappings: 7
+Max ref genes per query: 2
+Average ref genes per query: 2.00
+
+Top 10 query genes by number of ref genes:
+  FOZG_00494: 2 ref genes
+  FOZG_00698: 2 ref genes
+  FOZG_00718: 2 ref genes
+  FOZG_04999: 2 ref genes
+  FOZG_05881: 2 ref genes
+  FOZG_08527: 2 ref genes
+  FOZG_12502: 2 ref genes
+
+================================================================================
