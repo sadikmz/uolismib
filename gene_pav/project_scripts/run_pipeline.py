@@ -1316,98 +1316,111 @@ class PipelineRunner:
         plot_df = df[cols_to_select].dropna()
         print(f"  Plotting {len(plot_df)} gene pairs with both scores")
 
-        if len(plot_df) == 0:
-            print("  [SKIP] No gene pairs with both psauron scores")
-            return None
+        # Generate comparison plots only if we have both scores
+        if len(plot_df) > 0:
+            # Create figure with 3 subplots
+            fig, axes = plt.subplots(1, 3, figsize=(18, 5))
 
-        # Create figure with 3 subplots
-        fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+            # ===== Plot 1: Scatter ref vs query =====
+            ax1 = axes[0]
+            ax1.scatter(plot_df[ref_col], plot_df[qry_col], alpha=0.5, s=15)
+            ax1.plot([0, 1], [0, 1], 'k--', alpha=0.3, label='y=x')
+            ax1.set_xlabel('New annotation (NCBI RefSeq) Psauron Score')
+            ax1.set_ylabel('Old annotation (FungiDB v68) Psauron Score')
+            ax1.set_title('Psauron Score: New vs Old')
+            ax1.set_xlim(0, 1.05)
+            ax1.set_ylim(0, 1.05)
 
-        # ===== Plot 1: Scatter ref vs query =====
-        ax1 = axes[0]
-        ax1.scatter(plot_df[ref_col], plot_df[qry_col], alpha=0.5, s=15)
-        ax1.plot([0, 1], [0, 1], 'k--', alpha=0.3, label='y=x')
-        ax1.set_xlabel('New annotation (NCBI RefSeq) Psauron Score')
-        ax1.set_ylabel('Old annotation (FungiDB v68) Psauron Score')
-        ax1.set_title('Psauron Score: New vs Old')
-        ax1.set_xlim(0, 1.05)
-        ax1.set_ylim(0, 1.05)
+            # Add correlation and R²
+            corr = plot_df[ref_col].corr(plot_df[qry_col])
+            r_squared = corr ** 2
+            ax1.text(0.05, 0.95, f'r = {corr:.3f}\nR² = {r_squared:.3f}', transform=ax1.transAxes,
+                    fontsize=10, va='top')
 
-        # Add correlation and R²
-        corr = plot_df[ref_col].corr(plot_df[qry_col])
-        r_squared = corr ** 2
-        ax1.text(0.05, 0.95, f'r = {corr:.3f}\nR² = {r_squared:.3f}', transform=ax1.transAxes,
-                fontsize=10, va='top')
+            # ===== Plot 2: Distribution comparison =====
+            ax2 = axes[1]
+            ax2.hist(plot_df[ref_col], bins=30, alpha=0.5, label='New (NCBI)',
+                    color='steelblue', density=True)
+            ax2.hist(plot_df[qry_col], bins=30, alpha=0.5, label='Old (FungiDB)',
+                    color='coral', density=True)
+            ax2.axvline(x=0.5, color='red', linestyle='--', alpha=0.5, label='Threshold (0.5)')
+            ax2.set_xlabel('Psauron Score')
+            ax2.set_ylabel('Density')
+            ax2.set_title('Psauron Score Distribution')
+            ax2.legend()
 
-        # ===== Plot 2: Distribution comparison =====
-        ax2 = axes[1]
-        ax2.hist(plot_df[ref_col], bins=30, alpha=0.5, label='New (NCBI)',
-                color='steelblue', density=True)
-        ax2.hist(plot_df[qry_col], bins=30, alpha=0.5, label='Old (FungiDB)',
-                color='coral', density=True)
-        ax2.axvline(x=0.5, color='red', linestyle='--', alpha=0.5, label='Threshold (0.5)')
-        ax2.set_xlabel('Psauron Score')
-        ax2.set_ylabel('Density')
-        ax2.set_title('Psauron Score Distribution')
-        ax2.legend()
+            # ===== Plot 3: Box plot by mapping type =====
+            ax3 = axes[2]
 
-        # ===== Plot 3: Box plot by mapping type =====
-        ax3 = axes[2]
+            # Prepare data for box plot
+            mapping_types = ['1to1', '1to2N', '1to2N+', 'Nto1', 'complex']
+            mapping_types_present = [m for m in mapping_types if m in plot_df['mapping_type'].values]
 
-        # Prepare data for box plot
-        mapping_types = ['1to1', '1to2N', '1to2N+', 'Nto1', 'complex']
-        mapping_types_present = [m for m in mapping_types if m in plot_df['mapping_type'].values]
+            ref_data = [plot_df[plot_df['mapping_type'] == m][ref_col].values
+                       for m in mapping_types_present]
+            qry_data = [plot_df[plot_df['mapping_type'] == m][qry_col].values
+                       for m in mapping_types_present]
 
-        ref_data = [plot_df[plot_df['mapping_type'] == m][ref_col].values
-                   for m in mapping_types_present]
-        qry_data = [plot_df[plot_df['mapping_type'] == m][qry_col].values
-                   for m in mapping_types_present]
+            # Position for grouped boxes
+            positions_ref = np.arange(len(mapping_types_present)) * 2
+            positions_qry = positions_ref + 0.6
 
-        # Position for grouped boxes
-        positions_ref = np.arange(len(mapping_types_present)) * 2
-        positions_qry = positions_ref + 0.6
+            bp_ref = ax3.boxplot(ref_data, positions=positions_ref, widths=0.5,
+                                 patch_artist=True)
+            bp_qry = ax3.boxplot(qry_data, positions=positions_qry, widths=0.5,
+                                 patch_artist=True)
 
-        bp_ref = ax3.boxplot(ref_data, positions=positions_ref, widths=0.5,
-                             patch_artist=True)
-        bp_qry = ax3.boxplot(qry_data, positions=positions_qry, widths=0.5,
-                             patch_artist=True)
+            # Color the boxes
+            for box in bp_ref['boxes']:
+                box.set_facecolor('steelblue')
+                box.set_alpha(0.7)
+            for box in bp_qry['boxes']:
+                box.set_facecolor('coral')
+                box.set_alpha(0.7)
 
-        # Color the boxes
-        for box in bp_ref['boxes']:
-            box.set_facecolor('steelblue')
-            box.set_alpha(0.7)
-        for box in bp_qry['boxes']:
-            box.set_facecolor('coral')
-            box.set_alpha(0.7)
+            ax3.set_xticks(positions_ref + 0.3)
+            ax3.set_xticklabels([mapping_type_to_colon(m) for m in mapping_types_present])
+            ax3.set_xlabel('Mapping Type')
+            ax3.set_ylabel('Psauron Score')
+            ax3.set_title('Psauron Score by Mapping Type')
 
-        ax3.set_xticks(positions_ref + 0.3)
-        ax3.set_xticklabels([mapping_type_to_colon(m) for m in mapping_types_present])
-        ax3.set_xlabel('Mapping Type')
-        ax3.set_ylabel('Psauron Score')
-        ax3.set_title('Psauron Score by Mapping Type')
+            # Add legend
+            from matplotlib.patches import Patch
+            legend_elements = [Patch(facecolor='steelblue', alpha=0.7, label='New (NCBI)'),
+                             Patch(facecolor='coral', alpha=0.7, label='Old (FungiDB)')]
+            ax3.legend(handles=legend_elements)
 
-        # Add legend
-        from matplotlib.patches import Patch
-        legend_elements = [Patch(facecolor='steelblue', alpha=0.7, label='New (NCBI)'),
-                         Patch(facecolor='coral', alpha=0.7, label='Old (FungiDB)')]
-        ax3.legend(handles=legend_elements)
+            plt.tight_layout()
 
-        plt.tight_layout()
+            output_path = self.output_dir / "psauron_comparison.png"
+            fig.savefig(output_path, dpi=self.config["figure_dpi"], bbox_inches='tight')
+            plt.close(fig)
 
-        output_path = self.output_dir / "psauron_comparison.png"
-        fig.savefig(output_path, dpi=self.config["figure_dpi"], bbox_inches='tight')
-        plt.close(fig)
+            # Print summary stats
+            print(f"  New (NCBI) mean: {plot_df[ref_col].mean():.3f} (std: {plot_df[ref_col].std():.3f})")
+            print(f"  Old (FungiDB) mean: {plot_df[qry_col].mean():.3f} (std: {plot_df[qry_col].std():.3f})")
+            print(f"  [DONE] Saved: {output_path}")
+        else:
+            print("  [INFO] No gene pairs with both psauron scores - skipping comparison plot")
 
-        # Print summary stats
-        print(f"  New (NCBI) mean: {plot_df[ref_col].mean():.3f} (std: {plot_df[ref_col].std():.3f})")
-        print(f"  Old (FungiDB) mean: {plot_df[qry_col].mean():.3f} (std: {plot_df[qry_col].std():.3f})")
-        print(f"  [DONE] Saved: {output_path}")
-
-        # ===== Psauron by Mapping Type & Class Type =====
-        # NOTE: These plots are now generated by the plot module (plot_oldvsnew_psauron_plddt.py)
-        # using the generate_quality_score_plots() function
-        print("  Note: psauron_by_mapping_type.png and psauron_by_class_type.png")
-        print("        are generated by the plot module (plot/plot_oldvsnew_psauron_plddt.py)")
+        # ===== Psauron by Mapping Type & Class Type (from plot module) =====
+        print("  Generating psauron_by_mapping_type.png and psauron_by_class_type.png...")
+        try:
+            import sys
+            sys.path.insert(0, str(Path(__file__).parent / ".." / "plot"))
+            from plot_oldvsnew_psauron_plddt import generate_quality_score_plots
+            gene_level_file = self.config.get("gene_level_enriched_file",
+                                              self.output_dir / "gene_level_with_psauron.tsv")
+            if Path(gene_level_file).exists():
+                generate_quality_score_plots(
+                    str(gene_level_file),
+                    self.output_dir,
+                    config=self.config
+                )
+            else:
+                print(f"  [WARN] Gene-level file not found: {gene_level_file}")
+        except Exception as e:
+            print(f"  [ERROR] Failed to generate quality score plots: {e}")
 
         # ===== Psauron by Mapping Type x Class Type =====
         if 'mapping_type' in df.columns and 'class_type_gene' in df.columns and len(plot_df) > 0:
@@ -1670,7 +1683,7 @@ class PipelineRunner:
                         plt.close(fig_comb)
                         print(f"  [DONE] Saved: {comb_path}")
 
-        return output_path
+        return None
 
     # =========================================================================
     # TASK 8: FungiDB Transcript Analysis
