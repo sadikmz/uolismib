@@ -1887,3 +1887,13 @@ new_faa_path = os.path.join(input_seq_dir, f"{new_basename}_processed.faa")
 - enriched data files (with_psauron.tsv) are required for full functionality
 - Goal: Make plotting code reusable and centrally located in main project
 - Next: Fix task_5 variant code and run task_6/7 for remaining figures
+
+
+
+### All figures in plot_out/refactored/
+
+- regenerate the entire figures in plot_out/
+- more into putting all the code into the pipeline and generate the entire figures generated so far that includes 
+  - plot_out/refined/plots/ 
+  - plot_out/
+  -  previouse plot_out/refactored/ 

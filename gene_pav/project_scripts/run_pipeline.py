@@ -1972,6 +1972,226 @@ class PipelineRunner:
 
         return task8_dir
 
+    def task_9_ipr_scatter_by_class(self):
+        """IPR scatter plot by class type."""
+        if self.gene_df is None:
+            print("  [SKIP] Gene-level data not available")
+            return None
+
+        df = self.gene_df.copy()
+        if len(df) == 0:
+            return None
+
+        output_path = self.output_dir / "ipr_scatter_by_class.png"
+        fig, ax = plt.subplots(figsize=(10, 6))
+
+        for class_type in df['class_type_gene'].unique():
+            subset = df[df['class_type_gene'] == class_type]
+            ax.scatter(subset['ref_total_ipr_domain_length'],
+                      subset['query_total_ipr_domain_length'],
+                      label=class_type, alpha=0.6)
+
+        ax.set_xlabel('New (NCBI) IPR Domain Length')
+        ax.set_ylabel('Old (FungiDB) IPR Domain Length')
+        ax.set_title('IPR Domain Length by Class Type')
+        ax.legend()
+        plt.savefig(output_path, dpi=self.config["figure_dpi"], bbox_inches='tight')
+        plt.close()
+
+        print(f"  [DONE] Saved: {output_path}")
+        return output_path
+
+    def task_10_ipr_loglog_by_mapping(self):
+        """Log-log plot by mapping type."""
+        if self.gene_df is None:
+            print("  [SKIP] Gene-level data not available")
+            return None
+
+        df = self.gene_df.copy()
+        if len(df) == 0:
+            return None
+
+        output_path = self.output_dir / "ipr_loglog_by_mapping.png"
+        fig, ax = plt.subplots(figsize=(10, 6))
+
+        for mapping in df['mapping_type'].unique():
+            subset = df[df['mapping_type'] == mapping]
+            ax.scatter(subset['ref_total_ipr_domain_length'],
+                      subset['query_total_ipr_domain_length'],
+                      label=mapping, alpha=0.6)
+
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_xlabel('New (NCBI) IPR Domain Length (log)')
+        ax.set_ylabel('Old (FungiDB) IPR Domain Length (log)')
+        ax.set_title('IPR Domain Length by Mapping Type (Log-Log)')
+        ax.legend()
+        plt.savefig(output_path, dpi=self.config["figure_dpi"], bbox_inches='tight')
+        plt.close()
+
+        print(f"  [DONE] Saved: {output_path}")
+        return output_path
+
+    def task_11_ipr_quadrant_analysis(self):
+        """Quadrant analysis plot."""
+        if self.gene_df is None:
+            print("  [SKIP] Gene-level data not available")
+            return None
+
+        df = self.gene_df.copy()
+        if len(df) == 0:
+            return None
+
+        output_path = self.output_dir / "ipr_quadrant_analysis.png"
+        fig, ax = plt.subplots(figsize=(10, 6))
+
+        median_ref = df['ref_total_ipr_domain_length'].median()
+        median_qry = df['query_total_ipr_domain_length'].median()
+
+        ax.axhline(y=median_qry, color='gray', linestyle='--', alpha=0.5)
+        ax.axvline(x=median_ref, color='gray', linestyle='--', alpha=0.5)
+
+        ax.scatter(df['ref_total_ipr_domain_length'],
+                  df['query_total_ipr_domain_length'],
+                  alpha=0.6)
+
+        ax.set_xlabel('New (NCBI) IPR Domain Length')
+        ax.set_ylabel('Old (FungiDB) IPR Domain Length')
+        ax.set_title('IPR Domain Length Quadrant Analysis')
+        plt.savefig(output_path, dpi=self.config["figure_dpi"], bbox_inches='tight')
+        plt.close()
+
+        print(f"  [DONE] Saved: {output_path}")
+        return output_path
+
+    def task_12_class_code_distribution(self):
+        """Class code distribution plot."""
+        if self.gene_df is None:
+            print("  [SKIP] Gene-level data not available")
+            return None
+
+        df = self.gene_df.copy()
+        if len(df) == 0:
+            return None
+
+        output_path = self.output_dir / "class_code_distribution.png"
+        fig, ax = plt.subplots(figsize=(10, 6))
+
+        class_counts = df['class_type_gene'].value_counts()
+        class_counts.plot(kind='bar', ax=ax)
+
+        ax.set_xlabel('Class Type')
+        ax.set_ylabel('Count')
+        ax.set_title('Gene Pair Class Code Distribution')
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=self.config["figure_dpi"], bbox_inches='tight')
+        plt.close()
+
+        print(f"  [DONE] Saved: {output_path}")
+        return output_path
+
+    def task_13_scenario_detailed(self):
+        """Detailed scenario analysis."""
+        if self.gene_df is None:
+            print("  [SKIP] Gene-level data not available")
+            return None
+
+        df = self.gene_df.copy()
+        if len(df) == 0:
+            return None
+
+        output_path = self.output_dir / "scenario_detailed.png"
+        fig, ax = plt.subplots(figsize=(12, 6))
+
+        scenario_counts = df.groupby(['scenario', 'mapping_type']).size().unstack(fill_value=0)
+        scenario_counts.plot(kind='bar', ax=ax)
+
+        ax.set_xlabel('Scenario')
+        ax.set_ylabel('Count')
+        ax.set_title('Mapping Scenarios by Type (Detailed)')
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=self.config["figure_dpi"], bbox_inches='tight')
+        plt.close()
+
+        print(f"  [DONE] Saved: {output_path}")
+        return output_path
+
+    def task_14_1to1_ipr_plots(self):
+        """1:1 ortholog IPR plots."""
+        if self.gene_df is None:
+            print("  [SKIP] Gene-level data not available")
+            return None
+
+        df = self.gene_df.copy()
+        df_1to1 = df[df['mapping_type'] == '1to1']
+
+        if len(df_1to1) == 0:
+            return None
+
+        # Plot 1: By class type
+        output_path1 = self.output_dir / "ipr_1to1_by_class_type.png"
+        fig, ax = plt.subplots(figsize=(10, 6))
+        for class_type in df_1to1['class_type_gene'].unique():
+            subset = df_1to1[df_1to1['class_type_gene'] == class_type]
+            ax.scatter(subset['ref_total_ipr_domain_length'],
+                      subset['query_total_ipr_domain_length'],
+                      label=class_type, alpha=0.6)
+        ax.set_xlabel('New (NCBI) IPR Domain Length')
+        ax.set_ylabel('Old (FungiDB) IPR Domain Length')
+        ax.set_title('1:1 Ortholog IPR Domain Length by Class Type')
+        ax.legend()
+        plt.savefig(output_path1, dpi=self.config["figure_dpi"], bbox_inches='tight')
+        plt.close()
+        print(f"  [DONE] Saved: {output_path1}")
+
+        # Plot 2: No class (log scale)
+        output_path2 = self.output_dir / "ipr_1to1_no_class_log.png"
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.scatter(df_1to1['ref_total_ipr_domain_length'],
+                  df_1to1['query_total_ipr_domain_length'],
+                  alpha=0.6)
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_xlabel('New (NCBI) IPR Domain Length (log)')
+        ax.set_ylabel('Old (FungiDB) IPR Domain Length (log)')
+        ax.set_title('1:1 Ortholog IPR Domain Length (Log-Log)')
+        plt.savefig(output_path2, dpi=self.config["figure_dpi"], bbox_inches='tight')
+        plt.close()
+        print(f"  [DONE] Saved: {output_path2}")
+
+        # Plot 3: By class type (log scale)
+        output_path3 = self.output_dir / "ipr_1to1_by_class_type_log.png"
+        fig, ax = plt.subplots(figsize=(10, 6))
+        for class_type in df_1to1['class_type_gene'].unique():
+            subset = df_1to1[df_1to1['class_type_gene'] == class_type]
+            ax.scatter(subset['ref_total_ipr_domain_length'],
+                      subset['query_total_ipr_domain_length'],
+                      label=class_type, alpha=0.6)
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_xlabel('New (NCBI) IPR Domain Length (log)')
+        ax.set_ylabel('Old (FungiDB) IPR Domain Length (log)')
+        ax.set_title('1:1 Ortholog IPR Domain Length by Class Type (Log-Log)')
+        ax.legend()
+        plt.savefig(output_path3, dpi=self.config["figure_dpi"], bbox_inches='tight')
+        plt.close()
+        print(f"  [DONE] Saved: {output_path3}")
+
+        # Plot 4: No class
+        output_path4 = self.output_dir / "ipr_1to1_no_class.png"
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.scatter(df_1to1['ref_total_ipr_domain_length'],
+                  df_1to1['query_total_ipr_domain_length'],
+                  alpha=0.6)
+        ax.set_xlabel('New (NCBI) IPR Domain Length')
+        ax.set_ylabel('Old (FungiDB) IPR Domain Length')
+        ax.set_title('1:1 Ortholog IPR Domain Length')
+        plt.savefig(output_path4, dpi=self.config["figure_dpi"], bbox_inches='tight')
+        plt.close()
+        print(f"  [DONE] Saved: {output_path4}")
+
+        return output_path1
+
     # =========================================================================
     # RUN ALL TASKS
     # =========================================================================
@@ -1996,6 +2216,14 @@ class PipelineRunner:
         results['task_6'] = self.task_6_psauron_integration()
         results['task_7'] = self.task_7_psauron_plots()
         results['task_8'] = self.task_8_fungidb_analysis()
+
+        # Additional plots from plot_out/ (Tasks 9+)
+        results['task_9_ipr_scatter'] = self.task_9_ipr_scatter_by_class()
+        results['task_10_ipr_loglog'] = self.task_10_ipr_loglog_by_mapping()
+        results['task_11_ipr_quadrant'] = self.task_11_ipr_quadrant_analysis()
+        results['task_12_class_dist'] = self.task_12_class_code_distribution()
+        results['task_13_scenario_detailed'] = self.task_13_scenario_detailed()
+        results['task_14_1to1_plots'] = self.task_14_1to1_ipr_plots()
 
         # Summary
         print("\n" + "="*60)
