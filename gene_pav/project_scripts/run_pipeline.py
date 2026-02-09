@@ -2289,6 +2289,37 @@ class PipelineRunner:
         print(f"  [DONE] Saved: {output_path}")
         return output_path
 
+    def task_17_scenario_distribution(self):
+        """Scenario distribution bar chart."""
+        if self.gene_df is None:
+            print("  [SKIP] Gene-level data not available")
+            return None
+
+        df = self.gene_df.copy()
+        if len(df) == 0:
+            return None
+
+        if 'scenario' not in df.columns:
+            print("  [SKIP] 'scenario' column not found")
+            return None
+
+        output_path = self.output_dir / "scenario_distribution.png"
+        fig, ax = plt.subplots(figsize=(10, 6))
+
+        scenario_counts = df['scenario'].value_counts().sort_values(ascending=False)
+        scenario_counts.plot(kind='bar', ax=ax, color='steelblue')
+
+        ax.set_xlabel('Scenario')
+        ax.set_ylabel('Count')
+        ax.set_title('Gene Pair Scenario Distribution')
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=45, ha='right')
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=self.config["figure_dpi"], bbox_inches='tight')
+        plt.close()
+
+        print(f"  [DONE] Saved: {output_path}")
+        return output_path
+
     # =========================================================================
     # RUN ALL TASKS
     # =========================================================================
@@ -2323,6 +2354,7 @@ class PipelineRunner:
         results['task_14_1to1_plots'] = self.task_14_1to1_ipr_plots()
         results['task_15_psauron_dist'] = self.task_15_psauron_dist_by_mapping_and_class()
         results['task_16_psauron_scatter'] = self.task_16_psauron_scatter()
+        results['task_17_scenario_dist'] = self.task_17_scenario_distribution()
 
         # Summary
         print("\n" + "="*60)
