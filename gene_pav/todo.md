@@ -4079,3 +4079,32 @@ Future-proof: Yes (extensible architecture)
 - Status: Ready for immediate use
 
 Optional enhancements (class code documentation) can be added in Phase 6 if needed.
+
+---
+
+### P.17.6 ADDITIONAL REFINEMENT: Exact Match Code Consolidation (2026-02-09)
+
+**Issue Identified:** GFFcompare class codes 'em', 'a', and '=' all represent exact matches but were shown as separate categories in plots, creating redundancy.
+
+**Solution Implemented:** Code normalization in `gene_pav/plot/scenarios.py`
+- Map 'em' (exact match cDNA/EST) → '='
+- Map 'a' (exact match same exon) → '='
+- Keep '=' (exact match reference/query) as unified symbol
+
+**Files Modified:**
+- gene_pav/plot/scenarios.py: Added normalization logic in _plot_class_code_distribution()
+
+**Commit:** baed667 - "Fix: Consolidate exact match codes to single '=' in plots"
+
+**Result:** class_code_distribution.png now displays consolidated exact matches as single '=' bar, with legend note "= : Exact match (a/em/= consolidated)" for clarity.
+
+**All Plots Status:** ✅ 14/14 successfully regenerated with consolidation applied
+- Generated: 2026-02-09 12:32-12:42
+- Data: Psauron-enriched (17,000 gene pairs)
+- Quality: All refinements + code consolidation verified
+
+**Additional Legend Refinement (2026-02-09 12:42):**
+- Updated class_code_distribution.png legend to show individual class codes
+- Removed grouped "consolidated" note
+- Clean shorthand format for each code definition
+- Commit: 404d56e - "Refine: Show individual class codes in legend instead of grouping"
