@@ -156,7 +156,7 @@ def plot_ipr_comparison(df: pd.DataFrame, output_path: Path, title: str,
             "  novel (n/k): Novel isoform/not in ref"
         )
         ax.text(0.98, 0.05, class_code_info, transform=ax.transAxes,
-                fontsize=8, verticalalignment='bottom', horizontalalignment='right',
+                fontsize=8, verticalalignment='bottom', horizontalalignment='left',
                 bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.7))
 
     plt.tight_layout()
