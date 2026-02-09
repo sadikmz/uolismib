@@ -1403,29 +1403,28 @@ class PipelineRunner:
         else:
             print("  [INFO] No gene pairs with both psauron scores - skipping comparison plot")
 
-        # ===== Psauron by Mapping Type =====
+        # ===== Psauron by Mapping Type (independent plot) =====
         if 'mapping_type' in df.columns:
-            fig_mt, axes_mt = plt.subplots(1, 2, figsize=(14, 5))
+            fig_mt, ax_mt = plt.subplots(figsize=(10, 6))
             mapping_types = ['1to1', '1to2N', '1to2N+', 'Nto1', 'complex']
             mapping_colors = {
                 '1to1': '#1f77b4', '1to2N': '#ff7f0e', '1to2N+': '#2ca02c',
                 'Nto1': '#d62728', 'complex': '#9467bd'
             }
 
-            for ax, col, title in [(axes_mt[0], ref_col, 'New (NCBI)'),
-                                    (axes_mt[1], qry_col, 'Old (FungiDB)')]:
-                data_by_type = df.groupby('mapping_type')[col].apply(list)
-                for mtype in mapping_types:
-                    if mtype in data_by_type.index:
-                        data = pd.Series(data_by_type[mtype]).dropna()
-                        if len(data) > 0:
-                            ax.hist(data, bins=30, alpha=0.5, density=True,
-                                   label=f'{mapping_type_to_colon(mtype)} (n={len(data)})',
-                                   color=mapping_colors.get(mtype, 'gray'))
-                ax.set_xlabel('Psauron Score')
-                ax.set_ylabel('Density')
-                ax.set_title(f'{title} - Psauron by Mapping Type')
-                ax.legend(fontsize=8)
+            data_by_type = df.groupby('mapping_type')[qry_col].apply(list)
+            for mtype in mapping_types:
+                if mtype in data_by_type.index:
+                    data = pd.Series(data_by_type[mtype]).dropna()
+                    if len(data) > 0:
+                        ax_mt.hist(data, bins=30, alpha=0.6, density=True,
+                                  label=f'{mapping_type_to_colon(mtype)} (n={len(data)})',
+                                  color=mapping_colors.get(mtype, 'gray'))
+
+            ax_mt.set_xlabel('Psauron Score')
+            ax_mt.set_ylabel('Density')
+            ax_mt.set_title('Psauron Score by Mapping Type')
+            ax_mt.legend(fontsize=9)
 
             plt.tight_layout()
             mt_path = self.output_dir / "psauron_by_mapping_type.png"
@@ -1433,26 +1432,25 @@ class PipelineRunner:
             plt.close(fig_mt)
             print(f"  [DONE] Saved: {mt_path}")
 
-        # ===== Psauron by Class Type =====
+        # ===== Psauron by Class Type (independent plot) =====
         if 'class_type_gene' in df.columns:
-            fig_ct, axes_ct = plt.subplots(1, 2, figsize=(14, 5))
-            top_classes = df['class_type_gene'].value_counts().head(8).index.tolist()
+            fig_ct, ax_ct = plt.subplots(figsize=(10, 6))
+            top_classes = df['class_type_gene'].value_counts().head(10).index.tolist()
             class_colors = plt.cm.tab10(np.linspace(0, 1, len(top_classes)))
 
-            for ax, col, title in [(axes_ct[0], ref_col, 'New (NCBI)'),
-                                    (axes_ct[1], qry_col, 'Old (FungiDB)')]:
-                data_by_class = df.groupby('class_type_gene')[col].apply(list)
-                for i, ctype in enumerate(top_classes):
-                    if ctype in data_by_class.index:
-                        data = pd.Series(data_by_class[ctype]).dropna()
-                        if len(data) > 0:
-                            ax.hist(data, bins=25, alpha=0.5, density=True,
-                                   label=f'{ctype} (n={len(data)})',
-                                   color=class_colors[i % len(class_colors)])
-                ax.set_xlabel('Psauron Score')
-                ax.set_ylabel('Density')
-                ax.set_title(f'{title} - Psauron by Class Type')
-                ax.legend(fontsize=7, loc='upper right')
+            data_by_class = df.groupby('class_type_gene')[qry_col].apply(list)
+            for i, ctype in enumerate(top_classes):
+                if ctype in data_by_class.index:
+                    data = pd.Series(data_by_class[ctype]).dropna()
+                    if len(data) > 0:
+                        ax_ct.hist(data, bins=25, alpha=0.6, density=True,
+                                  label=f'{ctype} (n={len(data)})',
+                                  color=class_colors[i % len(class_colors)])
+
+            ax_ct.set_xlabel('Psauron Score')
+            ax_ct.set_ylabel('Density')
+            ax_ct.set_title('Psauron Score by Class Type')
+            ax_ct.legend(fontsize=8, loc='upper right')
 
             plt.tight_layout()
             ct_path = self.output_dir / "psauron_by_class_type.png"
