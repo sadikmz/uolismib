@@ -230,9 +230,9 @@ def _plot_class_code_distribution(df: pd.DataFrame, plots_dir: Path) -> List[str
         definition = code_definitions.get(code, 'Unknown')
         legend_text += f"  {code}: {definition}\n"
 
-    ax.text(0.98, 0.97, legend_text, transform=ax.transAxes,
-            fontsize=8, verticalalignment='top', horizontalalignment='right',
-            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8),
+    ax.text(0.65, 0.97, legend_text, transform=ax.transAxes,
+            fontsize=8, verticalalignment='top', horizontalalignment='left',
+            bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8, pad=0.5),
             family='monospace')
 
     plt.tight_layout()
