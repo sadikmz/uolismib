@@ -163,13 +163,19 @@ def _plot_class_code_distribution(df: pd.DataFrame, plots_dir: Path) -> List[str
     if not all_codes:
         return []
 
-    code_counts = pd.Series(all_codes).value_counts()
+    # Normalize exact match codes: 'em', 'a', and '=' all map to '='
+    normalized_codes = []
+    for code in all_codes:
+        if code in ['em', 'a', '=']:
+            normalized_codes.append('=')
+        else:
+            normalized_codes.append(code)
+
+    code_counts = pd.Series(normalized_codes).value_counts()
 
     # GFFcompare class code definitions
     code_definitions = {
-        'a': 'Exact match (same exon structure)',
         '=': 'Exact match (reference/query exon)',
-        'em': 'Exact match (cDNA/EST match)',
         'e': 'Single exon transcript match',
         'j': 'Junction overlap (partial)',
         'o': 'Other/overlap',
@@ -210,11 +216,13 @@ def _plot_class_code_distribution(df: pd.DataFrame, plots_dir: Path) -> List[str
     ax.set_title('GFFcompare Class Code Distribution', fontsize=14, fontweight='bold')
     plt.xticks(rotation=45, ha='right')
 
-    # Add legend box with code definitions
+    # Add legend box with code definitions (only show present codes)
     legend_text = "GFFcompare Codes:\n"
+    legend_text += "  = : Exact match (a/em/= consolidated)\n"
     for code in sorted(code_counts.index):
-        definition = code_definitions.get(code, 'Unknown')
-        legend_text += f"  {code}: {definition}\n"
+        if code != '=':  # Already added above
+            definition = code_definitions.get(code, 'Unknown')
+            legend_text += f"  {code}: {definition}\n"
 
     ax.text(0.98, 0.97, legend_text, transform=ax.transAxes,
             fontsize=8, verticalalignment='top', horizontalalignment='right',
