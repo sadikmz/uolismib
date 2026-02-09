@@ -218,11 +218,9 @@ def _plot_class_code_distribution(df: pd.DataFrame, plots_dir: Path) -> List[str
 
     # Add legend box with code definitions (only show present codes)
     legend_text = "GFFcompare Codes:\n"
-    legend_text += "  = : Exact match (a/em/= consolidated)\n"
     for code in sorted(code_counts.index):
-        if code != '=':  # Already added above
-            definition = code_definitions.get(code, 'Unknown')
-            legend_text += f"  {code}: {definition}\n"
+        definition = code_definitions.get(code, 'Unknown')
+        legend_text += f"  {code}: {definition}\n"
 
     ax.text(0.98, 0.97, legend_text, transform=ax.transAxes,
             fontsize=8, verticalalignment='top', horizontalalignment='right',
