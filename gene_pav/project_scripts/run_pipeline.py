@@ -959,14 +959,16 @@ class PipelineRunner:
                     pavprot_df = pavprot_df.merge(gene_mapping, on=[ref_gene_col, qry_gene_col], how='left')
 
             # Merge ref pLDDT with PAVprot data
+            # ProteinX ref = new/NCBI annotation = ref_transcript in PAVprot
             ref_merged = ref_df[['transcript_id', 'residue_plddt_mean']].merge(
-                pavprot_df.rename(columns={qry_trans_col: 'transcript_id'}),
+                pavprot_df.rename(columns={ref_trans_col: 'transcript_id'}),
                 on='transcript_id', how='inner'
             )
 
             # Merge query pLDDT with PAVprot data
+            # ProteinX qry = old/FungiDB annotation = query_transcript in PAVprot
             qry_merged = qry_df[['transcript_id', 'residue_plddt_mean']].merge(
-                pavprot_df.rename(columns={ref_trans_col: 'transcript_id'}),
+                pavprot_df.rename(columns={qry_trans_col: 'transcript_id'}),
                 on='transcript_id', how='inner'
             )
 
@@ -981,6 +983,7 @@ class PipelineRunner:
 
             # ===== Plot: pLDDT by Mapping Type =====
             if 'mapping_type' in ref_merged.columns and len(ref_merged) > 0:
+                fig_mt, axes_mt = plt.subplots(1, 2, figsize=(14, 5))
 
                 # Reference by mapping type
                 ax_ref = axes_mt[0]
@@ -1294,7 +1297,10 @@ class PipelineRunner:
             return None
 
         # Filter to records with both scores
-        plot_df = df[[ref_col, qry_col, 'mapping_type']].dropna()
+        cols_to_select = [ref_col, qry_col, 'mapping_type']
+        if 'class_type_gene' in df.columns:
+            cols_to_select.append('class_type_gene')
+        plot_df = df[cols_to_select].dropna()
         print(f"  Plotting {len(plot_df)} gene pairs with both scores")
 
         if len(plot_df) == 0:
@@ -1383,6 +1389,101 @@ class PipelineRunner:
         print(f"  New (NCBI) mean: {plot_df[ref_col].mean():.3f} (std: {plot_df[ref_col].std():.3f})")
         print(f"  Old (FungiDB) mean: {plot_df[qry_col].mean():.3f} (std: {plot_df[qry_col].std():.3f})")
         print(f"  [DONE] Saved: {output_path}")
+
+        # ===== Psauron by Mapping Type =====
+        if 'mapping_type' in df.columns and len(plot_df) > 0:
+            fig_mt, axes_mt = plt.subplots(1, 2, figsize=(14, 5))
+            mapping_types = ['1to1', '1to2N', '1to2N+', 'Nto1', 'complex']
+            mapping_colors = {
+                '1to1': '#1f77b4', '1to2N': '#ff7f0e', '1to2N+': '#2ca02c',
+                'Nto1': '#d62728', 'complex': '#9467bd'
+            }
+
+            for ax, col, title in [(axes_mt[0], ref_col, 'New (NCBI)'),
+                                    (axes_mt[1], qry_col, 'Old (FungiDB)')]:
+                for mtype in mapping_types:
+                    data = plot_df[plot_df['mapping_type'] == mtype][col].dropna()
+                    if len(data) > 0:
+                        ax.hist(data, bins=30, alpha=0.5, density=True,
+                               label=f'{mapping_type_to_colon(mtype)} (n={len(data)})',
+                               color=mapping_colors.get(mtype, 'gray'))
+                ax.set_xlabel('Psauron Score')
+                ax.set_ylabel('Density')
+                ax.set_title(f'{title} - Psauron by Mapping Type')
+                ax.legend(fontsize=8)
+
+            plt.tight_layout()
+            mt_path = self.output_dir / "psauron_by_mapping_type.png"
+            fig_mt.savefig(mt_path, dpi=self.config["figure_dpi"], bbox_inches='tight')
+            plt.close(fig_mt)
+            print(f"  [DONE] Saved: {mt_path}")
+
+        # ===== Psauron by Class Type =====
+        if 'class_type_gene' in df.columns and len(plot_df) > 0:
+            fig_ct, axes_ct = plt.subplots(1, 2, figsize=(14, 5))
+            top_classes = plot_df['class_type_gene'].value_counts().head(8).index.tolist()
+            class_colors = plt.cm.tab10(np.linspace(0, 1, len(top_classes)))
+
+            for ax, col, title in [(axes_ct[0], ref_col, 'New (NCBI)'),
+                                    (axes_ct[1], qry_col, 'Old (FungiDB)')]:
+                for i, ctype in enumerate(top_classes):
+                    data = plot_df[plot_df['class_type_gene'] == ctype][col].dropna()
+                    if len(data) > 0:
+                        ax.hist(data, bins=25, alpha=0.5, density=True,
+                               label=f'{ctype} (n={len(data)})',
+                               color=class_colors[i % len(class_colors)])
+                ax.set_xlabel('Psauron Score')
+                ax.set_ylabel('Density')
+                ax.set_title(f'{title} - Psauron by Class Type')
+                ax.legend(fontsize=7, loc='upper right')
+
+            plt.tight_layout()
+            ct_path = self.output_dir / "psauron_by_class_type.png"
+            fig_ct.savefig(ct_path, dpi=self.config["figure_dpi"], bbox_inches='tight')
+            plt.close(fig_ct)
+            print(f"  [DONE] Saved: {ct_path}")
+
+        # ===== Psauron by Mapping Type x Class Type =====
+        if 'mapping_type' in df.columns and 'class_type_gene' in df.columns and len(plot_df) > 0:
+            mapping_types_present = plot_df['mapping_type'].unique()
+            top_classes = plot_df['class_type_gene'].value_counts().head(4).index.tolist()
+            class_colors = plt.cm.tab10(np.linspace(0, 1, len(top_classes)))
+
+            fig_comb, axes_comb = plt.subplots(len(mapping_types_present), 2,
+                                              figsize=(12, 3*len(mapping_types_present)))
+            if len(mapping_types_present) == 1:
+                axes_comb = axes_comb.reshape(1, -1)
+
+            for row_idx, (mtype, (ax_ref, ax_qry)) in enumerate(zip(
+                sorted(mapping_types_present),
+                zip(axes_comb[:, 0], axes_comb[:, 1]))):
+
+                mtype_data = plot_df[plot_df['mapping_type'] == mtype]
+                for i, ctype in enumerate(top_classes):
+                    subset_ref = mtype_data[mtype_data['class_type_gene'] == ctype][ref_col].dropna()
+                    subset_qry = mtype_data[mtype_data['class_type_gene'] == ctype][qry_col].dropna()
+
+                    if len(subset_ref) > 0:
+                        ax_ref.hist(subset_ref, bins=20, alpha=0.5,
+                                   label=f'{ctype} (n={len(subset_ref)})',
+                                   color=class_colors[i % len(class_colors)])
+                    if len(subset_qry) > 0:
+                        ax_qry.hist(subset_qry, bins=20, alpha=0.5,
+                                   label=f'{ctype} (n={len(subset_qry)})',
+                                   color=class_colors[i % len(class_colors)])
+
+                ax_ref.set_title(f'New (NCBI) - {mapping_type_to_colon(mtype)}')
+                ax_qry.set_title(f'Old (FungiDB) - {mapping_type_to_colon(mtype)}')
+                if row_idx == len(mapping_types_present) - 1:
+                    ax_ref.set_xlabel('Psauron Score')
+                    ax_qry.set_xlabel('Psauron Score')
+                ax_ref.legend(fontsize=6)
+
+            plt.tight_layout()
+            comb_path = self.output_dir / "psauron_by_mapping_and_class.png"
+            fig_comb.savefig(comb_path, dpi=self.config["figure_dpi"], bbox_inches='tight')
+            plt.close(fig_comb)
+            print(f"  [DONE] Saved: {comb_path}")
 
         # ===== Psauron vs pLDDT plots (Gene-to-Gene comparison) =====
         # Aggregate to gene level and compare gene pairs
