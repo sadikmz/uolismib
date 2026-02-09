@@ -218,9 +218,15 @@ def _plot_class_code_distribution(df: pd.DataFrame, plots_dir: Path) -> List[str
     ax.set_title('GFFcompare Class Code Distribution', fontsize=14, fontweight='bold')
     plt.xticks(rotation=45, ha='right')
 
-    # Add legend box with code definitions (only show present codes)
+    # Add legend box with code definitions (only show individual codes present in data)
+    # Extract individual component codes from compound codes
+    individual_codes = set()
+    for code in code_counts.index:
+        # Split compound codes (e.g., "=,j,m" -> ["=", "j", "m"])
+        individual_codes.update(code.split(','))
+
     legend_text = "GFFcompare Codes:\n"
-    for code in sorted(code_counts.index):
+    for code in sorted(individual_codes):
         definition = code_definitions.get(code, 'Unknown')
         legend_text += f"  {code}: {definition}\n"
 
