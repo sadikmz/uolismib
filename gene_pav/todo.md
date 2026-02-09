@@ -1747,7 +1747,7 @@ new_faa_path = os.path.join(input_seq_dir, f"{new_basename}_processed.faa")
 
 ### TASK: Make plotting code generic and output to main project
 
-**Status:** PARTIALLY COMPLETE (10/22 figures generated)
+**Status:** ✅ COMPLETE (16/16 figures generated with ProteinX and Psauron integration)
 
 **Objective:**
 - Refactor plotting code to work with `pavprot_out_20260204_171713/` (latest dataset)

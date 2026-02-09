@@ -1013,6 +1013,12 @@ def create_argument_parser() -> argparse.ArgumentParser:
     parser.add_argument('--interproscan-pathways', action='store_true', help='Include pathway annotations in InterProScan')
     parser.add_argument('--interproscan-databases', help='Databases to search (comma-separated, default: all)')
 
+    # ProteinX pLDDT scores options
+    parser.add_argument('--proteinx-out', help="ProteinX pLDDT TSV file(s). Single file or comma-separated 'old_proteinx.tsv,new_proteinx.tsv'. Order must match --gff. Format: gene_name, residue_plddt_mean, ...")
+
+    # Psauron scores options
+    parser.add_argument('--psauron-out', help="Psauron CSV file(s). Single file or comma-separated 'old_psauron.csv,new_psauron.csv'. Order must match --gff. Format: gene_name, psauron_score_mean, psauron_is_protein, ...")
+
     # Output filtering options
     parser.add_argument('--filter-exact-match', action='store_true', help='Only output gene pairs with exact_match=1 (all transcripts are em)')
     parser.add_argument('--filter-exclusive-1to1', action='store_true', help='Only output exclusive 1:1 mappings (old_multi_new=0 AND new_multi_old=0)')
@@ -1084,6 +1090,46 @@ def validate_inputs(args, parser: argparse.ArgumentParser) -> Tuple[List[str], L
         interproscan_files = _run_interproscan_pipeline(args, parser, gff_list, num_gffs)
     elif args.interproscan_out:
         interproscan_files = _validate_interproscan_files(args, parser, num_gffs)
+
+    # Handle ProteinX files (optional)
+    args.proteinx_old = None
+    args.proteinx_new = None
+    if args.proteinx_out:
+        proteinx_files = [f.strip() for f in args.proteinx_out.split(',')]
+        if len(proteinx_files) > 2:
+            print(f"Warning: --proteinx-out accepts at most 2 files (old,new). Got {len(proteinx_files)}, using first 2.", file=sys.stderr)
+
+        if len(proteinx_files) >= 1:
+            if os.path.exists(proteinx_files[0]):
+                args.proteinx_old = proteinx_files[0]
+            else:
+                print(f"Warning: ProteinX old file not found: {proteinx_files[0]}. Task_5 will use available data only.", file=sys.stderr)
+
+        if len(proteinx_files) >= 2:
+            if os.path.exists(proteinx_files[1]):
+                args.proteinx_new = proteinx_files[1]
+            else:
+                print(f"Warning: ProteinX new file not found: {proteinx_files[1]}. Task_5 will use available data only.", file=sys.stderr)
+
+    # Handle Psauron files (optional)
+    args.psauron_old = None
+    args.psauron_new = None
+    if args.psauron_out:
+        psauron_files = [f.strip() for f in args.psauron_out.split(',')]
+        if len(psauron_files) > 2:
+            print(f"Warning: --psauron-out accepts at most 2 files (old,new). Got {len(psauron_files)}, using first 2.", file=sys.stderr)
+
+        if len(psauron_files) >= 1:
+            if os.path.exists(psauron_files[0]):
+                args.psauron_old = psauron_files[0]
+            else:
+                print(f"Warning: Psauron old file not found: {psauron_files[0]}. Task_6/7 will use available data only.", file=sys.stderr)
+
+        if len(psauron_files) >= 2:
+            if os.path.exists(psauron_files[1]):
+                args.psauron_new = psauron_files[1]
+            else:
+                print(f"Warning: Psauron new file not found: {psauron_files[1]}. Task_6/7 will use available data only.", file=sys.stderr)
 
     return gff_list, interproscan_files
 
@@ -2136,6 +2182,39 @@ def main():
         )
         if excel_file:
             print(f"  Excel export:     {excel_file}", file=sys.stderr)
+
+    # =========================================================================
+    # Step 9b: Copy ProteinX and Psauron files to output directory
+    # =========================================================================
+    if args.proteinx_old:
+        import shutil
+        proteinx_out_dir = os.path.join(pavprot_out, 'proteinx')
+        os.makedirs(proteinx_out_dir, exist_ok=True)
+
+        if args.proteinx_old and os.path.exists(args.proteinx_old):
+            dst_old = os.path.join(proteinx_out_dir, Path(args.proteinx_old).name)
+            shutil.copy2(args.proteinx_old, dst_old)
+            print(f"  Copied ProteinX old: {dst_old}", file=sys.stderr)
+
+        if args.proteinx_new and os.path.exists(args.proteinx_new):
+            dst_new = os.path.join(proteinx_out_dir, Path(args.proteinx_new).name)
+            shutil.copy2(args.proteinx_new, dst_new)
+            print(f"  Copied ProteinX new: {dst_new}", file=sys.stderr)
+
+    if args.psauron_old:
+        import shutil
+        psauron_out_dir = os.path.join(pavprot_out, 'psauron')
+        os.makedirs(psauron_out_dir, exist_ok=True)
+
+        if args.psauron_old and os.path.exists(args.psauron_old):
+            dst_old = os.path.join(psauron_out_dir, Path(args.psauron_old).name)
+            shutil.copy2(args.psauron_old, dst_old)
+            print(f"  Copied Psauron old: {dst_old}", file=sys.stderr)
+
+        if args.psauron_new and os.path.exists(args.psauron_new):
+            dst_new = os.path.join(psauron_out_dir, Path(args.psauron_new).name)
+            shutil.copy2(args.psauron_new, dst_new)
+            print(f"  Copied Psauron new: {dst_new}", file=sys.stderr)
 
     # =========================================================================
     # Step 10: Generate plots (if --plot is specified)

@@ -58,7 +58,7 @@ CONFIG = {
     "output_dir": Path(__file__).parent.parent / "plot_out" / "refactored",  # Output to refactored plots
 
     # Dataset input directory (can be overridden via constructor)
-    "dataset_dir": Path(__file__).parent.parent / "pavprot_out_20260204_171713",  # Default: use latest dataset
+    "dataset_dir": Path(__file__).parent.parent / "pavprot_out_20260209_152204",  # Updated to latest output
 
     # PAVprot output files (will auto-detect from dataset_dir)
     "transcript_level_tsv": None,  # Will auto-detect from dataset_dir

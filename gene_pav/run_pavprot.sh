@@ -27,7 +27,13 @@ python pavprot.py \
   --output-prefix FocTst \
   --output-dir pavprot_out_${TIMESTAMP} \
   --interproscan-out "$DATA_DIR/output/inteproscan/foc67_v68.prot.faa.tsv,$DATA_DIR/output/inteproscan/GCF_013085055.1.prot.faa.tsv" \
+  --proteinx-out "$DATA_DIR/output/proteinx/Foc47_013085055.1_proteinx.tsv,$DATA_DIR/output/proteinx/GCF_013085055.1_proteinx.tsv" \
+  --psauron-out "$DATA_DIR/output/psauron/qry_all.csv,$DATA_DIR/output/psauron/ref_all.csv" \
   --plot
+
+
+
+
   # --run-pairwise  # Disabled: requires XM->XP ID mapping (see todo.md)
   # --filter-exact-match \
   # --filter-exclusive-1to1 \
