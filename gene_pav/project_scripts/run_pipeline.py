@@ -2192,6 +2192,103 @@ class PipelineRunner:
 
         return output_path1
 
+    def task_15_psauron_dist_by_mapping_and_class(self):
+        """Psauron score distribution by mapping type and class."""
+        psauron_gene_file = self.output_dir / "gene_level_with_psauron.tsv"
+
+        if not psauron_gene_file.exists():
+            print("  [SKIP] Psauron gene-level file not found")
+            return None
+
+        df = pd.read_csv(psauron_gene_file, sep='\t')
+
+        # Use query column (old annotation psauron scores)
+        qry_col = 'qry_psauron_score_mean'
+
+        if qry_col not in df.columns:
+            print(f"  [SKIP] Column {qry_col} not found")
+            return None
+
+        # Filter to records with scores
+        plot_df = df[[qry_col, 'mapping_type', 'class_type_gene']].dropna()
+
+        if len(plot_df) == 0:
+            print("  [SKIP] No psauron scores available")
+            return None
+
+        # Create figure
+        output_path = self.output_dir / "psauron_distribution_by_mapping_and_class.png"
+        fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+
+        mapping_types = sorted(plot_df['mapping_type'].unique())
+        colors = plt.cm.Set3(np.linspace(0, 1, len(plot_df['class_type_gene'].unique())))
+
+        for idx, mapping in enumerate(mapping_types):
+            ax = axes[idx // 2, idx % 2]
+            subset = plot_df[plot_df['mapping_type'] == mapping]
+
+            for cidx, class_type in enumerate(sorted(subset['class_type_gene'].unique())):
+                class_subset = subset[subset['class_type_gene'] == class_type]
+                ax.hist(class_subset[qry_col], bins=20, alpha=0.6,
+                       label=class_type, color=colors[cidx])
+
+            ax.set_xlabel('Psauron Score')
+            ax.set_ylabel('Frequency')
+            ax.set_title(f'{mapping} - Psauron Score Distribution')
+            ax.legend(fontsize=8)
+            ax.set_xlim(0, 1)
+
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=self.config["figure_dpi"], bbox_inches='tight')
+        plt.close()
+
+        print(f"  [DONE] Saved: {output_path}")
+        return output_path
+
+    def task_16_psauron_scatter(self):
+        """Psauron scatter plot (old annotation scores)."""
+        psauron_gene_file = self.output_dir / "gene_level_with_psauron.tsv"
+
+        if not psauron_gene_file.exists():
+            print("  [SKIP] Psauron gene-level file not found")
+            return None
+
+        df = pd.read_csv(psauron_gene_file, sep='\t')
+
+        # Use query column (old annotation psauron scores)
+        qry_col = 'qry_psauron_score_mean'
+
+        if qry_col not in df.columns:
+            print(f"  [SKIP] Column {qry_col} not found")
+            return None
+
+        # Filter to records with scores
+        plot_df = df[[qry_col, 'mapping_type']].dropna()
+
+        if len(plot_df) == 0:
+            print("  [SKIP] No psauron scores available")
+            return None
+
+        # Create scatter plot
+        output_path = self.output_dir / "psauron_scatter.png"
+        fig, ax = plt.subplots(figsize=(10, 6))
+
+        for mapping in sorted(plot_df['mapping_type'].unique()):
+            subset = plot_df[plot_df['mapping_type'] == mapping]
+            ax.scatter(range(len(subset)), subset[qry_col], label=mapping, alpha=0.6)
+
+        ax.set_xlabel('Gene Pair Index')
+        ax.set_ylabel('Psauron Score')
+        ax.set_title('Psauron Scores by Gene Pair (Old Annotation)')
+        ax.set_ylim(0, 1)
+        ax.legend()
+        plt.tight_layout()
+        plt.savefig(output_path, dpi=self.config["figure_dpi"], bbox_inches='tight')
+        plt.close()
+
+        print(f"  [DONE] Saved: {output_path}")
+        return output_path
+
     # =========================================================================
     # RUN ALL TASKS
     # =========================================================================
@@ -2224,6 +2321,8 @@ class PipelineRunner:
         results['task_12_class_dist'] = self.task_12_class_code_distribution()
         results['task_13_scenario_detailed'] = self.task_13_scenario_detailed()
         results['task_14_1to1_plots'] = self.task_14_1to1_ipr_plots()
+        results['task_15_psauron_dist'] = self.task_15_psauron_dist_by_mapping_and_class()
+        results['task_16_psauron_scatter'] = self.task_16_psauron_scatter()
 
         # Summary
         print("\n" + "="*60)
