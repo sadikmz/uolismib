@@ -142,8 +142,8 @@ def plot_ipr_scatter_by_class(
             s=config['scatter_size']
         )
 
-    ax.set_xlabel('Old annotation total IPR domain length (aa)')
-    ax.set_ylabel('New annotation total IPR domain length (aa)')
+    ax.set_xlabel('New annotation (NCBI RefSeq) total IPR domain length (aa)', fontsize=12)
+    ax.set_ylabel('Old annotation (FungiDB v68) total IPR domain length (aa)', fontsize=12)
     ax.set_title('Gene Pair IPR Domain Length Comparison')
 
     # Add diagonal line
@@ -220,10 +220,10 @@ def plot_ipr_loglog_by_mapping(
 
     ax.set_xscale('log')
     ax.set_yscale('log')
-    ax.set_xlabel('Old annotation total IPR domain length (aa) [log]')
-    ax.set_ylabel('New annotation total IPR domain length (aa) [log]')
+    ax.set_xlabel('New annotation (NCBI RefSeq) total IPR domain length (aa) [log]', fontsize=12)
+    ax.set_ylabel('Old annotation (FungiDB v68) total IPR domain length (aa) [log]', fontsize=12)
     ax.set_title('Gene Pair IPR Domain Length (Log-Log Scale)')
-    ax.legend(title='Mapping Type', bbox_to_anchor=(1.02, 1), loc='upper left')
+    ax.legend(title='Mapping Type', bbox_to_anchor=(0.02, 0.98), loc='upper left')
 
     # Add diagonal line
     min_val = max(1, min(plot_df[x_col].min(), plot_df[y_col].min()))
@@ -324,10 +324,10 @@ def plot_quadrant_analysis(
     ax.axhline(y=threshold, color='gray', linestyle='--', alpha=0.5)
     ax.axvline(x=threshold, color='gray', linestyle='--', alpha=0.5)
 
-    ax.set_xlabel('Old annotation total IPR domain length (aa)')
-    ax.set_ylabel('New annotation total IPR domain length (aa)')
+    ax.set_xlabel('New annotation (NCBI RefSeq) total IPR domain length (aa)', fontsize=12)
+    ax.set_ylabel('Old annotation (FungiDB v68) total IPR domain length (aa)', fontsize=12)
     ax.set_title('IPR Domain Quadrant Analysis (Gain/Loss)')
-    ax.legend(title='Status', bbox_to_anchor=(1.02, 1), loc='upper left')
+    ax.legend(title='Status', bbox_to_anchor=(0.02, 0.98), loc='upper left')
 
     plt.tight_layout()
     fig.savefig(output_path, dpi=config['figure_dpi'], bbox_inches='tight')

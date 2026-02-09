@@ -188,7 +188,7 @@ def main():
             results['all_class'] = plot_ipr_comparison(
                 df_e_all,
                 OUTPUT_DIR / "ipr_1to1_all_by_class_type.png",
-                "1:1 Ortholog IPR Domain Comparison (All Data)",
+                "1:1 gene mapping IPR Domain Comparison (All Data)",
                 color_by_class=True
             )
 
@@ -198,7 +198,7 @@ def main():
             results['all_no_class'] = plot_ipr_comparison(
                 df_e_all,
                 OUTPUT_DIR / "ipr_1to1_all_no_class.png",
-                "1:1 Ortholog IPR Domain Comparison (All Data)",
+                "1:1 gene mapping IPR Domain Comparison (All Data)",
                 color_by_class=False
             )
 
@@ -208,7 +208,7 @@ def main():
             results['all_class_log'] = plot_ipr_comparison(
                 df_e_all,
                 OUTPUT_DIR / "ipr_1to1_all_by_class_type_log.png",
-                "1:1 Ortholog IPR Domain Comparison (All Data)",
+                "1:1 gene mapping IPR Domain Comparison (All Data)",
                 color_by_class=True,
                 log_scale=True
             )
@@ -218,7 +218,7 @@ def main():
             results['all_no_class_log'] = plot_ipr_comparison(
                 df_e_all,
                 OUTPUT_DIR / "ipr_1to1_all_no_class_log.png",
-                "1:1 Ortholog IPR Domain Comparison (All Data)",
+                "1:1 gene mapping IPR Domain Comparison (All Data)",
                 color_by_class=False,
                 log_scale=True
             )
@@ -243,7 +243,7 @@ def main():
             results['filtered_class'] = plot_ipr_comparison(
                 df_e_filtered,
                 OUTPUT_DIR / "ipr_1to1_emckmnje1_by_class_type.png",
-                "1:1 Ortholog IPR Domain Comparison (emckmnje=1 Filtered)",
+                "1:1 gene mapping IPR Domain Comparison (emckmnje=1 Filtered)",
                 color_by_class=True
             )
 
@@ -253,7 +253,7 @@ def main():
             results['filtered_no_class'] = plot_ipr_comparison(
                 df_e_filtered,
                 OUTPUT_DIR / "ipr_1to1_emckmnje1_no_class.png",
-                "1:1 Ortholog IPR Domain Comparison (emckmnje=1 Filtered)",
+                "1:1 gene mapping IPR Domain Comparison (emckmnje=1 Filtered)",
                 color_by_class=False
             )
 
@@ -263,7 +263,7 @@ def main():
             results['filtered_class_log'] = plot_ipr_comparison(
                 df_e_filtered,
                 OUTPUT_DIR / "ipr_1to1_emckmnje1_by_class_type_log.png",
-                "1:1 Ortholog IPR Domain Comparison (emckmnje=1 Filtered)",
+                "1:1 gene mapping IPR Domain Comparison (emckmnje=1 Filtered)",
                 color_by_class=True,
                 log_scale=True
             )
@@ -273,7 +273,7 @@ def main():
             results['filtered_no_class_log'] = plot_ipr_comparison(
                 df_e_filtered,
                 OUTPUT_DIR / "ipr_1to1_emckmnje1_no_class_log.png",
-                "1:1 Ortholog IPR Domain Comparison (emckmnje=1 Filtered)",
+                "1:1 gene mapping IPR Domain Comparison (emckmnje=1 Filtered)",
                 color_by_class=False,
                 log_scale=True
             )
@@ -342,7 +342,7 @@ def generate_1to1_plots(
         result = plot_ipr_comparison(
             df_e,
             output_dir / filename,
-            "1:1 Ortholog IPR Domain Comparison",
+            "1:1 gene mapping IPR Domain Comparison",
             color_by_class=color_by_class,
             log_scale=log_scale
         )

@@ -79,8 +79,8 @@ def generate_psauron_comparison_plot(
     width = 0.35
 
     ax1 = axes[0]
-    bars1 = ax1.bar(x - width/2, ref_pct, width, label='New (NCBI RefSeq)', color='steelblue')
-    bars2 = ax1.bar(x + width/2, qry_pct, width, label='Old (FungiDB v68)', color='coral')
+    bars1 = ax1.bar(x - width/2, ref_pct, width, label='New Annotation', color='steelblue')
+    bars2 = ax1.bar(x + width/2, qry_pct, width, label='Old Annotation', color='coral')
 
     ax1.set_xlabel('Psauron Quality Level')
     ax1.set_ylabel('Percentage of Genes (%)')
@@ -102,8 +102,8 @@ def generate_psauron_comparison_plot(
 
     # ===== Plot 2: Histogram overlay =====
     ax2 = axes[1]
-    ax2.hist(ref_psauron, bins=50, alpha=0.5, label=f'New (NCBI) (n={len(ref_psauron):,})', color='steelblue', density=True)
-    ax2.hist(qry_psauron, bins=50, alpha=0.5, label=f'Old (FungiDB) (n={len(qry_psauron):,})', color='coral', density=True)
+    ax2.hist(ref_psauron, bins=50, alpha=0.5, label=f'New Annotation (n={len(ref_psauron):,})', color='steelblue', density=True)
+    ax2.hist(qry_psauron, bins=50, alpha=0.5, label=f'Old Annotation (n={len(qry_psauron):,})', color='coral', density=True)
 
     # Add threshold lines
     ax2.axvline(x=0.5, color='red', linestyle='--', alpha=0.5, label='Low quality threshold')

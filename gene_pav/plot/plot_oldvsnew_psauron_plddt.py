@@ -114,8 +114,8 @@ def main():
     ax1 = axes[0]
     ax1.scatter(valid_pairs[ref_col], valid_pairs[qry_col],
                alpha=0.3, s=15, c='#1f77b4')  # blue
-    ax1.set_xlabel('New annotation (NCBI RefSeq) Psauron Score')
-    ax1.set_ylabel('Old annotation (FungiDB v68) Psauron Score')
+    ax1.set_xlabel('New Annotation Psauron Score')
+    ax1.set_ylabel('Old Annotation Psauron Score')
     ax1.set_title(f'Psauron Score: New vs Old (n={len(valid_pairs)} gene pairs)')
     ax1.set_xlim(0, 1.05)
     ax1.set_ylim(0, 1.05)
@@ -128,8 +128,8 @@ def main():
     ax2 = axes[1]
     ax2.scatter(valid_pairs['ref_plddt_mean'], valid_pairs['qry_plddt_mean'],
                alpha=0.3, s=15, c='#ff7f0e')  # orange
-    ax2.set_xlabel('New annotation (NCBI RefSeq) pLDDT Score')
-    ax2.set_ylabel('Old annotation (FungiDB v68) pLDDT Score')
+    ax2.set_xlabel('New Annotation pLDDT Score')
+    ax2.set_ylabel('Old Annotation pLDDT Score')
     ax2.set_title(f'pLDDT Score: New vs Old (n={len(valid_pairs)} gene pairs)')
     # Add diagonal reference line
     plddt_min = min(valid_pairs['ref_plddt_mean'].min(), valid_pairs['qry_plddt_mean'].min()) - 5
@@ -186,9 +186,9 @@ def main():
     ax1.plot([0, 1], [0, 1], 'k--', alpha=0.3)
     # Add overall regression line
     add_regression_line(ax1, valid_pairs[ref_col].values, valid_pairs[qry_col].values, color='red')
-    ax1.set_xlabel('New annotation (NCBI RefSeq) Psauron Score')
-    ax1.set_ylabel('Old annotation (FungiDB v68) Psauron Score')
-    ax1.set_title('Psauron: New vs Old by Mapping Type')
+    ax1.set_xlabel('New Annotation Psauron Score')
+    ax1.set_ylabel('Old Annotation Psauron Score')
+    ax1.set_title('Psauron Score by Mapping Type')
     ax1.set_xlim(0, 1.05)
     ax1.set_ylim(0, 1.05)
     ax1.legend(fontsize=8)
@@ -204,9 +204,9 @@ def main():
     ax2.plot([plddt_min, plddt_max], [plddt_min, plddt_max], 'k--', alpha=0.3)
     # Add overall regression line
     add_regression_line(ax2, valid_pairs['ref_plddt_mean'].values, valid_pairs['qry_plddt_mean'].values, color='red')
-    ax2.set_xlabel('New annotation (NCBI RefSeq) pLDDT Score')
-    ax2.set_ylabel('Old annotation (FungiDB v68) pLDDT Score')
-    ax2.set_title('pLDDT: New vs Old by Mapping Type')
+    ax2.set_xlabel('New Annotation pLDDT Score')
+    ax2.set_ylabel('Old Annotation pLDDT Score')
+    ax2.set_title('pLDDT Score by Mapping Type')
     ax2.legend(fontsize=8)
 
     fig_mt.text(0.99, 0.01, 'Source: plot_oldvsnew_psauron_plddt.py',
@@ -236,9 +236,9 @@ def main():
     ax1.plot([0, 1], [0, 1], 'k--', alpha=0.3)
     # Add overall regression line
     add_regression_line(ax1, valid_pairs[ref_col].values, valid_pairs[qry_col].values, color='red')
-    ax1.set_xlabel('New annotation (NCBI RefSeq) Psauron Score')
-    ax1.set_ylabel('Old annotation (FungiDB v68) Psauron Score')
-    ax1.set_title('Psauron: New vs Old by Class Type')
+    ax1.set_xlabel('New Annotation Psauron Score')
+    ax1.set_ylabel('Old Annotation Psauron Score')
+    ax1.set_title('Psauron Score by Class Type')
     ax1.set_xlim(0, 1.05)
     ax1.set_ylim(0, 1.05)
     ax1.legend(fontsize=7, loc='upper left')
@@ -254,9 +254,9 @@ def main():
     ax2.plot([plddt_min, plddt_max], [plddt_min, plddt_max], 'k--', alpha=0.3)
     # Add overall regression line
     add_regression_line(ax2, valid_pairs['ref_plddt_mean'].values, valid_pairs['qry_plddt_mean'].values, color='red')
-    ax2.set_xlabel('New annotation (NCBI RefSeq) pLDDT Score')
-    ax2.set_ylabel('Old annotation (FungiDB v68) pLDDT Score')
-    ax2.set_title('pLDDT: New vs Old by Class Type')
+    ax2.set_xlabel('New Annotation pLDDT Score')
+    ax2.set_ylabel('Old Annotation pLDDT Score')
+    ax2.set_title('pLDDT Score by Class Type')
     ax2.legend(fontsize=7, loc='upper left')
 
     fig_ct.text(0.99, 0.01, 'Source: plot_oldvsnew_psauron_plddt.py',
@@ -294,12 +294,12 @@ def main():
             ax_psauron.plot([0, 1], [0, 1], 'k--', alpha=0.3)
             ax_psauron.set_xlim(0, 1.05)
             ax_psauron.set_ylim(0, 1.05)
-            ax_psauron.set_ylabel('Old (FungiDB) Psauron')
+            ax_psauron.set_ylabel('Old Annotation Psauron Score')
             ax_psauron.set_title(f'Psauron - {mapping_labels[mtype]}')
             if row_idx == 0:
                 ax_psauron.legend(fontsize=6, loc='lower right')
             if row_idx == len(mapping_types_present) - 1:
-                ax_psauron.set_xlabel('New (NCBI) Psauron')
+                ax_psauron.set_xlabel('New Annotation Psauron Score')
 
             # Right: pLDDT
             ax_plddt = axes_comb[row_idx, 1]
@@ -311,7 +311,7 @@ def main():
             ax_plddt.plot([plddt_min, plddt_max], [plddt_min, plddt_max], 'k--', alpha=0.3)
             ax_plddt.set_title(f'pLDDT - {mapping_labels[mtype]}')
             if row_idx == len(mapping_types_present) - 1:
-                ax_plddt.set_xlabel('New (NCBI) pLDDT')
+                ax_plddt.set_xlabel('New Annotation pLDDT Score')
 
         fig_comb.text(0.99, 0.01, 'Source: plot_oldvsnew_psauron_plddt.py',
                      fontsize=7, ha='right', va='bottom', alpha=0.5, style='italic')
@@ -372,9 +372,9 @@ def plot_psauron_scatter(
     ax.plot([0, 1], [0, 1], 'k--', alpha=0.3, label='y=x')
     add_regression_line(ax, valid[ref_col].values, valid[qry_col].values, color='red')
 
-    ax.set_xlabel('New annotation (NCBI RefSeq) Psauron Score')
-    ax.set_ylabel('Old annotation (FungiDB) Psauron Score')
-    ax.set_title(f'Psauron Score: New vs Old (n={len(valid)} gene pairs)')
+    ax.set_xlabel('New Annotation Psauron Score')
+    ax.set_ylabel('Old Annotation Psauron Score')
+    ax.set_title(f'Psauron Score Distribution (n={len(valid)} gene pairs)')
     ax.set_xlim(0, 1.05)
     ax.set_ylim(0, 1.05)
 
