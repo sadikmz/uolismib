@@ -2,10 +2,20 @@
 """
 Plot Old vs New Annotation comparison for Psauron and pLDDT scores.
 
+Generates 3 figures:
+- annotation_comparison_psauron_plddt.png (Figure 20)
+- annotation_comparison_by_mapping_type.png (Figure 21)
+- annotation_comparison_by_class_type.png (Figure 22)
+
 Left panel: Psauron scores (blue) - X = new annotation (NCBI RefSeq), Y = old annotation (FungiDB v68)
 Right panel: pLDDT scores (orange) - X = new annotation (NCBI RefSeq), Y = old annotation (FungiDB v68)
 
 Note: In the data, ref_ columns = NCBI (NEW), qry_ columns = FungiDB (OLD)
+
+REFACTORED (2026-02-09):
+- Auto-detects both old (new_gene/old_gene) and new (ref_gene/query_gene) column naming schemes
+- Handles both naming conventions seamlessly
+- Compatible with current dataset schema (ref_gene, query_gene terminology)
 
 Usage:
     python plot_oldvsnew_psauron_plddt.py
@@ -44,19 +54,31 @@ def add_regression_line(ax, x, y, color='red', linestyle='-', alpha=0.8, label_p
                 ha='right', va='bottom', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
 
 # Configuration
-GENE_LEVEL_WITH_PSAURON = Path("output/figures_out/120126_all_out/gene_level_with_psauron.tsv")
+# Dataset directory (can be overridden via main(dataset_dir=...))
+DEFAULT_DATASET_DIR = Path(__file__).parent.parent / "pavprot_out_20260204_171713"
 PROTEINX_REF = Path("/Users/sadik/Documents/projects/FungiDB/foc47/output/proteinx/GCF_013085055.1_proteinx.tsv")
 PROTEINX_QRY = Path("/Users/sadik/Documents/projects/FungiDB/foc47/output/proteinx/Foc47_013085055.1_proteinx.tsv")
-TRANSCRIPT_WITH_PSAURON = Path("output/figures_out/120126_all_out/transcript_level_with_psauron.tsv")
-OUTPUT_DIR = Path("output/figures_out/120126_all_out")
 DPI = 150
 
 
-def main():
-    print("Loading data...")
+def main(dataset_dir: Optional[Path] = None):
+    # Setup dataset directory and file paths
+    if dataset_dir is None:
+        dataset_dir = DEFAULT_DATASET_DIR
+    else:
+        dataset_dir = Path(dataset_dir)
+
+    output_dir = Path(__file__).parent.parent / "plot_out" / "refactored"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    gene_level_psauron = dataset_dir / "gene_level_with_psauron.tsv"
+    transcript_level_psauron = dataset_dir / "transcript_level_with_psauron.tsv"
+
+    print(f"Loading data from: {dataset_dir}")
+    print(f"Output to: {output_dir}\n")
 
     # Load gene-level Psauron data
-    gene_df = pd.read_csv(GENE_LEVEL_WITH_PSAURON, sep='\t')
+    gene_df = pd.read_csv(gene_level_psauron, sep='\t')
     print(f"  Gene-level data: {len(gene_df)} gene pairs")
 
     # Load ProteinX pLDDT data
@@ -69,39 +91,65 @@ def main():
     proteinx_qry['transcript_id'] = proteinx_qry['gene_name'].str.replace(r'_sample_\d+$', '', regex=True)
 
     # Load transcript-level data to map transcripts to gene pairs
-    trans_df = pd.read_csv(TRANSCRIPT_WITH_PSAURON, sep='\t')
+    trans_df = pd.read_csv(transcript_level_psauron, sep='\t')
+
+    # REFACTORED: Handle both old and new column naming schemes
+    # Check which naming convention is used in transcript data
+    if 'query_transcript' in trans_df.columns:
+        # NEW NAMING: ref_transcript, query_transcript, ref_gene, query_gene
+        ref_trans_col = 'ref_transcript'
+        qry_trans_col = 'query_transcript'
+        ref_gene_col = 'ref_gene'
+        qry_gene_col = 'query_gene'
+    else:
+        # OLD NAMING: new_transcript, old_transcript, new_gene, old_gene
+        ref_trans_col = 'new_transcript'
+        qry_trans_col = 'old_transcript'
+        ref_gene_col = 'new_gene'
+        qry_gene_col = 'old_gene'
 
     # Merge ref pLDDT with transcript data to get gene mapping
     ref_trans_plddt = proteinx_ref[['transcript_id', 'residue_plddt_mean']].merge(
-        trans_df[['old_transcript', 'old_gene', 'new_gene']].rename(
-            columns={'old_transcript': 'transcript_id'}),
+        trans_df[[qry_trans_col, qry_gene_col, ref_gene_col]].rename(
+            columns={qry_trans_col: 'transcript_id'}),
         on='transcript_id', how='inner'
     )
 
     # Merge query pLDDT with transcript data
     qry_trans_plddt = proteinx_qry[['transcript_id', 'residue_plddt_mean']].merge(
-        trans_df[['new_transcript', 'old_gene', 'new_gene']].rename(
-            columns={'new_transcript': 'transcript_id'}),
+        trans_df[[ref_trans_col, qry_gene_col, ref_gene_col]].rename(
+            columns={ref_trans_col: 'transcript_id'}),
         on='transcript_id', how='inner'
     )
 
     # Aggregate pLDDT to gene level (mean of transcript pLDDT per gene pair)
-    old_gene_plddt = ref_trans_plddt.groupby(['old_gene', 'new_gene']).agg({
+    old_gene_plddt = ref_trans_plddt.groupby([qry_gene_col, ref_gene_col]).agg({
         'residue_plddt_mean': 'mean'
     }).reset_index().rename(columns={'residue_plddt_mean': 'ref_plddt_mean'})
 
-    qry_gene_plddt = qry_trans_plddt.groupby(['old_gene', 'new_gene']).agg({
+    qry_gene_plddt = qry_trans_plddt.groupby([qry_gene_col, ref_gene_col]).agg({
         'residue_plddt_mean': 'mean'
     }).reset_index().rename(columns={'residue_plddt_mean': 'qry_plddt_mean'})
 
-    # Merge all data
-    ref_col = 'ref_psauron_score_mean'
-    qry_col = 'qry_psauron_score_mean'
+    # Merge all data - REFACTORED: Handle both column naming schemes
+    # Check which naming convention is used in gene-level data
+    if 'ref_psauron_score_mean' in gene_df.columns:
+        # NEW NAMING: ref_gene, query_gene, ref_psauron_score_mean, qry_psauron_score_mean
+        ref_col = 'ref_psauron_score_mean'
+        qry_col = 'qry_psauron_score_mean'
+        gene_ref_col = 'ref_gene'
+        gene_qry_col = 'query_gene'
+    else:
+        # OLD NAMING: new_gene, old_gene, new_psauron_score_mean, old_psauron_score_mean
+        ref_col = 'new_psauron_score_mean'
+        qry_col = 'old_psauron_score_mean'
+        gene_ref_col = 'new_gene'
+        gene_qry_col = 'old_gene'
 
-    combined = gene_df[['old_gene', 'new_gene', ref_col, qry_col,
+    combined = gene_df[[gene_qry_col, gene_ref_col, ref_col, qry_col,
                         'mapping_type', 'class_type_gene']].copy()
-    combined = combined.merge(old_gene_plddt, on=['old_gene', 'new_gene'], how='left')
-    combined = combined.merge(qry_gene_plddt, on=['old_gene', 'new_gene'], how='left')
+    combined = combined.merge(old_gene_plddt, on=[gene_qry_col, gene_ref_col], how='left')
+    combined = combined.merge(qry_gene_plddt, on=[gene_qry_col, gene_ref_col], how='left')
 
     # Filter to gene pairs with all scores
     valid_pairs = combined.dropna(subset=[ref_col, qry_col, 'ref_plddt_mean', 'qry_plddt_mean'])
@@ -145,7 +193,7 @@ def main():
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.12)
 
-    output_path = OUTPUT_DIR / "annotation_comparison_psauron_plddt.png"
+    output_path = output_dir / "annotation_comparison_psauron_plddt.png"
     fig.savefig(output_path, dpi=DPI, bbox_inches='tight')
     plt.close(fig)
     print(f"\n[DONE] Saved: {output_path}")
@@ -214,7 +262,7 @@ def main():
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.12)
 
-    mt_path = OUTPUT_DIR / "annotation_comparison_by_mapping_type.png"
+    mt_path = output_dir / "annotation_comparison_by_mapping_type.png"
     fig_mt.savefig(mt_path, dpi=DPI, bbox_inches='tight')
     plt.close(fig_mt)
     print(f"[DONE] Saved: {mt_path}")
@@ -264,7 +312,7 @@ def main():
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.12)
 
-    ct_path = OUTPUT_DIR / "annotation_comparison_by_class_type.png"
+    ct_path = output_dir / "annotation_comparison_by_class_type.png"
     fig_ct.savefig(ct_path, dpi=DPI, bbox_inches='tight')
     plt.close(fig_ct)
     print(f"[DONE] Saved: {ct_path}")
@@ -318,7 +366,7 @@ def main():
         plt.tight_layout()
         plt.subplots_adjust(bottom=0.05)
 
-        comb_path = OUTPUT_DIR / "annotation_comparison_by_mapping_and_class.png"
+        comb_path = output_dir / "annotation_comparison_by_mapping_and_class.png"
         fig_comb.savefig(comb_path, dpi=DPI, bbox_inches='tight')
         plt.close(fig_comb)
         print(f"[DONE] Saved: {comb_path}")

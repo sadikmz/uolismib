@@ -54,12 +54,15 @@ import numpy as np
 
 CONFIG = {
     # Base directories
-    "gene_pav_dir": Path(__file__).parent,
-    "output_dir": Path(__file__).parent / "pipeline_output",
+    "gene_pav_dir": Path(__file__).parent.parent,  # Updated to point to gene_pav/ directory
+    "output_dir": Path(__file__).parent.parent / "plot_out" / "refactored",  # Output to refactored plots
 
-    # PAVprot output files (from previous run)
-    "transcript_level_tsv": None,  # Will auto-detect from output/latest/
-    "gene_level_tsv": None,        # Will auto-detect from output/latest/
+    # Dataset input directory (can be overridden via constructor)
+    "dataset_dir": Path(__file__).parent.parent / "pavprot_out_20260204_171713",  # Default: use latest dataset
+
+    # PAVprot output files (will auto-detect from dataset_dir)
+    "transcript_level_tsv": None,  # Will auto-detect from dataset_dir
+    "gene_level_tsv": None,        # Will auto-detect from dataset_dir
 
     # External data files (optional - tasks will skip if not found)
     "psauron_ref": Path("/Users/sadik/Documents/projects/FungiDB/foc47/output/psauron/ref_all.csv"),
@@ -79,24 +82,46 @@ CONFIG = {
 # HELPER FUNCTIONS
 # =============================================================================
 
-def find_latest_output(gene_pav_dir: Path) -> tuple:
+def find_latest_output(dataset_dir: Path) -> tuple:
     """
-    Auto-detect the latest PAVprot output files.
+    Auto-detect PAVprot output files from a dataset directory.
+    Prefers enriched files (*_with_psauron.tsv) if available.
+
+    Args:
+        dataset_dir: Path to dataset directory (e.g., pavprotOut/)
 
     Returns:
         Tuple of (transcript_level_path, gene_level_path)
     """
-    latest_dir = gene_pav_dir / "output" / "latest"
-
     transcript_file = None
     gene_file = None
 
-    if latest_dir.exists():
-        for f in latest_dir.glob("*_gffcomp.tsv"):
-            if "_gene_level" not in f.name:
-                transcript_file = f
-        for f in latest_dir.glob("*_gene_level.tsv"):
+    if dataset_dir.exists():
+        # Look for enriched gene_level file first (with psauron scores)
+        for f in dataset_dir.glob("*gene_level_with_psauron.tsv"):
             gene_file = f
+            break
+
+        # Fallback to raw gene_level file if enriched not found
+        if not gene_file:
+            for f in dataset_dir.glob("*_gene_level.tsv"):
+                gene_file = f
+                break
+
+        # Look for enriched transcript-level file first
+        for f in sorted(dataset_dir.glob("*transcript_level_with_psauron.tsv"), reverse=True):
+            transcript_file = f
+            break
+
+        # Fallback to main gffcomp file without "_gene_level" in name
+        if not transcript_file:
+            for f in sorted(dataset_dir.glob("*gffcomp*mapping*.tsv"), reverse=True):
+                if ("_gene_level" not in f.name and
+                    "domain_distribution" not in f.name and
+                    "ipr_length" not in f.name and
+                    "multiple" not in f.name):
+                    transcript_file = f
+                    break
 
     return transcript_file, gene_file
 
@@ -139,9 +164,12 @@ class PipelineRunner:
         self.output_dir = Path(config["output_dir"])
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
+        # Use specified dataset directory (or default from config)
+        self.dataset_dir = Path(config.get("dataset_dir", config["gene_pav_dir"] / "pavprotOut"))
+
         # Auto-detect PAVprot output if not specified
         if config["transcript_level_tsv"] is None or config["gene_level_tsv"] is None:
-            t_file, g_file = find_latest_output(self.gene_pav_dir)
+            t_file, g_file = find_latest_output(self.dataset_dir)
             self.transcript_tsv = t_file or config["transcript_level_tsv"]
             self.gene_tsv = g_file or config["gene_level_tsv"]
         else:
@@ -151,6 +179,9 @@ class PipelineRunner:
         # Store loaded data for reuse
         self._transcript_df = None
         self._gene_df = None
+
+        # Track failed plots for reporting
+        self.failed_plots = []
 
     @property
     def transcript_df(self) -> pd.DataFrame:
@@ -900,28 +931,42 @@ class PipelineRunner:
             ref_df['transcript_id'] = ref_df['gene_name'].str.replace(r'_sample_\d+$', '', regex=True)
             qry_df['transcript_id'] = qry_df['gene_name'].str.replace(r'_sample_\d+$', '', regex=True)
 
+            # Detect column naming scheme
+            if 'query_transcript' in self.transcript_df.columns:
+                # NEW NAMING: ref_transcript, query_transcript, ref_gene, query_gene
+                ref_trans_col = 'ref_transcript'
+                qry_trans_col = 'query_transcript'
+                ref_gene_col = 'ref_gene'
+                qry_gene_col = 'query_gene'
+            else:
+                # OLD NAMING: new_transcript, old_transcript, new_gene, old_gene
+                ref_trans_col = 'new_transcript'
+                qry_trans_col = 'old_transcript'
+                ref_gene_col = 'new_gene'
+                qry_gene_col = 'old_gene'
+
             # Get PAVprot data with mapping and class info
-            pavprot_df = self.transcript_df[['old_transcript', 'new_transcript',
+            pavprot_df = self.transcript_df[[ref_trans_col, qry_trans_col,
                                              'class_type_gene', 'class_type_transcript']].copy()
 
             # Add mapping_type from gene_df if available
             if self.gene_df is not None and 'mapping_type' in self.gene_df.columns:
-                gene_mapping = self.gene_df[['old_gene', 'new_gene', 'mapping_type']].drop_duplicates()
-                # Get old_gene and new_gene from transcript data
-                if 'old_gene' in self.transcript_df.columns:
-                    pavprot_df['old_gene'] = self.transcript_df['old_gene']
-                    pavprot_df['new_gene'] = self.transcript_df['new_gene']
-                    pavprot_df = pavprot_df.merge(gene_mapping, on=['old_gene', 'new_gene'], how='left')
+                gene_mapping = self.gene_df[[ref_gene_col, qry_gene_col, 'mapping_type']].drop_duplicates()
+                # Get gene columns from transcript data
+                if ref_gene_col in self.transcript_df.columns and qry_gene_col in self.transcript_df.columns:
+                    pavprot_df[ref_gene_col] = self.transcript_df[ref_gene_col]
+                    pavprot_df[qry_gene_col] = self.transcript_df[qry_gene_col]
+                    pavprot_df = pavprot_df.merge(gene_mapping, on=[ref_gene_col, qry_gene_col], how='left')
 
             # Merge ref pLDDT with PAVprot data
             ref_merged = ref_df[['transcript_id', 'residue_plddt_mean']].merge(
-                pavprot_df.rename(columns={'old_transcript': 'transcript_id'}),
+                pavprot_df.rename(columns={qry_trans_col: 'transcript_id'}),
                 on='transcript_id', how='inner'
             )
 
             # Merge query pLDDT with PAVprot data
             qry_merged = qry_df[['transcript_id', 'residue_plddt_mean']].merge(
-                pavprot_df.rename(columns={'new_transcript': 'transcript_id'}),
+                pavprot_df.rename(columns={ref_trans_col: 'transcript_id'}),
                 on='transcript_id', how='inner'
             )
 
