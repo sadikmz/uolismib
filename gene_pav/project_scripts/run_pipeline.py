@@ -972,15 +972,15 @@ class PipelineRunner:
 
             print(f"    Matched ref: {len(ref_merged)}, query: {len(qry_merged)}")
 
+            # Define mapping types and colors (used in multiple plots)
+            mapping_types = ['1to1', '1to2N', '1to2N+', 'Nto1', 'complex']
+            mapping_colors = {
+                '1to1': '#1f77b4', '1to2N': '#ff7f0e', '1to2N+': '#2ca02c',
+                'Nto1': '#d62728', 'complex': '#9467bd'
+            }
+
             # ===== Plot: pLDDT by Mapping Type =====
             if 'mapping_type' in ref_merged.columns and len(ref_merged) > 0:
-                fig_mt, axes_mt = plt.subplots(1, 2, figsize=(14, 5))
-
-                mapping_types = ['1to1', '1to2N', '1to2N+', 'Nto1', 'complex']
-                mapping_colors = {
-                    '1to1': '#1f77b4', '1to2N': '#ff7f0e', '1to2N+': '#2ca02c',
-                    'Nto1': '#d62728', 'complex': '#9467bd'
-                }
 
                 # Reference by mapping type
                 ax_ref = axes_mt[0]
@@ -1144,12 +1144,12 @@ class PipelineRunner:
 
         # Rename columns for clarity
         psauron_ref = psauron_ref.rename(columns={
-            'description': 'old_transcript',
+            'description': 'ref_transcript',
             'psauron_is_protein': 'ref_psauron_is_protein',
             'in-frame_score': 'ref_psauron_score'
         })
         psauron_qry = psauron_qry.rename(columns={
-            'description': 'new_transcript',
+            'description': 'query_transcript',
             'psauron_is_protein': 'qry_psauron_is_protein',
             'in-frame_score': 'qry_psauron_score'
         })
@@ -1159,16 +1159,32 @@ class PipelineRunner:
         transcript_df = pd.read_csv(self.transcript_tsv, sep='\t')
         print(f"    Loaded {len(transcript_df)} transcript pairs")
 
+        # Detect column naming scheme in transcript data
+        if 'query_transcript' in transcript_df.columns:
+            # NEW NAMING: ref_transcript, query_transcript, ref_gene, query_gene
+            ref_trans_col = 'ref_transcript'
+            qry_trans_col = 'query_transcript'
+            ref_gene_col = 'ref_gene'
+            qry_gene_col = 'query_gene'
+        else:
+            # OLD NAMING: new_transcript, old_transcript, new_gene, old_gene
+            ref_trans_col = 'new_transcript'
+            qry_trans_col = 'old_transcript'
+            ref_gene_col = 'new_gene'
+            qry_gene_col = 'old_gene'
+
         # Merge psauron scores with transcript-level data
         # Left join to keep all original records
         merged_df = transcript_df.merge(
-            psauron_ref[['old_transcript', 'ref_psauron_is_protein', 'ref_psauron_score']],
-            on='old_transcript',
+            psauron_ref[['ref_transcript', 'ref_psauron_is_protein', 'ref_psauron_score']].rename(
+                columns={'ref_transcript': ref_trans_col}),
+            on=ref_trans_col,
             how='left'
         )
         merged_df = merged_df.merge(
-            psauron_qry[['new_transcript', 'qry_psauron_is_protein', 'qry_psauron_score']],
-            on='new_transcript',
+            psauron_qry[['query_transcript', 'qry_psauron_is_protein', 'qry_psauron_score']].rename(
+                columns={'query_transcript': qry_trans_col}),
+            on=qry_trans_col,
             how='left'
         )
 
@@ -1178,7 +1194,7 @@ class PipelineRunner:
         print(f"  [DONE] Saved transcript-level: {transcript_out}")
 
         # Calculate gene-level aggregation (mean of transcript scores)
-        gene_agg = merged_df.groupby(['old_gene', 'new_gene']).agg({
+        gene_agg = merged_df.groupby([qry_gene_col, ref_gene_col]).agg({
             'ref_psauron_score': 'mean',
             'qry_psauron_score': 'mean',
             'ref_psauron_is_protein': lambda x: x.mode().iloc[0] if len(x.mode()) > 0 else None,
@@ -1193,9 +1209,15 @@ class PipelineRunner:
         # Load and merge with existing gene-level data
         if self.gene_tsv and self.gene_tsv.exists():
             gene_df = pd.read_csv(self.gene_tsv, sep='\t')
+
+            # Drop existing psauron columns if present to avoid _x/_y suffixes
+            psauron_cols_to_drop = [c for c in gene_df.columns if 'psauron' in c.lower()]
+            if psauron_cols_to_drop:
+                gene_df = gene_df.drop(columns=psauron_cols_to_drop)
+
             gene_merged = gene_df.merge(
                 gene_agg,
-                on=['old_gene', 'new_gene'],
+                on=[qry_gene_col, ref_gene_col],
                 how='left'
             )
 
@@ -1248,6 +1270,20 @@ class PipelineRunner:
         else:
             print("  [SKIP] Run Task 6 (Psauron integration) first")
             return None
+
+        # Detect column naming scheme
+        if 'query_gene' in df.columns:
+            # NEW NAMING: ref_gene, query_gene
+            ref_gene_col = 'ref_gene'
+            qry_gene_col = 'query_gene'
+            ref_trans_col = 'ref_transcript'
+            qry_trans_col = 'query_transcript'
+        else:
+            # OLD NAMING: new_gene, old_gene
+            ref_gene_col = 'new_gene'
+            qry_gene_col = 'old_gene'
+            ref_trans_col = 'new_transcript'
+            qry_trans_col = 'old_transcript'
 
         # Check required columns
         ref_col = 'ref_psauron_score_mean'
