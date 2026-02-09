@@ -2,20 +2,10 @@
 """
 Plot Old vs New Annotation comparison for Psauron and pLDDT scores.
 
-Generates 3 figures:
-- annotation_comparison_psauron_plddt.png (Figure 20)
-- annotation_comparison_by_mapping_type.png (Figure 21)
-- annotation_comparison_by_class_type.png (Figure 22)
-
 Left panel: Psauron scores (blue) - X = new annotation (NCBI RefSeq), Y = old annotation (FungiDB v68)
 Right panel: pLDDT scores (orange) - X = new annotation (NCBI RefSeq), Y = old annotation (FungiDB v68)
 
 Note: In the data, ref_ columns = NCBI (NEW), qry_ columns = FungiDB (OLD)
-
-REFACTORED (2026-02-09):
-- Auto-detects both old (new_gene/old_gene) and new (ref_gene/query_gene) column naming schemes
-- Handles both naming conventions seamlessly
-- Compatible with current dataset schema (ref_gene, query_gene terminology)
 
 Usage:
     python plot_oldvsnew_psauron_plddt.py
@@ -26,7 +16,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
 from scipy import stats
-from typing import List, Optional
 
 
 def add_regression_line(ax, x, y, color='red', linestyle='-', alpha=0.8, label_pos='lower right'):
@@ -54,31 +43,19 @@ def add_regression_line(ax, x, y, color='red', linestyle='-', alpha=0.8, label_p
                 ha='right', va='bottom', bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
 
 # Configuration
-# Dataset directory (can be overridden via main(dataset_dir=...))
-DEFAULT_DATASET_DIR = Path(__file__).parent.parent / "pavprot_out_20260204_171713"
+GENE_LEVEL_WITH_PSAURON = Path("output/figures_out/120126_all_out/gene_level_with_psauron.tsv")
 PROTEINX_REF = Path("/Users/sadik/Documents/projects/FungiDB/foc47/output/proteinx/GCF_013085055.1_proteinx.tsv")
 PROTEINX_QRY = Path("/Users/sadik/Documents/projects/FungiDB/foc47/output/proteinx/Foc47_013085055.1_proteinx.tsv")
+TRANSCRIPT_WITH_PSAURON = Path("output/figures_out/120126_all_out/transcript_level_with_psauron.tsv")
+OUTPUT_DIR = Path("output/figures_out/120126_all_out")
 DPI = 150
 
 
-def main(dataset_dir: Optional[Path] = None):
-    # Setup dataset directory and file paths
-    if dataset_dir is None:
-        dataset_dir = DEFAULT_DATASET_DIR
-    else:
-        dataset_dir = Path(dataset_dir)
-
-    output_dir = Path(__file__).parent.parent / "plot_out" / "refactored"
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    gene_level_psauron = dataset_dir / "gene_level_with_psauron.tsv"
-    transcript_level_psauron = dataset_dir / "transcript_level_with_psauron.tsv"
-
-    print(f"Loading data from: {dataset_dir}")
-    print(f"Output to: {output_dir}\n")
+def main():
+    print("Loading data...")
 
     # Load gene-level Psauron data
-    gene_df = pd.read_csv(gene_level_psauron, sep='\t')
+    gene_df = pd.read_csv(GENE_LEVEL_WITH_PSAURON, sep='\t')
     print(f"  Gene-level data: {len(gene_df)} gene pairs")
 
     # Load ProteinX pLDDT data
@@ -91,65 +68,39 @@ def main(dataset_dir: Optional[Path] = None):
     proteinx_qry['transcript_id'] = proteinx_qry['gene_name'].str.replace(r'_sample_\d+$', '', regex=True)
 
     # Load transcript-level data to map transcripts to gene pairs
-    trans_df = pd.read_csv(transcript_level_psauron, sep='\t')
-
-    # REFACTORED: Handle both old and new column naming schemes
-    # Check which naming convention is used in transcript data
-    if 'query_transcript' in trans_df.columns:
-        # NEW NAMING: ref_transcript, query_transcript, ref_gene, query_gene
-        ref_trans_col = 'ref_transcript'
-        qry_trans_col = 'query_transcript'
-        ref_gene_col = 'ref_gene'
-        qry_gene_col = 'query_gene'
-    else:
-        # OLD NAMING: new_transcript, old_transcript, new_gene, old_gene
-        ref_trans_col = 'new_transcript'
-        qry_trans_col = 'old_transcript'
-        ref_gene_col = 'new_gene'
-        qry_gene_col = 'old_gene'
+    trans_df = pd.read_csv(TRANSCRIPT_WITH_PSAURON, sep='\t')
 
     # Merge ref pLDDT with transcript data to get gene mapping
     ref_trans_plddt = proteinx_ref[['transcript_id', 'residue_plddt_mean']].merge(
-        trans_df[[qry_trans_col, qry_gene_col, ref_gene_col]].rename(
-            columns={qry_trans_col: 'transcript_id'}),
+        trans_df[['old_transcript', 'old_gene', 'new_gene']].rename(
+            columns={'old_transcript': 'transcript_id'}),
         on='transcript_id', how='inner'
     )
 
     # Merge query pLDDT with transcript data
     qry_trans_plddt = proteinx_qry[['transcript_id', 'residue_plddt_mean']].merge(
-        trans_df[[ref_trans_col, qry_gene_col, ref_gene_col]].rename(
-            columns={ref_trans_col: 'transcript_id'}),
+        trans_df[['new_transcript', 'old_gene', 'new_gene']].rename(
+            columns={'new_transcript': 'transcript_id'}),
         on='transcript_id', how='inner'
     )
 
     # Aggregate pLDDT to gene level (mean of transcript pLDDT per gene pair)
-    old_gene_plddt = ref_trans_plddt.groupby([qry_gene_col, ref_gene_col]).agg({
+    old_gene_plddt = ref_trans_plddt.groupby(['old_gene', 'new_gene']).agg({
         'residue_plddt_mean': 'mean'
     }).reset_index().rename(columns={'residue_plddt_mean': 'ref_plddt_mean'})
 
-    qry_gene_plddt = qry_trans_plddt.groupby([qry_gene_col, ref_gene_col]).agg({
+    qry_gene_plddt = qry_trans_plddt.groupby(['old_gene', 'new_gene']).agg({
         'residue_plddt_mean': 'mean'
     }).reset_index().rename(columns={'residue_plddt_mean': 'qry_plddt_mean'})
 
-    # Merge all data - REFACTORED: Handle both column naming schemes
-    # Check which naming convention is used in gene-level data
-    if 'ref_psauron_score_mean' in gene_df.columns:
-        # NEW NAMING: ref_gene, query_gene, ref_psauron_score_mean, qry_psauron_score_mean
-        ref_col = 'ref_psauron_score_mean'
-        qry_col = 'qry_psauron_score_mean'
-        gene_ref_col = 'ref_gene'
-        gene_qry_col = 'query_gene'
-    else:
-        # OLD NAMING: new_gene, old_gene, new_psauron_score_mean, old_psauron_score_mean
-        ref_col = 'new_psauron_score_mean'
-        qry_col = 'old_psauron_score_mean'
-        gene_ref_col = 'new_gene'
-        gene_qry_col = 'old_gene'
+    # Merge all data
+    ref_col = 'ref_psauron_score_mean'
+    qry_col = 'qry_psauron_score_mean'
 
-    combined = gene_df[[gene_qry_col, gene_ref_col, ref_col, qry_col,
+    combined = gene_df[['old_gene', 'new_gene', ref_col, qry_col,
                         'mapping_type', 'class_type_gene']].copy()
-    combined = combined.merge(old_gene_plddt, on=[gene_qry_col, gene_ref_col], how='left')
-    combined = combined.merge(qry_gene_plddt, on=[gene_qry_col, gene_ref_col], how='left')
+    combined = combined.merge(old_gene_plddt, on=['old_gene', 'new_gene'], how='left')
+    combined = combined.merge(qry_gene_plddt, on=['old_gene', 'new_gene'], how='left')
 
     # Filter to gene pairs with all scores
     valid_pairs = combined.dropna(subset=[ref_col, qry_col, 'ref_plddt_mean', 'qry_plddt_mean'])
@@ -162,8 +113,8 @@ def main(dataset_dir: Optional[Path] = None):
     ax1 = axes[0]
     ax1.scatter(valid_pairs[ref_col], valid_pairs[qry_col],
                alpha=0.3, s=15, c='#1f77b4')  # blue
-    ax1.set_xlabel('New Annotation Psauron Score')
-    ax1.set_ylabel('Old Annotation Psauron Score')
+    ax1.set_xlabel('New annotation (NCBI RefSeq) Psauron Score')
+    ax1.set_ylabel('Old annotation (FungiDB v68) Psauron Score')
     ax1.set_title(f'Psauron Score: New vs Old (n={len(valid_pairs)} gene pairs)')
     ax1.set_xlim(0, 1.05)
     ax1.set_ylim(0, 1.05)
@@ -176,8 +127,8 @@ def main(dataset_dir: Optional[Path] = None):
     ax2 = axes[1]
     ax2.scatter(valid_pairs['ref_plddt_mean'], valid_pairs['qry_plddt_mean'],
                alpha=0.3, s=15, c='#ff7f0e')  # orange
-    ax2.set_xlabel('New Annotation pLDDT Score')
-    ax2.set_ylabel('Old Annotation pLDDT Score')
+    ax2.set_xlabel('New annotation (NCBI RefSeq) pLDDT Score')
+    ax2.set_ylabel('Old annotation (FungiDB v68) pLDDT Score')
     ax2.set_title(f'pLDDT Score: New vs Old (n={len(valid_pairs)} gene pairs)')
     # Add diagonal reference line
     plddt_min = min(valid_pairs['ref_plddt_mean'].min(), valid_pairs['qry_plddt_mean'].min()) - 5
@@ -193,7 +144,7 @@ def main(dataset_dir: Optional[Path] = None):
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.12)
 
-    output_path = output_dir / "annotation_comparison_psauron_plddt.png"
+    output_path = OUTPUT_DIR / "annotation_comparison_psauron_plddt.png"
     fig.savefig(output_path, dpi=DPI, bbox_inches='tight')
     plt.close(fig)
     print(f"\n[DONE] Saved: {output_path}")
@@ -234,9 +185,9 @@ def main(dataset_dir: Optional[Path] = None):
     ax1.plot([0, 1], [0, 1], 'k--', alpha=0.3)
     # Add overall regression line
     add_regression_line(ax1, valid_pairs[ref_col].values, valid_pairs[qry_col].values, color='red')
-    ax1.set_xlabel('New Annotation Psauron Score')
-    ax1.set_ylabel('Old Annotation Psauron Score')
-    ax1.set_title('Psauron Score by Mapping Type')
+    ax1.set_xlabel('New annotation (NCBI RefSeq) Psauron Score')
+    ax1.set_ylabel('Old annotation (FungiDB v68) Psauron Score')
+    ax1.set_title('Psauron: New vs Old by Mapping Type')
     ax1.set_xlim(0, 1.05)
     ax1.set_ylim(0, 1.05)
     ax1.legend(fontsize=8)
@@ -252,9 +203,9 @@ def main(dataset_dir: Optional[Path] = None):
     ax2.plot([plddt_min, plddt_max], [plddt_min, plddt_max], 'k--', alpha=0.3)
     # Add overall regression line
     add_regression_line(ax2, valid_pairs['ref_plddt_mean'].values, valid_pairs['qry_plddt_mean'].values, color='red')
-    ax2.set_xlabel('New Annotation pLDDT Score')
-    ax2.set_ylabel('Old Annotation pLDDT Score')
-    ax2.set_title('pLDDT Score by Mapping Type')
+    ax2.set_xlabel('New annotation (NCBI RefSeq) pLDDT Score')
+    ax2.set_ylabel('Old annotation (FungiDB v68) pLDDT Score')
+    ax2.set_title('pLDDT: New vs Old by Mapping Type')
     ax2.legend(fontsize=8)
 
     fig_mt.text(0.99, 0.01, 'Source: plot_oldvsnew_psauron_plddt.py',
@@ -262,7 +213,7 @@ def main(dataset_dir: Optional[Path] = None):
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.12)
 
-    mt_path = output_dir / "annotation_comparison_by_mapping_type.png"
+    mt_path = OUTPUT_DIR / "annotation_comparison_by_mapping_type.png"
     fig_mt.savefig(mt_path, dpi=DPI, bbox_inches='tight')
     plt.close(fig_mt)
     print(f"[DONE] Saved: {mt_path}")
@@ -284,9 +235,9 @@ def main(dataset_dir: Optional[Path] = None):
     ax1.plot([0, 1], [0, 1], 'k--', alpha=0.3)
     # Add overall regression line
     add_regression_line(ax1, valid_pairs[ref_col].values, valid_pairs[qry_col].values, color='red')
-    ax1.set_xlabel('New Annotation Psauron Score')
-    ax1.set_ylabel('Old Annotation Psauron Score')
-    ax1.set_title('Psauron Score by Class Type')
+    ax1.set_xlabel('New annotation (NCBI RefSeq) Psauron Score')
+    ax1.set_ylabel('Old annotation (FungiDB v68) Psauron Score')
+    ax1.set_title('Psauron: New vs Old by Class Type')
     ax1.set_xlim(0, 1.05)
     ax1.set_ylim(0, 1.05)
     ax1.legend(fontsize=7, loc='upper left')
@@ -302,9 +253,9 @@ def main(dataset_dir: Optional[Path] = None):
     ax2.plot([plddt_min, plddt_max], [plddt_min, plddt_max], 'k--', alpha=0.3)
     # Add overall regression line
     add_regression_line(ax2, valid_pairs['ref_plddt_mean'].values, valid_pairs['qry_plddt_mean'].values, color='red')
-    ax2.set_xlabel('New Annotation pLDDT Score')
-    ax2.set_ylabel('Old Annotation pLDDT Score')
-    ax2.set_title('pLDDT Score by Class Type')
+    ax2.set_xlabel('New annotation (NCBI RefSeq) pLDDT Score')
+    ax2.set_ylabel('Old annotation (FungiDB v68) pLDDT Score')
+    ax2.set_title('pLDDT: New vs Old by Class Type')
     ax2.legend(fontsize=7, loc='upper left')
 
     fig_ct.text(0.99, 0.01, 'Source: plot_oldvsnew_psauron_plddt.py',
@@ -312,7 +263,7 @@ def main(dataset_dir: Optional[Path] = None):
     plt.tight_layout()
     plt.subplots_adjust(bottom=0.12)
 
-    ct_path = output_dir / "annotation_comparison_by_class_type.png"
+    ct_path = OUTPUT_DIR / "annotation_comparison_by_class_type.png"
     fig_ct.savefig(ct_path, dpi=DPI, bbox_inches='tight')
     plt.close(fig_ct)
     print(f"[DONE] Saved: {ct_path}")
@@ -342,12 +293,12 @@ def main(dataset_dir: Optional[Path] = None):
             ax_psauron.plot([0, 1], [0, 1], 'k--', alpha=0.3)
             ax_psauron.set_xlim(0, 1.05)
             ax_psauron.set_ylim(0, 1.05)
-            ax_psauron.set_ylabel('Old Annotation Psauron Score')
+            ax_psauron.set_ylabel('Old (FungiDB) Psauron')
             ax_psauron.set_title(f'Psauron - {mapping_labels[mtype]}')
             if row_idx == 0:
                 ax_psauron.legend(fontsize=6, loc='lower right')
             if row_idx == len(mapping_types_present) - 1:
-                ax_psauron.set_xlabel('New Annotation Psauron Score')
+                ax_psauron.set_xlabel('New (NCBI) Psauron')
 
             # Right: pLDDT
             ax_plddt = axes_comb[row_idx, 1]
@@ -359,162 +310,17 @@ def main(dataset_dir: Optional[Path] = None):
             ax_plddt.plot([plddt_min, plddt_max], [plddt_min, plddt_max], 'k--', alpha=0.3)
             ax_plddt.set_title(f'pLDDT - {mapping_labels[mtype]}')
             if row_idx == len(mapping_types_present) - 1:
-                ax_plddt.set_xlabel('New Annotation pLDDT Score')
+                ax_plddt.set_xlabel('New (NCBI) pLDDT')
 
         fig_comb.text(0.99, 0.01, 'Source: plot_oldvsnew_psauron_plddt.py',
                      fontsize=7, ha='right', va='bottom', alpha=0.5, style='italic')
         plt.tight_layout()
         plt.subplots_adjust(bottom=0.05)
 
-        comb_path = output_dir / "annotation_comparison_by_mapping_and_class.png"
+        comb_path = OUTPUT_DIR / "annotation_comparison_by_mapping_and_class.png"
         fig_comb.savefig(comb_path, dpi=DPI, bbox_inches='tight')
         plt.close(fig_comb)
         print(f"[DONE] Saved: {comb_path}")
-
-
-def plot_psauron_scatter(
-    df: pd.DataFrame,
-    output_path: Path,
-    ref_col: str = 'ref_psauron_score_mean',
-    qry_col: str = 'qry_psauron_score_mean',
-    color_by: Optional[str] = None,
-    config: dict = None
-) -> Optional[Path]:
-    """
-    Generate Psauron score scatter plot (new vs old annotation).
-
-    Args:
-        df: DataFrame with Psauron score columns
-        output_path: Path to save the figure
-        ref_col: Column name for new annotation (NCBI RefSeq)
-        qry_col: Column name for old annotation (FungiDB)
-        color_by: Optional column to color by (mapping_type or class_type_gene)
-        config: Optional configuration
-
-    Returns:
-        Path to output file, or None if failed
-    """
-    config = config or {'figure_dpi': 150}
-
-    # Filter valid data
-    valid = df.dropna(subset=[ref_col, qry_col])
-    if len(valid) == 0:
-        print("  [ERROR] No valid Psauron data")
-        return None
-
-    fig, ax = plt.subplots(figsize=(10, 8))
-
-    if color_by and color_by in valid.columns:
-        categories = valid[color_by].value_counts().head(6).index.tolist()
-        for i, cat in enumerate(categories):
-            subset = valid[valid[color_by] == cat]
-            ax.scatter(subset[ref_col], subset[qry_col],
-                      alpha=0.4, s=20, color=plt.cm.tab10(i/10),
-                      label=f'{cat} (n={len(subset)})')
-        ax.legend(fontsize=8, loc='upper left')
-    else:
-        ax.scatter(valid[ref_col], valid[qry_col],
-                  alpha=0.3, s=15, c='#1f77b4')
-
-    # Diagonal and regression
-    ax.plot([0, 1], [0, 1], 'k--', alpha=0.3, label='y=x')
-    add_regression_line(ax, valid[ref_col].values, valid[qry_col].values, color='red')
-
-    ax.set_xlabel('New Annotation Psauron Score')
-    ax.set_ylabel('Old Annotation Psauron Score')
-    ax.set_title(f'Psauron Score Distribution (n={len(valid)} gene pairs)')
-    ax.set_xlim(0, 1.05)
-    ax.set_ylim(0, 1.05)
-
-    plt.tight_layout()
-    fig.savefig(output_path, dpi=config.get('figure_dpi', 150), bbox_inches='tight')
-    plt.close(fig)
-
-    print(f"  [DONE] Saved: {output_path}")
-    return output_path
-
-
-def generate_quality_score_plots(
-    gene_level_file: str,
-    output_dir: Path,
-    score_columns: tuple = None,
-    config: dict = None,
-    detect_columns: bool = True
-) -> List[Path]:
-    """
-    Generate quality score comparison plots for CLI integration.
-
-    Args:
-        gene_level_file: Path to gene-level TSV with score columns
-        output_dir: Directory to save plots
-        score_columns: Tuple of (first_score_col, second_score_col) paired columns.
-                      Columns are used positionally (not by naming convention).
-                      If None and detect_columns=True, auto-detects based on column names.
-        config: Optional configuration
-        detect_columns: If True and score_columns not provided, auto-detect columns
-
-    Returns:
-        List of generated plot file paths
-    """
-    generated_files = []
-    config = config or {'figure_dpi': 150}
-
-    if not Path(gene_level_file).exists():
-        print(f"  [ERROR] File not found: {gene_level_file}")
-        return generated_files
-
-    print(f"  Loading: {gene_level_file}")
-    df = pd.read_csv(gene_level_file, sep='\t')
-    print(f"    Loaded {len(df):,} gene pairs")
-
-    # Require explicit column pairs - no hard-coded names
-    if not score_columns:
-        print("  [ERROR] score_columns parameter is required")
-        print("         Expected: score_columns=(first_col_name, second_col_name)")
-        return generated_files
-
-    first_col, second_col = score_columns
-
-    if first_col not in df.columns:
-        print(f"  [ERROR] Column not found: {first_col}")
-        return generated_files
-
-    if second_col not in df.columns:
-        print(f"  [ERROR] Column not found: {second_col}")
-        return generated_files
-
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Basic scatter plot
-    path = plot_psauron_scatter(
-        df, output_dir / 'psauron_scatter.png',
-        ref_col=first_col, qry_col=second_col, config=config
-    )
-    if path:
-        generated_files.append(path)
-
-    # By mapping type
-    if 'mapping_type' in df.columns:
-        path = plot_psauron_scatter(
-            df, output_dir / 'psauron_by_mapping_type.png',
-            ref_col=first_col, qry_col=second_col,
-            color_by='mapping_type', config=config
-        )
-        if path:
-            generated_files.append(path)
-
-    # By class type
-    if 'class_type_gene' in df.columns:
-        path = plot_psauron_scatter(
-            df, output_dir / 'psauron_by_class_type.png',
-            ref_col=first_col, qry_col=second_col,
-            color_by='class_type_gene', config=config
-        )
-        if path:
-            generated_files.append(path)
-
-    return generated_files
 
 
 if __name__ == "__main__":

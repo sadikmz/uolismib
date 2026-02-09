@@ -1,0 +1,2321 @@
+#!/usr/bin/env python3
+"""
+PAVprot - Presence/Absence Variation Protein Analysis Pipeline
+
+Analyzes gene mapping relationships between old and new genome annotations,
+integrating GffCompare tracking data, DIAMOND BLASTP alignments, and
+InterProScan domain annotations.
+
+Features:
+    - Parse GffCompare tracking files to extract gene/transcript mappings
+    - Classify mappings at transcript, gene, and gene-pair levels
+    - Detect one-to-many and many-to-one gene relationships
+    - Integrate DIAMOND BLASTP protein sequence alignments
+    - Integrate InterProScan domain annotations
+    - Filter output by exact match, 1:1 mappings, or class type
+
+Usage:
+    python pavprot.py --gff-comp tracking.txt --gff old.gff3 [options]
+
+Example:
+    python pavprot.py --gff-comp gffcompare.tracking --gff old.gff3,new.gff3 \\
+        --run-diamond --prot old.faa,new.faa \\
+        --filter-exact-match --output-dir results/
+
+Output:
+    Creates a pavprot_out/ directory (or specified --output-dir) containing:
+    - synonym_mapping_liftover_gffcomp.tsv: Main output with all metrics
+    - *_old_to_multiple_new.tsv: One-to-many mapping analysis
+    - *_new_to_multiple_old.tsv: Many-to-one mapping analysis
+    - *_multiple_mappings_summary.txt: Summary statistics
+"""
+
+from collections import defaultdict
+from typing import Dict, List, Tuple, Set, Optional, Iterator
+import argparse
+import sys
+import os
+import subprocess
+import gzip
+import re
+import pandas as pd
+from pathlib import Path
+
+# Regex patterns for ID normalization (avoids magic numbers)
+LIFTOFF_SUFFIX_PATTERN = re.compile(r'-p\d+$')  # Matches -p1, -p2, etc.
+NCBI_RNA_PREFIX = re.compile(r'^rna-')
+NCBI_GENE_PREFIX = re.compile(r'^gene-')
+
+
+def strip_liftoff_suffix(transcript_id: str) -> str:
+    """Strip Liftoff -pN suffix from transcript ID if present."""
+    return LIFTOFF_SUFFIX_PATTERN.sub('', transcript_id)
+
+
+def detect_annotation_source(gff_path: str) -> str:
+    """
+    Auto-detect annotation source from GFF format.
+
+    Args:
+        gff_path: Path to GFF3 file
+
+    Returns:
+        'NCBI' for RefSeq/GenBank format, 'VEuPathDB' for FungiDB/other formats
+    """
+    try:
+        with open(gff_path) as f:
+            for line in f:
+                if line.startswith('#'):
+                    continue
+                # Check for NCBI format indicators (check all indicators first)
+                if 'ID=rna-' in line or 'ID=gene-' in line:
+                    return 'NCBI'
+                if 'Parent=rna-' in line or 'Parent=gene-' in line:
+                    return 'NCBI'
+                if ';GenBank=' in line or ';protein_id=' in line:
+                    # These attributes strongly indicate NCBI format
+                    return 'NCBI'
+    except Exception:
+        pass
+    return 'VEuPathDB'  # Default fallback
+
+# Import InterProParser and run_interproscan from same directory
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent.parent / "scripts"))
+
+from parse_interproscan import InterProParser, run_interproscan
+from mapping_multiplicity import detect_multiple_mappings
+from bidirectional_best_hits import BidirectionalBestHits, enrich_pavprot_with_bbh
+from pairwise_align_prot import local_alignment_similarity, read_all_sequences
+from gsmc import (
+    get_cdi_genes,
+    detect_one_to_one_orthologs,
+    detect_one_to_many,
+    detect_many_to_one,
+    detect_complex_one_to_many,
+    classify_cross_mappings,
+    detect_unmapped_genes
+)
+
+class PAVprot:
+    @staticmethod
+    def fasta2dict(source: str, is_new: bool = False):
+        """
+        Parse FASTA file and yield (header, sequence) tuples.
+
+        Args:
+            source: Path to FASTA file or '-' for stdin
+            is_new: If True, strip '-pN' suffix from transcript IDs
+
+        Yields:
+            Tuple of (transcript_id, sequence)
+        """
+        if str(source) == '-':
+            context = sys.stdin
+        else:
+            context = open(source, 'r')
+
+        with context:
+            current_header = None
+            current_seq = []
+
+            for line in context:
+                line = line.rstrip('\n')
+                if not line:
+                    continue
+
+                if line.startswith('>'):
+                    if current_header:
+                        yield current_header, ''.join(current_seq)
+
+                    header = line[1:].strip()
+                    transcript_id = header.split()[0].split('|')[0]
+
+                    if is_new:
+                        # Strip Liftoff -pN suffix (e.g., gene-p1 -> gene)
+                        transcript_id = strip_liftoff_suffix(transcript_id)
+
+                    current_header = transcript_id
+                    current_seq = []
+                else:
+                    current_seq.append(line.upper())
+
+            if current_header:
+                yield current_header, ''.join(current_seq)
+
+    @staticmethod
+    def load_gff(gff_path: str, source: str = 'auto') -> Tuple[Dict[str, str], Dict[str, str]]:
+        """
+        Parse GFF3 file to extract RNA-to-protein and locus-to-gene mappings.
+
+        Supports both NCBI (RefSeq) and VEuPathDB (FungiDB) GFF formats.
+
+        Args:
+            gff_path: Path to GFF3 file
+            source: Annotation source ('auto', 'NCBI', or 'VEuPathDB')
+
+        Returns:
+            Tuple of (rna_to_protein, locus_to_gene) dictionaries
+        """
+        # Auto-detect annotation source if not specified
+        if source == 'auto':
+            source = detect_annotation_source(gff_path)
+
+        rna_to_protein: Dict[str, str] = {}
+        locus_to_gene: Dict[str, str] = {}
+
+        with open(gff_path) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#') or '\tCDS\t' not in line:
+                    continue
+                attrs = line.split('\t')[8]
+                attr_dict = {}
+                for pair in attrs.split(';'):
+                    if '=' in pair:
+                        k, v = pair.split('=', 1)
+                        attr_dict[k] = v
+
+                parent = attr_dict.get('Parent', '')
+
+                if source == 'NCBI':
+                    # NCBI format: Parent=rna-XM_123456, protein_id=XP_123456
+                    if NCBI_RNA_PREFIX.match(parent):
+                        rna_id = NCBI_RNA_PREFIX.sub('', parent)
+                        protein_id = attr_dict.get('GenBank') or attr_dict.get('protein_id')
+                        if protein_id:
+                            rna_to_protein[rna_id] = protein_id
+
+                    locus_tag = attr_dict.get('locus_tag', '')
+                    if locus_tag:
+                        gene_id = f"gene-{locus_tag}"
+                        locus_to_gene[locus_tag] = gene_id
+                else:
+                    # VEuPathDB format: Parent=FOZG_00001-t36_1 (no prefix stripping)
+                    if parent:
+                        protein_id = attr_dict.get('protein_id') or attr_dict.get('Name')
+                        if protein_id:
+                            rna_to_protein[parent] = protein_id
+
+        return rna_to_protein, locus_to_gene
+
+    @classmethod
+    def parse_tracking(
+        cls,
+        filepath: str,
+        feature_table: Optional[str] = None,
+        filter_codes: Optional[Set[str]] = None
+    ) -> Tuple[Dict[str, List[dict]], Dict[str, List[dict]]]:
+        """
+        Parse GffCompare tracking file and extract gene/transcript mappings.
+
+        Args:
+            filepath: Path to tracking file
+            feature_table: Optional path to GFF3 feature table for ID mapping
+            filter_codes: Optional set of class codes to filter by
+
+        Returns:
+            Tuple of (full_dict, filtered_dict) where each is a dict mapping
+            old_gene to list of entry dictionaries
+        """
+        rna_to_protein, locus_to_gene = {}, {}
+        if feature_table:
+            rna_to_protein, locus_to_gene = cls.load_gff(feature_table)
+
+        full_dict = defaultdict(list)
+        filtered_dict = defaultdict(list)
+        filter_codes = filter_codes or set()
+
+        # Convert '=' to 'em' in filter_codes for consistency
+        if '=' in filter_codes:
+            filter_codes = filter_codes.copy()
+            filter_codes.discard('=')
+            filter_codes.add('em')
+
+        with open(filepath) as f:
+            for line in f:
+                line = line.rstrip('\n')
+                if not line or line.startswith('#'):
+                    continue
+                fields = line.split('\t')
+                if len(fields) < 5:
+                    continue
+                gffcomp_new_field = fields[2].strip()
+                if gffcomp_new_field == '-' or '|' not in gffcomp_new_field:
+                    continue
+
+                class_code = fields[3].strip()
+                if class_code == '=':
+                    class_code = 'em'
+
+                gffcomp_old_field = fields[4].strip()
+                parts = gffcomp_old_field.split('|')
+                if len(parts) < 3:
+                    continue
+
+                # gffcomp_new_field contains: new_gene|new_transcript (GCF annotation)
+                new_gene_raw, new_trans_raw = [x.strip() for x in gffcomp_new_field.split('|')]
+                # Strip NCBI 'rna-' prefix if present (format-aware)
+                new_trans_clean = NCBI_RNA_PREFIX.sub('', new_trans_raw)
+                new_trans_final = rna_to_protein.get(new_trans_clean, new_trans_clean)
+                new_gene_id = locus_to_gene.get(new_gene_raw, new_gene_raw)
+
+                # gffcomp_old_field (parts) contains: old_gene|old_transcript|exons (FungiDB annotation)
+                old_gene_full = parts[0]
+                old_gene_id = old_gene_full.split(':')[-1]
+                old_trans = parts[1]
+                try:
+                    exons = int(parts[2])
+                except ValueError:
+                    exons = None
+                    
+                # This matches --prot order: old.faa,new.faa
+                entry = {
+                    "old_gene": old_gene_id,
+                    "old_transcript": old_trans,
+                    "new_gene": new_gene_id,
+                    "new_transcript": new_trans_final,
+                    "class_code": class_code,
+                    "exons": exons
+                }
+
+                full_dict[old_gene_id].append(entry)
+                if not filter_codes or class_code in filter_codes:
+                    filtered_dict[old_gene_id].append(entry)
+
+        return dict(full_dict), dict(filtered_dict)
+
+
+    @staticmethod
+    def _assign_class_type(class_codes: set) -> str:
+        """
+        Assign class_type based on class codes (for visualization purpose):
+            a → em only
+            ckmnj → c,k,m,n,j only
+            e → e only
+            ackmnj → em,c,k,m,n,j
+            ackmnje → em,c,k,m,n,j,e
+            o → o only
+            sx → s,x
+            iy → i,y
+            pru → anything else (p,r,u)
+        """
+        if class_codes <= {'em'}:
+            return 'a'
+        elif class_codes <= {'c', 'k', 'm', 'n', 'j'}:
+            return 'ckmnj'
+        elif class_codes <= {'e'}:
+            return 'e'
+        elif class_codes <= {'em', 'c', 'k', 'm', 'n', 'j'}:
+            return 'ackmnj'
+        elif class_codes <= {'em', 'c', 'k', 'm', 'n', 'j', 'e'}:
+            return 'ackmnje'
+        elif class_codes <= {'o'}:
+            return 'o'
+        elif class_codes <= {'s', 'x'}:
+            return 'sx'
+        elif class_codes <= {'i', 'y'}:
+            return 'iy'
+        else:
+            return 'pru'
+
+    @classmethod
+    def compute_all_metrics(cls, full_dict: dict) -> dict:
+        """
+        Compute all metrics in a single pass through the data.
+
+        This unified method combines what was previously done in two separate methods
+        (filter_multi_transcripts and add_gene_pair_metrics) for better performance.
+
+        Computes:
+            New-gene level:
+                - class_code_multi_new: aggregated class codes for new_gene
+                - class_type_transcript: class_type based on new_gene aggregation
+                - ackmnj: 1 if any code in {em,c,k,m,n,j}
+                - ackmnje: 1 if any code in {em,c,k,m,n,j,e}
+
+            Old-gene level:
+                - class_code_multi_old: aggregated class codes for old_gene
+
+            Gene-pair level:
+                - gene_pair_class_code: aggregated class codes for (old_gene, new_gene) pair
+                - class_type_gene: class_type at gene-pair level
+                - exact_match: 1 if ALL transcripts in pair are 'em'
+                - old_multi_transcript: 1 if old_gene has >1 transcripts globally
+                - new_multi_transcript: 1 if new_gene has >1 transcripts globally
+                - old_multi_new: 0=exclusive 1:1, 1=one-to-many, 2=partner has others
+                - new_multi_old: 0=exclusive 1:1, 1=many-to-one, 2=partner has others
+                - old2newCount: number of new genes this old gene maps to
+                - new2oldCount: number of old genes this new gene maps to
+
+        Args:
+            full_dict: Dictionary of entries keyed by old_gene
+
+        Returns:
+            Updated full_dict with all metrics added to each entry
+        """
+        # =====================================================================
+        # Single pass: Collect all groupings
+        # =====================================================================
+        new_gene_to_entries = defaultdict(list)
+        old_gene_to_entries = defaultdict(list)
+        gene_pair_entries = defaultdict(list)
+        old_gene_transcripts = defaultdict(set)
+        new_gene_var_transcripts = defaultdict(set)
+        old_to_new_genes = defaultdict(set)
+        new_to_old_genes = defaultdict(set)
+
+        for entries in full_dict.values():
+            for entry in entries:
+                old_gene = entry['old_gene']
+                new_gene_var = entry['new_gene']
+
+                # Group by new_gene and old_gene
+                new_gene_to_entries[new_gene_var].append(entry)
+                old_gene_to_entries[old_gene].append(entry)
+
+                # Group by gene pair
+                gene_pair_entries[(old_gene, new_gene_var)].append(entry)
+
+                # Collect transcripts per gene (global counting)
+                old_gene_transcripts[old_gene].add(entry['old_transcript'])
+                new_gene_var_transcripts[new_gene_var].add(entry['new_transcript'])
+
+                # Track gene-level mappings
+                old_to_new_genes[old_gene].add(new_gene_var)
+                new_to_old_genes[new_gene_var].add(old_gene)
+
+        # =====================================================================
+        # Compute new-gene level metrics
+        # =====================================================================
+        new_gene_info = {}
+        for ngene, nentries in new_gene_to_entries.items():
+            class_codes = {e['class_code'] for e in nentries}
+            code_str = ';'.join(sorted(class_codes))
+            ctype = cls._assign_class_type(class_codes)
+            ackmnj = 1 if class_codes & {'em', 'c', 'k', 'm', 'n', 'j'} else 0
+            ackmnje = 1 if class_codes & {'em', 'c', 'k', 'm', 'n', 'j', 'e'} else 0
+
+            new_gene_info[ngene] = {
+                'class_code_multi_new': code_str,
+                'class_type_transcript': ctype,
+                'ackmnj': ackmnj,
+                'ackmnje': ackmnje
+            }
+
+        # =====================================================================
+        # Compute old-gene level metrics
+        # =====================================================================
+        old_gene_info = {}
+        for ogene, oentries in old_gene_to_entries.items():
+            class_codes = {e['class_code'] for e in oentries}
+            code_str = ';'.join(sorted(class_codes))
+            old_gene_info[ogene] = {'class_code_multi_old': code_str}
+
+        # =====================================================================
+        # Compute gene-pair level metrics
+        # =====================================================================
+        gene_pair_metrics = {}
+        for (old_gene, new_gene_var), pair_entries in gene_pair_entries.items():
+            class_codes = {e['class_code'] for e in pair_entries}
+            exact_match = 1 if class_codes == {'em'} else 0
+            gene_pair_class_code = ';'.join(sorted(class_codes))
+            class_type_gene = cls._assign_class_type(class_codes)
+
+            num_new_for_old = len(old_to_new_genes[old_gene])
+            num_old_for_new = len(new_to_old_genes[new_gene_var])
+
+            # old_multi_new encoding
+            if num_new_for_old > 1:
+                old_multi_new = 1
+            elif num_old_for_new > 1:
+                old_multi_new = 2
+            else:
+                old_multi_new = 0
+
+            # new_multi_old encoding
+            if num_old_for_new > 1:
+                new_multi_old = 1
+            elif num_new_for_old > 1:
+                new_multi_old = 2
+            else:
+                new_multi_old = 0
+
+            gene_pair_metrics[(old_gene, new_gene_var)] = {
+                'exact_match': exact_match,
+                'gene_pair_class_code': gene_pair_class_code,
+                'class_type_gene': class_type_gene,
+                'old_multi_new': old_multi_new,
+                'new_multi_old': new_multi_old,
+                'old2newCount': num_new_for_old,
+                'new2oldCount': num_old_for_new
+            }
+
+        # =====================================================================
+        # Attach all metrics back to entries (single final pass)
+        # =====================================================================
+        for entries in full_dict.values():
+            for entry in entries:
+                old_gene = entry['old_gene']
+                new_gene_var = entry['new_gene']
+
+                # New gene metrics
+                ninfo = new_gene_info.get(new_gene_var, {
+                    'class_code_multi_new': entry['class_code'],
+                    'class_type_transcript': 'pru',
+                    'ackmnj': 0,
+                    'ackmnje': 0
+                })
+                entry['class_code_multi_new'] = ninfo['class_code_multi_new']
+                entry['class_type_transcript'] = ninfo['class_type_transcript']
+                entry['ackmnj'] = ninfo['ackmnj']
+                entry['ackmnje'] = ninfo['ackmnje']
+
+                # Old gene metrics
+                oinfo = old_gene_info.get(old_gene, {'class_code_multi_old': entry['class_code']})
+                entry['class_code_multi_old'] = oinfo['class_code_multi_old']
+
+                # Multi-transcript flags
+                entry['old_multi_transcript'] = 1 if len(old_gene_transcripts[old_gene]) > 1 else 0
+                entry['new_multi_transcript'] = 1 if len(new_gene_var_transcripts[new_gene_var]) > 1 else 0
+
+                # Gene pair metrics
+                pair_metrics = gene_pair_metrics.get((old_gene, new_gene_var), {})
+                entry['exact_match'] = pair_metrics.get('exact_match', 0)
+                entry['gene_pair_class_code'] = pair_metrics.get('gene_pair_class_code', entry['class_code'])
+                entry['class_type_gene'] = pair_metrics.get('class_type_gene', 'pru')
+                entry['old_multi_new'] = pair_metrics.get('old_multi_new', 0)
+                entry['new_multi_old'] = pair_metrics.get('new_multi_old', 0)
+                entry['old2newCount'] = pair_metrics.get('old2newCount', 1)
+                entry['new2oldCount'] = pair_metrics.get('new2oldCount', 1)
+
+        return full_dict
+
+    @classmethod
+    def load_extra_copy_numbers(cls, liftoff_gff: str):
+        """
+        Parse Liftoff GFF3 (mRNA features) and extract extra_copy_number
+        Returns: {new_transcript_id: int(extra_copy_number)}
+        """
+        extra_copy = {}
+
+        if not liftoff_gff or not os.path.exists(liftoff_gff):
+            return extra_copy
+
+        with open(liftoff_gff) as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#') or '\tmRNA\t' not in line:
+                    continue
+
+                cols = line.split('\t')
+                if len(cols) < 9:
+                    continue
+
+                attrs = cols[8]
+                transcript_id = None
+                copy_number = None
+
+                for pair in attrs.split(';'):
+                    if '=' not in pair:
+                        continue
+                    k, v = pair.split('=', 1)
+
+                    if k == 'ID':
+                        # Extract transcript ID (e.g. from "ID=FOZG_02018-t36_1")
+                        transcript_id = v.split('.')[0]  # remove version if present
+                    elif k.lower() == 'extra_copy_number':
+                        try:
+                            copy_number = int(v)
+                        except ValueError:
+                            copy_number = None
+
+                if transcript_id and copy_number is not None:
+                    extra_copy[transcript_id] = copy_number
+
+        return extra_copy
+
+    @classmethod
+    def filter_extra_copy_transcripts(cls, full_dict: dict, liftoff_gff: str = None):
+        """
+        Add extra_copy_number from Liftoff GFF3 to entries based on new_transcript
+        """
+        extra_copy_map = cls.load_extra_copy_numbers(liftoff_gff)
+
+        for entries in full_dict.values():
+            for entry in entries:
+                new_trans = entry["new_transcript"]
+                copy_num = extra_copy_map.get(new_trans, 0)  # default 0 if not found
+                entry["extra_copy_number"] = copy_num
+
+        return full_dict
+
+    @classmethod
+    def load_interproscan_data(cls, interproscan_tsv: str) -> dict:
+        """
+        Load InterProScan data and extract domain information for each protein.
+
+        Can load either:
+        - Raw InterProScan TSV output (15 columns, no header)
+        - Processed parse_interproscan output (with header, longest_ipr_domains files)
+
+        Returns:
+            Dictionary mapping protein_accession to:
+            {
+                'analysis': analysis type (from longest IPR domain),
+                'signature_accession': signature accession (from longest IPR domain),
+                'total_IPR_domain_length': sum of all IPR domain lengths
+            }
+        """
+        if not interproscan_tsv or not os.path.exists(interproscan_tsv):
+            return {}
+
+        # Check if file has header by reading first line
+        with open(interproscan_tsv, 'r') as f:
+            first_line = f.readline().strip()
+
+        has_header = 'protein_accession' in first_line or 'gene_id' in first_line
+
+        if has_header:
+            # Read processed output file with header
+            df = pd.read_csv(interproscan_tsv, sep='\t')
+
+            # Check if this is already a longest_ipr_domains file (has longestIPRdom or signature_description duplicated)
+            if 'interpro_accession' in df.columns:
+                # Filter to only IPR domains
+                ipr_df = df[df['interpro_accession'].str.startswith('IPR', na=False)].copy()
+
+                if len(ipr_df) == 0:
+                    return {}
+
+                # Calculate domain length
+                ipr_df['domain_length'] = ipr_df['stop_location'] - ipr_df['start_location'] + 1
+            else:
+                # This might be a domain_distribution file without IPR filtering already done
+                print(f"Warning: File {interproscan_tsv} doesn't appear to be an InterProScan output file")
+                return {}
+        else:
+            # Parse raw InterProScan file (no header)
+            parser = InterProParser()
+            df = parser.parse_tsv(interproscan_tsv)
+
+            # Filter to only IPR domains
+            ipr_df = df[df['interpro_accession'].str.startswith('IPR', na=False)].copy()
+
+            if len(ipr_df) == 0:
+                return {}
+
+            # Calculate domain length
+            ipr_df['domain_length'] = ipr_df['stop_location'] - ipr_df['start_location'] + 1
+
+        result = {}
+
+        for protein_acc in ipr_df['protein_accession'].unique():
+            protein_data = ipr_df[ipr_df['protein_accession'] == protein_acc]
+
+            # Get longest IPR domain info (for analysis and signature)
+            # Calculate individual domain lengths first
+            protein_data = protein_data.copy()
+            protein_data['domain_length'] = protein_data['stop_location'] - protein_data['start_location'] + 1
+            longest_idx = protein_data['domain_length'].idxmax()
+            longest_domain = protein_data.loc[longest_idx]
+
+            # Calculate total IPR domain coverage with overlap handling
+            intervals = list(zip(protein_data['start_location'], protein_data['stop_location']))
+            total_length = cls._calculate_interval_coverage(intervals)
+
+            result[protein_acc] = {
+                'analysis': longest_domain['analysis'],
+                'signature_accession': longest_domain['signature_accession'],
+                'total_IPR_domain_length': int(total_length)
+            }
+
+        return result
+
+    @staticmethod
+    def _calculate_interval_coverage(intervals: list) -> int:
+        """
+        Calculate total coverage by merging overlapping intervals.
+
+        Args:
+            intervals: List of tuples (start, end) where coordinates are inclusive
+
+        Returns:
+            Total length covered (sum of merged interval lengths)
+        """
+        if not intervals:
+            return 0
+
+        # Sort intervals by start position
+        sorted_intervals = sorted(intervals, key=lambda x: (x[0], x[1]))
+
+        # Merge overlapping intervals
+        merged = []
+        current_start, current_end = sorted_intervals[0]
+
+        for start, end in sorted_intervals[1:]:
+            # Check if intervals overlap or are adjacent
+            if start <= current_end + 1:
+                # Overlapping or adjacent - extend current interval
+                current_end = max(current_end, end)
+            else:
+                # No overlap - save current interval and start new one
+                merged.append((current_start, current_end))
+                current_start, current_end = start, end
+
+        # Add the last interval
+        merged.append((current_start, current_end))
+
+        # Calculate total length (inclusive coordinates)
+        total_length = sum(end - start + 1 for start, end in merged)
+
+        return total_length
+
+    @classmethod
+    def enrich_interproscan_data(cls, data: dict, new_interproscan_map: dict, old_interproscan_map: dict):
+        """
+        Add InterProScan total IPR domain length to the data dictionary.
+
+        Args:
+            data: The main data dictionary to enrich
+            new_interproscan_map: New gene_id -> total_iprdom_len mapping
+            old_interproscan_map: Old gene_id -> total_iprdom_len mapping
+        """
+        for entries in data.values():
+            for entry in entries:
+                # Add new annotation InterProScan data (map by new_gene)
+                new_gene_var = entry['new_gene']
+                if new_gene_var in new_interproscan_map:
+                    entry['new_gene_total_iprdom_len'] = new_interproscan_map[new_gene_var]
+                else:
+                    entry['new_gene_total_iprdom_len'] = 0
+
+                # Add old annotation InterProScan data (map by old_gene)
+                old_gene = entry['old_gene']
+                if old_gene in old_interproscan_map:
+                    entry['old_gene_total_iprdom_len'] = old_interproscan_map[old_gene]
+                else:
+                    entry['old_gene_total_iprdom_len'] = 0
+
+        return data
+
+    @classmethod
+    def detect_interproscan_type(cls, data: dict, interproscan_tsv: str) -> str:
+        """
+        Auto-detect whether InterProScan file matches old or new annotation transcripts.
+
+        Args:
+            data: The main data dictionary with old_transcript and new_transcript
+            interproscan_tsv: Path to InterProScan TSV file
+
+        Returns:
+            'old' if InterProScan matches old annotation transcripts
+            'new' if InterProScan matches new annotation transcripts
+            'unknown' if no clear match
+        """
+        if not interproscan_tsv or not os.path.exists(interproscan_tsv):
+            return 'unknown'
+
+        # Collect all old and new transcript IDs from tracking data
+        old_transcripts = set()
+        new_transcripts = set()
+        new_genes = set()
+
+        for entries in data.values():
+            for entry in entries:
+                old_transcripts.add(entry['old_transcript'])
+                new_transcripts.add(entry['new_transcript'])
+                new_genes.add(entry['new_gene'])
+
+        # Load protein IDs from InterProScan file
+        interpro_proteins = set()
+
+        # Check if file has header
+        with open(interproscan_tsv, 'r') as f:
+            first_line = f.readline().strip()
+
+        has_header = 'protein_accession' in first_line or 'gene_id' in first_line
+
+        if has_header:
+            df = pd.read_csv(interproscan_tsv, sep='\t', usecols=[0])
+            interpro_proteins = set(df.iloc[:, 0].unique())
+        else:
+            # Raw InterProScan format (column 0 is protein_accession)
+            with open(interproscan_tsv, 'r') as f:
+                for line in f:
+                    if line.strip():
+                        protein_id = line.split('\t')[0]
+                        interpro_proteins.add(protein_id)
+
+        # Count matches
+        old_matches = len(interpro_proteins & old_transcripts)
+        new_trans_matches = len(interpro_proteins & new_transcripts)
+        new_gene_matches = len(interpro_proteins & new_genes)
+
+        # Combine new transcript and gene matches
+        total_new_matches = new_trans_matches + new_gene_matches
+
+        print(f"  → InterProScan auto-detection:", file=sys.stderr)
+        print(f"     Old transcript matches: {old_matches}/{len(old_transcripts)}", file=sys.stderr)
+        print(f"     New transcript matches: {new_trans_matches}/{len(new_transcripts)}", file=sys.stderr)
+        print(f"     New gene matches: {new_gene_matches}/{len(new_genes)}", file=sys.stderr)
+
+        # Determine type based on match counts
+        if old_matches > total_new_matches:
+            print(f"  → Detected as: OLD annotation", file=sys.stderr)
+            return 'old'
+        elif total_new_matches > old_matches:
+            print(f"  → Detected as: NEW annotation", file=sys.stderr)
+            return 'new'
+        else:
+            print(f"  → Could not auto-detect (defaulting to: OLD annotation)", file=sys.stderr)
+            return 'old'  # Default to old annotation if unclear
+
+class DiamondRunner:
+    def __init__(self, threads: int = 40, output_prefix: str = "synonym_mapping_liftover_gffcomp", output_dir: str = "pavprot_out"):
+        self.threads = threads
+        self.output_prefix = output_prefix
+        self.output_dir = output_dir
+        self.fwd_diamond_path: str = None  # new -> old (forward)
+        self.rev_diamond_path: str = None  # old -> new (reverse)
+
+    def _run_diamond(self, db_path: str, input_path: str, output_name: str) -> str:
+        """Run DIAMOND blastp with standard parameters."""
+        out_dir = os.path.join(os.getcwd(), self.output_dir, 'compareprot_out')
+        os.makedirs(out_dir, exist_ok=True)
+        diamond_out = os.path.join(out_dir, f"{self.output_prefix}_{output_name}.tsv.gz")
+
+        cmd_str = (
+            f"diamond blastp "
+            f"--db {db_path} "
+            f"--query {input_path} "
+            f"--ultra-sensitive "
+            f"--masking none "
+            f"--out {diamond_out} "
+            f"--outfmt 6 qseqid qlen sallseqid slen qstart qend sstart send evalue bitscore score length pident nident mismatch gapopen gaps qcovhsp scovhsp qstrand "
+            f"--evalue 1e-6 "
+            f"--threads {self.threads} "
+            f"--max-hsps 1 "
+            f"--unal 1 "
+            f"--compress 1"
+        )
+
+        print(f"Running DIAMOND blastp → {diamond_out}", file=sys.stderr)
+        subprocess.run(cmd_str, shell=True, check=True)
+
+        return diamond_out
+
+    def diamond_blastp(self, old_faa_path: str, new_faa_path: str) -> str:
+        """Run forward DIAMOND blastp (new -> old)."""
+        self.fwd_diamond_path = self._run_diamond(
+            db_path=old_faa_path,
+            input_path=new_faa_path,
+            output_name="diamond_blastp_fwd"
+        )
+        return self.fwd_diamond_path
+
+    def diamond_blastp_reverse(self, old_faa_path: str, new_faa_path: str) -> str:
+        """Run reverse DIAMOND blastp (old -> new) for BBH analysis."""
+        self.rev_diamond_path = self._run_diamond(
+            db_path=new_faa_path,
+            input_path=old_faa_path,
+            output_name="diamond_blastp_rev"
+        )
+        return self.rev_diamond_path
+
+    def run_bidirectional(self, old_faa_path: str, new_faa_path: str) -> Tuple[str, str]:
+        """
+        Run bidirectional DIAMOND blastp for BBH analysis.
+
+        Returns:
+            Tuple of (forward_path, reverse_path)
+        """
+        print(f"\nRunning bidirectional DIAMOND for BBH analysis...", file=sys.stderr)
+        fwd = self.diamond_blastp(old_faa_path, new_faa_path)
+        rev = self.diamond_blastp_reverse(old_faa_path, new_faa_path)
+        return fwd, rev
+
+    def enrich_blastp(self, data: dict, diamond_tsv_gz: str, rna_to_protein: Optional[Dict[str, str]] = None):
+        """Parse DIAMOND output and enrich the dictionary.
+
+        Args:
+            data: PAVprot data dictionary
+            diamond_tsv_gz: Path to gzipped DIAMOND output
+            rna_to_protein: Optional mapping from mRNA IDs (XM_) to protein IDs (XP_)
+        """
+        rna_to_protein = rna_to_protein or {}
+
+        hits = {}
+        with gzip.open(diamond_tsv_gz, 'rt') as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                parts = line.strip().split('\t')
+                hit = {
+                    "qseqid": parts[0], "qlen": int(parts[1]), "sallseqid": parts[2], "slen": int(parts[3]),
+                    "qstart": int(parts[4]), "qend": int(parts[5]), "sstart": int(parts[6]), "send": int(parts[7]),
+                    "evalue": float(parts[8]), "bitscore": float(parts[9]), "score": float(parts[10]),
+                    "length": int(parts[11]), "pident": float(parts[12]), "nident": int(parts[13]),
+                    "mismatch": int(parts[14]), "gapopen": int(parts[15]), "gaps": int(parts[16]),
+                    "qcovhsp": float(parts[17]), "scovhsp": float(parts[18]), "qstrand": parts[19]
+                }
+                qid = hit["qseqid"]
+                if qid not in hits or hit["bitscore"] > hits[qid]["bitscore"]:
+                    hits[qid] = hit
+
+        # add pidentCov_9090
+        new_to_high_hits = defaultdict(list)
+
+        for hit in hits.values():
+            if hit["pident"] >= 90.0 and hit["qcovhsp"] >= 90.0:
+                new_to_high_hits[hit["qseqid"]].append(hit['sallseqid'])
+
+        # Only keep new transcripts with multiple high-quality hits
+        multi_match_new = {q for q, olds in new_to_high_hits.items() if len(olds) > 1}
+
+        for entries in data.values():
+            for entry in entries:
+                # Translate mRNA ID to protein ID if mapping exists
+                transcript_id = entry["new_transcript"]
+                qid = rna_to_protein.get(transcript_id, transcript_id)
+                if qid in hits:
+                    h = hits[qid]
+                    entry["diamond"] = h
+                    entry['pident'] = h['pident']
+                    entry['qcovhsp'] = h['qcovhsp']
+                    entry['scovhsp'] = h['scovhsp']
+                    entry["identical_aa"] = h["nident"]
+                    entry["mismatched_aa"] = h["mismatch"]
+                    entry["indels_aa"] = h["gaps"]
+                    entry["aligned_aa"] = h["length"]
+                else:
+                    entry["diamond"] = None
+                    entry["identical_aa"] = entry["mismatched_aa"] = entry["indels_aa"] = entry["aligned_aa"] = entry['pident'] = entry['qcovhsp'] = entry['scovhsp'] = 0
+                
+                # add pidentCov_9090 info
+                if qid in multi_match_new:
+                    matching_olds = new_to_high_hits[qid]
+                    entry['pidentCov_9090'] = {"old_cnt": len(matching_olds),
+                                               "old_trans": matching_olds}
+                else:
+                    entry['pidentCov_9090'] = None
+
+        return data
+
+
+def enrich_pairwise_alignment(
+    data: dict,
+    old_faa: str,
+    new_faa: str,
+    rna_to_protein: Optional[Dict[str, str]] = None
+) -> dict:
+    """
+    Enrich PAVprot data with Biopython pairwise alignment results.
+
+    Performs local alignment for each transcript pair and adds:
+    - pairwise_identity: Percent identity from local alignment
+    - pairwise_coverage_old: Coverage of old sequence
+    - pairwise_coverage_new: Coverage of new sequence
+    - pairwise_aligned_length: Length of alignment
+
+    Args:
+        data: PAVprot data dictionary (old_gene -> list of entries)
+        old_faa: Path to old annotation protein FASTA
+        new_faa: Path to new annotation protein FASTA
+        rna_to_protein: Optional mapping from mRNA IDs (XM_) to protein IDs (XP_)
+
+    Returns:
+        Enriched data dictionary
+    """
+    rna_to_protein = rna_to_protein or {}
+
+    print("Loading sequences for pairwise alignment...", file=sys.stderr)
+    old_seqs = read_all_sequences(old_faa)
+    new_seqs = read_all_sequences(new_faa)
+    print(f"  Loaded {len(old_seqs)} old, {len(new_seqs)} new sequences", file=sys.stderr)
+
+    # Count total pairs for progress
+    total_pairs = sum(len(entries) for entries in data.values())
+    completed = 0
+    aligned_count = 0
+
+    print(f"Running pairwise alignments for {total_pairs} transcript pairs...", file=sys.stderr)
+
+    for entries in data.values():
+        for entry in entries:
+            old_trans = entry.get('old_transcript', '')
+            new_trans = entry.get('new_transcript', '')
+
+            # Translate mRNA ID to protein ID if mapping exists
+            new_prot_id = rna_to_protein.get(new_trans, new_trans)
+
+            # Get sequences
+            old_seq = old_seqs.get(old_trans)
+            new_seq = new_seqs.get(new_prot_id)
+
+            if old_seq is not None and new_seq is not None:
+                # Perform local alignment
+                result = local_alignment_similarity(str(old_seq), str(new_seq))
+                entry['pairwise_identity'] = result.identity_percent
+                entry['pairwise_coverage_old'] = result.coverage_ref
+                entry['pairwise_coverage_new'] = result.coverage_query
+                entry['pairwise_aligned_length'] = result.aligned_length
+                aligned_count += 1
+            else:
+                # Sequence not found - set to NA
+                entry['pairwise_identity'] = None
+                entry['pairwise_coverage_old'] = None
+                entry['pairwise_coverage_new'] = None
+                entry['pairwise_aligned_length'] = None
+
+            completed += 1
+            if completed % 500 == 0:
+                print(f"  Progress: {completed}/{total_pairs} pairs...", file=sys.stderr)
+
+    print(f"  Completed {aligned_count} alignments out of {total_pairs} pairs", file=sys.stderr)
+    return data
+
+
+# =========================================================================
+# Helper functions for main() - refactored for readability
+# =========================================================================
+
+def create_argument_parser() -> argparse.ArgumentParser:
+    """Create and configure the argument parser for PAVprot."""
+    parser = argparse.ArgumentParser(description="PAVprot – complete class-based pipeline")
+
+    # Core inputs
+    parser.add_argument('--gff-comp', required=False)
+    parser.add_argument('--gff', help="GFF3 CDS feature table. Single file or comma-separated 'old.gff,new.gff'. Order: old annotation first, new annotation second")
+    parser.add_argument('--liftoff-gff', help="Liftoff GFF3 with extra_copy_number (optional)")
+    parser.add_argument('--class-code', nargs='*', help="Space-separated class codes to filter (e.g., = c k m n j e). Use '=' for exact match class code.")
+
+    # Protein FASTA options
+    parser.add_argument('--prot', help="Protein FASTA file(s). Single file or comma-separated 'old.faa,new.faa'. Order must match --gff")
+
+    # DIAMOND options
+    parser.add_argument('--run-diamond', action='store_true')
+    parser.add_argument('--run-bbh', action='store_true', default=True, help='Run bidirectional best hit analysis (requires --run-diamond, default: True)')
+    parser.add_argument('--no-run-bbh', action='store_false', dest='run_bbh', help='Disable BBH analysis')
+    parser.add_argument('--bbh-min-pident', type=float, default=30.0, help='Minimum pident for BBH analysis (default: 30.0)')
+    parser.add_argument('--bbh-min-coverage', type=float, default=50.0, help='Minimum coverage for BBH analysis (default: 50.0)')
+    parser.add_argument('--diamond-threads', type=int, default=40)
+
+    # Pairwise alignment options (Biopython local alignment)
+    parser.add_argument('--run-pairwise', action='store_true', default=True, help='Run Biopython pairwise alignment (default: True). Adds columns: pairwise_identity, pairwise_coverage_old, pairwise_coverage_new, pairwise_aligned_length')
+    parser.add_argument('--no-run-pairwise', action='store_false', dest='run_pairwise', help='Disable pairwise alignment')
+
+    # Output options
+    parser.add_argument('--output-prefix', default="synonym_mapping_liftover_gffcomp")
+    parser.add_argument('--output-dir', default="pavprot_out", help="Output directory (default: pavprot_out)")
+
+    # InterProScan options
+    parser.add_argument('--interproscan-out', help="InterProScan TSV output file(s). Single file or comma-separated 'old_interpro.tsv,new_interpro.tsv'. Order must match --gff")
+    parser.add_argument('--run-interproscan', action='store_true', help='Run InterProScan on input protein files before parsing (requires --prot)')
+    parser.add_argument('--interproscan-cpu', type=int, default=4, help='Number of CPUs for InterProScan (default: 4)')
+    parser.add_argument('--interproscan-pathways', action='store_true', help='Include pathway annotations in InterProScan')
+    parser.add_argument('--interproscan-databases', help='Databases to search (comma-separated, default: all)')
+
+    # ProteinX pLDDT scores options
+    parser.add_argument('--proteinx-out', help="ProteinX pLDDT TSV file(s). Single file or comma-separated 'old_proteinx.tsv,new_proteinx.tsv'. Order must match --gff. Format: gene_name, residue_plddt_mean, ...")
+
+    # Psauron scores options
+    parser.add_argument('--psauron-out', help="Psauron CSV file(s). Single file or comma-separated 'old_psauron.csv,new_psauron.csv'. Order must match --gff. Format: gene_name, psauron_score_mean, psauron_is_protein, ...")
+
+    # Output filtering options
+    parser.add_argument('--filter-exact-match', action='store_true', help='Only output gene pairs with exact_match=1 (all transcripts are em)')
+    parser.add_argument('--filter-exclusive-1to1', action='store_true', help='Only output exclusive 1:1 mappings (old_multi_new=0 AND new_multi_old=0)')
+    parser.add_argument('--filter-class-type-gene', help='Only output gene pairs with specified class_type_gene (comma-separated, e.g., "a,ackmnj")')
+
+    # Excel output option
+    parser.add_argument('--output-excel', action='store_true', default=True, dest='output_excel',
+                        help='Export all results to a single Excel file (default: True)')
+    parser.add_argument('--no-output-excel', action='store_false', dest='output_excel',
+                        help='Disable Excel export')
+
+    # Plotting options
+    parser.add_argument('--plot', nargs='*', default=None, metavar='TYPE',
+                        help="Generate plots. Without arguments: all plots. "
+                             "Options: 'scenarios' (scenario distribution), "
+                             "'bbh' (BBH scatter), 'ipr' (IPR domain comparison), "
+                             "'advanced' (log-log, quadrant analysis), "
+                             "'1to1' (1:1 ortholog IPR comparison), "
+                             "'psauron' (Psauron score distribution), "
+                             "'quality' (quality score scatter). "
+                             "Output saved to {output_dir}/plots/")
+
+    parser.add_argument('--plot-only', action='store_true',
+                        help="Generate plots only from existing dataset (skip data processing)")
+
+    parser.add_argument('--dataset', type=str,
+                        help="Dataset directory for --plot-only mode (contains gene_level*.tsv files)")
+
+    parser.add_argument('--list', action='store_true',
+                        help="List available plot types and exit")
+
+    return parser
+
+
+def validate_inputs(args, parser: argparse.ArgumentParser) -> Tuple[List[str], List[str]]:
+    """
+    Validate all input files exist and return parsed file lists.
+
+    Returns:
+        Tuple of (gff_list, interproscan_files)
+    """
+    # Validate tracking file
+    if not os.path.exists(args.gff_comp):
+        parser.error(f"Tracking file not found: {args.gff_comp}")
+
+    # Validate GFF files
+    if args.gff:
+        for gff_file in args.gff.split(','):
+            gff_file = gff_file.strip()
+            if not os.path.exists(gff_file):
+                parser.error(f"GFF file not found: {gff_file}")
+
+    # Parse and validate protein FASTA files from --prot
+    args.old_faa = None
+    args.new_faa = None
+    if args.prot:
+        prot_files = [f.strip() for f in args.prot.split(',')]
+        for pf in prot_files:
+            if not os.path.exists(pf):
+                parser.error(f"Protein FASTA not found: {pf}")
+        if len(prot_files) >= 1:
+            args.old_faa = prot_files[0]
+        if len(prot_files) >= 2:
+            args.new_faa = prot_files[1]
+        if len(prot_files) > 2:
+            parser.error(f"--prot accepts at most 2 files (old,new). Got {len(prot_files)}")
+
+    if args.liftoff_gff and not os.path.exists(args.liftoff_gff):
+        parser.error(f"Liftoff GFF not found: {args.liftoff_gff}")
+
+    # Parse GFF list
+    gff_list = [g.strip() for g in args.gff.split(',')] if args.gff else []
+    num_gffs = len(gff_list)
+
+    # Handle InterProScan files
+    interproscan_files = []
+    if args.run_interproscan:
+        interproscan_files = _run_interproscan_pipeline(args, parser, gff_list, num_gffs)
+    elif args.interproscan_out:
+        interproscan_files = _validate_interproscan_files(args, parser, num_gffs)
+
+    # Handle ProteinX files (optional) - positional parsing
+    args.proteinx_files = []
+    if args.proteinx_out:
+        proteinx_files = [f.strip() for f in args.proteinx_out.split(',')]
+        if len(proteinx_files) > 2:
+            print(f"Warning: --proteinx-out accepts at most 2 files. Got {len(proteinx_files)}, using first 2.", file=sys.stderr)
+
+        for i, proteinx_file in enumerate(proteinx_files[:2]):
+            if os.path.exists(proteinx_file):
+                args.proteinx_files.append(proteinx_file)
+            else:
+                print(f"Warning: ProteinX file [{i}] not found: {proteinx_file}. Task_5 will use available data only.", file=sys.stderr)
+
+    # Handle Psauron files (optional) - positional parsing
+    args.psauron_files = []
+    if args.psauron_out:
+        psauron_files = [f.strip() for f in args.psauron_out.split(',')]
+        if len(psauron_files) > 2:
+            print(f"Warning: --psauron-out accepts at most 2 files. Got {len(psauron_files)}, using first 2.", file=sys.stderr)
+
+        for i, psauron_file in enumerate(psauron_files[:2]):
+            if os.path.exists(psauron_file):
+                args.psauron_files.append(psauron_file)
+            else:
+                print(f"Warning: Psauron file [{i}] not found: {psauron_file}. Task_6/7 will use available data only.", file=sys.stderr)
+
+    return gff_list, interproscan_files
+
+
+def _run_interproscan_pipeline(args, parser, gff_list: List[str], num_gffs: int) -> List[str]:
+    """Run InterProScan on input protein files."""
+    if not args.prot:
+        parser.error("--run-interproscan requires --prot argument")
+
+    input_prot_files = [f.strip() for f in args.prot.split(',')]
+
+    # Track IPR file basenames for Excel export (avoids hardcoding organism names)
+    args.old_ipr_basename = None
+    args.new_ipr_basename = None
+    if len(input_prot_files) >= 1:
+        args.old_ipr_basename = Path(input_prot_files[0]).stem + "_interproscan"
+    if len(input_prot_files) >= 2:
+        args.new_ipr_basename = Path(input_prot_files[1]).stem + "_interproscan"
+
+    # Validate file counts match
+    if args.gff:
+        if num_gffs == 2 and len(input_prot_files) != 2:
+            parser.error(f"When --gff has 2 files, --prot must also have exactly 2 comma-separated files. Got {len(input_prot_files)} protein files.")
+        elif num_gffs == 1 and len(input_prot_files) > 2:
+            parser.error(f"When --gff has 1 file, --prot can have at most 2 files. Got {len(input_prot_files)} protein files.")
+
+        print(f"\nNote: Protein file order follows GFF file order:", file=sys.stderr)
+        for i, (prot_file, gff_file) in enumerate(zip(input_prot_files, gff_list)):
+            file_type = "Old" if i == 0 else "New"
+            print(f"  {file_type}: {prot_file} → {gff_file}", file=sys.stderr)
+    else:
+        print(f"\nNote: Running InterProScan without GFF - gene IDs will not be mapped", file=sys.stderr)
+
+    # Validate files exist
+    for f in input_prot_files:
+        if not os.path.exists(f):
+            parser.error(f"Protein file not found: {f}")
+
+    # Run InterProScan
+    print("\n" + "="*80, file=sys.stderr)
+    print("RUNNING INTERPROSCAN", file=sys.stderr)
+    print("="*80, file=sys.stderr)
+
+    pavprot_out = os.path.join(os.getcwd(), args.output_dir)
+    os.makedirs(pavprot_out, exist_ok=True)
+
+    interproscan_output_files = []
+    for i, prot_file in enumerate(input_prot_files):
+        file_type = "Old" if i == 0 else "New"
+        print(f"\n[{i+1}/{len(input_prot_files)}] Running InterProScan for {file_type} annotation proteins: {prot_file}", file=sys.stderr)
+
+        output_basename = Path(prot_file).stem + "_interproscan"
+        output_base = os.path.join(pavprot_out, output_basename)
+
+        success = run_interproscan(
+            protein_file=prot_file,
+            cpu=args.interproscan_cpu,
+            output_base=output_base,
+            output_format='TSV',
+            pathways=args.interproscan_pathways,
+            databases=args.interproscan_databases
+        )
+
+        if not success:
+            print(f"Error: InterProScan failed for {prot_file}", file=sys.stderr)
+            sys.exit(1)
+
+        output_file = f"{output_base}.tsv"
+        interproscan_output_files.append(output_file)
+        print(f"  → InterProScan output: {output_file}", file=sys.stderr)
+
+    print("\n" + "="*80, file=sys.stderr)
+    print("✓ InterProScan completed for all files!", file=sys.stderr)
+    print("="*80 + "\n", file=sys.stderr)
+
+    return interproscan_output_files
+
+
+def _validate_interproscan_files(args, parser, num_gffs: int) -> List[str]:
+    """Validate existing InterProScan output files."""
+    interproscan_files = [f.strip() for f in args.interproscan_out.split(',')]
+
+    # Track IPR file basenames for Excel export (avoids hardcoding organism names)
+    args.old_ipr_basename = None
+    args.new_ipr_basename = None
+
+    # Validate counts based on GFF configuration
+    if num_gffs == 2:
+        if len(interproscan_files) == 1:
+            print(f"Note: Single InterProScan file provided with 2 GFFs - will be treated as old annotation only", file=sys.stderr)
+            args.old_ipr_basename = Path(interproscan_files[0]).stem
+        elif len(interproscan_files) != 2:
+            parser.error(f"--interproscan-out must have 1 or 2 comma-separated files when --gff has 2 GFFs. Got {len(interproscan_files)} files.")
+        else:
+            # Position 1 = old, Position 2 = new
+            args.old_ipr_basename = Path(interproscan_files[0]).stem
+            args.new_ipr_basename = Path(interproscan_files[1]).stem
+    elif num_gffs == 1:
+        if len(interproscan_files) == 1:
+            print(f"Note: Single InterProScan file provided with 1 GFF - will be treated as old annotation only", file=sys.stderr)
+            args.old_ipr_basename = Path(interproscan_files[0]).stem
+        elif len(interproscan_files) == 2:
+            print(f"Note: Two InterProScan files provided with 1 GFF - first for old annotation (with gene mapping), second for new annotation (protein-level only)", file=sys.stderr)
+            args.old_ipr_basename = Path(interproscan_files[0]).stem
+            args.new_ipr_basename = Path(interproscan_files[1]).stem
+        elif len(interproscan_files) > 2:
+            parser.error(f"--interproscan-out can have at most 2 files when --gff has 1 GFF. Got {len(interproscan_files)} files.")
+    elif num_gffs == 0 and len(interproscan_files) > 0:
+        print(f"Note: {len(interproscan_files)} InterProScan file(s) provided without GFF - protein-level data only (no gene mapping)", file=sys.stderr)
+        if len(interproscan_files) >= 1:
+            args.old_ipr_basename = Path(interproscan_files[0]).stem
+        if len(interproscan_files) >= 2:
+            args.new_ipr_basename = Path(interproscan_files[1]).stem
+
+    # Validate files exist
+    for f in interproscan_files:
+        if not os.path.exists(f):
+            parser.error(f"InterProScan file not found: {f}")
+
+    return interproscan_files
+
+
+def process_interproscan_integration(
+    args,
+    data: dict,
+    interproscan_files: List[str],
+    gff_list: List[str],
+    pavprot_out: str
+) -> Tuple[dict, bool, dict, dict]:
+    """
+    Process InterProScan data and enrich the PAVprot data.
+
+    Returns:
+        Tuple of (enriched_data, has_interproscan, old_interproscan_map, new_interproscan_map)
+    """
+    num_gffs = len(gff_list)
+    old_interproscan_map = {}
+    new_interproscan_map = {}
+    has_interproscan = False
+
+    if not interproscan_files or len(interproscan_files) == 0:
+        return data, has_interproscan, old_interproscan_map, new_interproscan_map
+
+    print("\n" + "="*80, file=sys.stderr)
+    print("RUNNING INTERPROSCAN INTEGRATION (parse_interproscan functionality)", file=sys.stderr)
+    print("="*80, file=sys.stderr)
+
+    # Dispatch to appropriate handler based on configuration
+    if num_gffs == 0:
+        old_interproscan_map, new_interproscan_map = _process_interproscan_no_gff(
+            interproscan_files, pavprot_out
+        )
+    elif num_gffs == 1 and len(interproscan_files) == 1:
+        old_interproscan_map, new_interproscan_map = _process_interproscan_single_gff_single_file(
+            data, interproscan_files, gff_list, pavprot_out
+        )
+    elif num_gffs == 2 and len(interproscan_files) == 1:
+        old_interproscan_map, new_interproscan_map = _process_interproscan_dual_gff_single_file(
+            data, interproscan_files, gff_list, pavprot_out
+        )
+    elif num_gffs == 1 and len(interproscan_files) == 2:
+        old_interproscan_map, new_interproscan_map = _process_interproscan_single_gff_dual_file(
+            interproscan_files, gff_list, pavprot_out
+        )
+    elif num_gffs == 2 and len(interproscan_files) == 2:
+        old_interproscan_map, new_interproscan_map = _process_interproscan_dual_gff_dual_file(
+            interproscan_files, gff_list, pavprot_out
+        )
+
+    # Enrich data with InterProScan information
+    if new_interproscan_map or old_interproscan_map:
+        has_interproscan = True
+        print(f"\nEnriching PAVprot data with InterProScan totals...", file=sys.stderr)
+        data = PAVprot.enrich_interproscan_data(data, new_interproscan_map, old_interproscan_map)
+        print(f"  → Added columns: new_gene_total_iprdom_len, old_gene_total_iprdom_len", file=sys.stderr)
+        print(f"\n" + "="*80, file=sys.stderr)
+        print(f"✓ InterProScan integration complete!", file=sys.stderr)
+        print(f"  New annotation genes with IPR data: {len(new_interproscan_map)}", file=sys.stderr)
+        print(f"  Old annotation genes with IPR data: {len(old_interproscan_map)}", file=sys.stderr)
+        print("="*80 + "\n", file=sys.stderr)
+
+    return data, has_interproscan, old_interproscan_map, new_interproscan_map
+
+
+def _process_interproscan_no_gff(interproscan_files: List[str], pavprot_out: str) -> Tuple[dict, dict]:
+    """Process InterProScan without GFF (protein-level only)."""
+    print(f"\n[1/3] No GFF mode: Protein-level data only (no gene mapping)", file=sys.stderr)
+
+    old_interproscan_map = {}
+    new_interproscan_map = {}
+    parsers_list = []
+
+    for i, interpro_file in enumerate(interproscan_files):
+        file_type = "Old" if i == 0 else "New"
+        print(f"  {file_type} annotation InterProScan: {interpro_file}", file=sys.stderr)
+
+        parser = InterProParser(gff_file=None)
+        df = parser.parse_tsv(interpro_file)
+        print(f"  → Loaded {len(df)} InterProScan entries", file=sys.stderr)
+
+        ipr_map = parser.total_ipr_length()
+        print(f"  → Calculated for {len(ipr_map)} proteins", file=sys.stderr)
+
+        if i == 0:
+            old_interproscan_map = ipr_map
+        else:
+            new_interproscan_map = ipr_map
+
+        parsers_list.append((parser, interpro_file))
+
+    # Save outputs
+    for i, (parser, interpro_file) in enumerate(parsers_list):
+        file_type = "old" if i == 0 else "new"
+        file_base = Path(interpro_file).stem
+        ipr_map = old_interproscan_map if i == 0 else new_interproscan_map
+        _save_interproscan_outputs(parser, ipr_map, file_base, pavprot_out, has_gene_mapping=False)
+        print(f"  → Saved {file_type} annotation outputs to pavprot_out/", file=sys.stderr)
+
+    print(f"\nNote: Gene IDs not added to output (no GFF provided)", file=sys.stderr)
+    return old_interproscan_map, new_interproscan_map
+
+
+def _process_interproscan_single_gff_single_file(
+    data: dict, interproscan_files: List[str], gff_list: List[str], pavprot_out: str
+) -> Tuple[dict, dict]:
+    """Process single InterProScan file with single GFF."""
+    print(f"\n[1/4] Single GFF mode: Auto-detecting InterProScan type", file=sys.stderr)
+    print(f"  GFF: {gff_list[0]}", file=sys.stderr)
+    print(f"  InterProScan: {interproscan_files[0]}", file=sys.stderr)
+
+    interproscan_type = PAVprot.detect_interproscan_type(data, interproscan_files[0])
+
+    parser = InterProParser(gff_file=gff_list[0])
+    df = parser.parse_tsv(interproscan_files[0])
+    print(f"  → Loaded {len(df)} InterProScan entries", file=sys.stderr)
+
+    ipr_map = parser.total_ipr_length()
+
+    old_interproscan_map = {}
+    new_interproscan_map = {}
+
+    if interproscan_type == 'new':
+        new_interproscan_map = ipr_map
+        print(f"  → Calculated for {len(new_interproscan_map)} new genes", file=sys.stderr)
+    else:
+        old_interproscan_map = ipr_map
+        print(f"  → Calculated for {len(old_interproscan_map)} old genes", file=sys.stderr)
+
+    file_base = Path(interproscan_files[0]).stem
+    _save_interproscan_outputs(parser, ipr_map, file_base, pavprot_out, has_gene_mapping=bool(parser.transcript_to_gene_map))
+
+    return old_interproscan_map, new_interproscan_map
+
+
+def _process_interproscan_dual_gff_single_file(
+    data: dict, interproscan_files: List[str], gff_list: List[str], pavprot_out: str
+) -> Tuple[dict, dict]:
+    """Process single InterProScan file with dual GFFs."""
+    print(f"\n[1/4] Dual GFF mode with single InterProScan: Auto-detecting type", file=sys.stderr)
+    print(f"  Old annotation GFF: {gff_list[0]}", file=sys.stderr)
+    print(f"  New annotation GFF: {gff_list[1]}", file=sys.stderr)
+    print(f"  InterProScan: {interproscan_files[0]}", file=sys.stderr)
+
+    interproscan_type = PAVprot.detect_interproscan_type(data, interproscan_files[0])
+    gff_to_use = gff_list[0] if interproscan_type == 'old' else gff_list[1]
+
+    parser = InterProParser(gff_file=gff_to_use)
+    df = parser.parse_tsv(interproscan_files[0])
+    print(f"  → Loaded {len(df)} InterProScan entries", file=sys.stderr)
+
+    ipr_map = parser.total_ipr_length()
+
+    old_interproscan_map = {}
+    new_interproscan_map = {}
+
+    if interproscan_type == 'new':
+        new_interproscan_map = ipr_map
+        print(f"  → Calculated for {len(new_interproscan_map)} new genes", file=sys.stderr)
+    else:
+        old_interproscan_map = ipr_map
+        print(f"  → Calculated for {len(old_interproscan_map)} old genes", file=sys.stderr)
+
+    file_base = Path(interproscan_files[0]).stem
+    _save_interproscan_outputs(parser, ipr_map, file_base, pavprot_out, has_gene_mapping=bool(parser.transcript_to_gene_map))
+
+    return old_interproscan_map, new_interproscan_map
+
+
+def _process_interproscan_single_gff_dual_file(
+    interproscan_files: List[str], gff_list: List[str], pavprot_out: str
+) -> Tuple[dict, dict]:
+    """Process two InterProScan files with single GFF."""
+    print(f"\n[1/4] Single GFF mode: Old annotation with gene mapping, New annotation without", file=sys.stderr)
+    print(f"  Old annotation GFF: {gff_list[0]}", file=sys.stderr)
+    print(f"  Old annotation InterProScan: {interproscan_files[0]}", file=sys.stderr)
+    print(f"  New annotation InterProScan: {interproscan_files[1]} (no gene mapping)", file=sys.stderr)
+
+    # Old annotation with GFF mapping
+    old_parser = InterProParser(gff_file=gff_list[0])
+    old_df = old_parser.parse_tsv(interproscan_files[0])
+    print(f"  → Loaded {len(old_df)} old annotation InterProScan entries", file=sys.stderr)
+    old_interproscan_map = old_parser.total_ipr_length()
+    print(f"  → Calculated for {len(old_interproscan_map)} old genes", file=sys.stderr)
+
+    # New annotation without GFF mapping
+    new_parser = InterProParser(gff_file=None)
+    new_df = new_parser.parse_tsv(interproscan_files[1])
+    print(f"  → Loaded {len(new_df)} new annotation InterProScan entries", file=sys.stderr)
+    new_interproscan_map = new_parser.total_ipr_length()
+    print(f"  → Calculated for {len(new_interproscan_map)} new proteins", file=sys.stderr)
+
+    # Save outputs
+    old_base = Path(interproscan_files[0]).stem
+    new_base = Path(interproscan_files[1]).stem
+    _save_interproscan_outputs(old_parser, old_interproscan_map, old_base, pavprot_out, has_gene_mapping=bool(old_parser.transcript_to_gene_map))
+    _save_interproscan_outputs(new_parser, new_interproscan_map, new_base, pavprot_out, has_gene_mapping=False)
+
+    return old_interproscan_map, new_interproscan_map
+
+
+def _process_interproscan_dual_gff_dual_file(
+    interproscan_files: List[str], gff_list: List[str], pavprot_out: str
+) -> Tuple[dict, dict]:
+    """Process two InterProScan files with two GFFs."""
+    print(f"\n[1/4] Dual GFF mode: Old + New annotations", file=sys.stderr)
+    print(f"  Old annotation GFF: {gff_list[0]}", file=sys.stderr)
+    print(f"  Old annotation InterProScan: {interproscan_files[0]}", file=sys.stderr)
+    print(f"  New annotation GFF: {gff_list[1]}", file=sys.stderr)
+    print(f"  New annotation InterProScan: {interproscan_files[1]}", file=sys.stderr)
+
+    # Old annotation
+    old_parser = InterProParser(gff_file=gff_list[0])
+    old_df = old_parser.parse_tsv(interproscan_files[0])
+    print(f"  → Loaded {len(old_df)} old annotation InterProScan entries", file=sys.stderr)
+    old_interproscan_map = old_parser.total_ipr_length()
+    print(f"  → Calculated for {len(old_interproscan_map)} old genes", file=sys.stderr)
+
+    # New annotation
+    new_parser = InterProParser(gff_file=gff_list[1])
+    new_df = new_parser.parse_tsv(interproscan_files[1])
+    print(f"  → Loaded {len(new_df)} new annotation InterProScan entries", file=sys.stderr)
+    new_interproscan_map = new_parser.total_ipr_length()
+    print(f"  → Calculated for {len(new_interproscan_map)} new genes", file=sys.stderr)
+
+    # Save outputs
+    old_base = Path(interproscan_files[0]).stem
+    new_base = Path(interproscan_files[1]).stem
+    _save_interproscan_outputs(old_parser, old_interproscan_map, old_base, pavprot_out, has_gene_mapping=bool(old_parser.transcript_to_gene_map))
+    _save_interproscan_outputs(new_parser, new_interproscan_map, new_base, pavprot_out, has_gene_mapping=bool(new_parser.transcript_to_gene_map))
+
+    return old_interproscan_map, new_interproscan_map
+
+
+def _save_interproscan_outputs(
+    parser: 'InterProParser',
+    ipr_map: dict,
+    file_base: str,
+    pavprot_out: str,
+    has_gene_mapping: bool
+) -> None:
+    """Save InterProScan analysis outputs to files."""
+    total_ipr_file = os.path.join(pavprot_out, f"{file_base}_total_ipr_length.tsv")
+    domain_dist_file = os.path.join(pavprot_out, f"{file_base}_domain_distribution.tsv")
+
+    # Save total IPR lengths
+    id_col = 'gene_id' if has_gene_mapping else 'protein_accession'
+    total_df = pd.DataFrame(list(ipr_map.items()), columns=[id_col, 'total_iprdom_len'])
+    total_df.to_csv(total_ipr_file, sep='\t', index=False)
+
+    # Save domain distribution
+    domain_stats = parser.domain_distribution()
+    if len(domain_stats) > 0:
+        domain_stats.to_csv(domain_dist_file, sep='\t', index=False, na_rep='')
+
+
+def write_results(
+    args,
+    data: dict,
+    has_interproscan: bool,
+    has_bbh: bool,
+    has_pairwise: bool,
+    interproscan_files: List[str],
+    filter_set: Optional[Set[str]]
+) -> str:
+    """
+    Write final results to output file.
+
+    Returns:
+        Path to the output file.
+    """
+    pavprot_out = os.path.join(os.getcwd(), args.output_dir)
+    os.makedirs(pavprot_out, exist_ok=True)
+
+    # Build output filename
+    output_file = _build_output_filename(args, interproscan_files, filter_set, pavprot_out)
+
+    # Build header
+    header = _build_header(args, has_interproscan, has_bbh, has_pairwise)
+
+    # Parse filter options
+    filter_class_types = None
+    if args.filter_class_type_gene:
+        filter_class_types = {ct.strip() for ct in args.filter_class_type_gene.split(',')}
+
+    # Write output
+    filtered_count, total_count = _write_output_file(
+        output_file, header, data, args, has_interproscan, has_bbh, has_pairwise, filter_class_types
+    )
+
+    # Report filtering stats
+    if filtered_count > 0:
+        print(f"Filtered {filtered_count} of {total_count} entries ({total_count - filtered_count} remaining)", file=sys.stderr)
+    print(f"Results saved to {output_file}", file=sys.stderr)
+
+    return output_file
+
+
+def _build_output_filename(
+    args,
+    interproscan_files: List[str],
+    filter_set: Optional[Set[str]],
+    pavprot_out: str
+) -> str:
+    """Build the output filename based on configuration."""
+    # Add InterProScan basename prefix when single file is provided
+    interproscan_prefix = ""
+    if interproscan_files and len(interproscan_files) == 1:
+        interpro_basename = Path(interproscan_files[0]).stem
+        interproscan_prefix = interpro_basename.replace('.prot', '').replace('.faa', '')
+
+    # Build base prefix
+    base_prefix = "liftoff_gffcomp_mapping"
+    if args.output_prefix and args.output_prefix != "liftoff_gffcomp_mapping":
+        full_prefix = f"{base_prefix}_{args.output_prefix}"
+    else:
+        full_prefix = base_prefix
+
+    # Prepend InterProScan prefix
+    if interproscan_prefix:
+        full_prefix = f"{interproscan_prefix}_{full_prefix}"
+
+    # Add suffix
+    suffix = "_diamond_blastp.tsv" if args.run_diamond else ".tsv"
+
+    if filter_set:
+        safe_codes = "_".join(sorted(filter_set))
+        return os.path.join(pavprot_out, f"{full_prefix}_{safe_codes}{suffix}")
+    else:
+        return os.path.join(pavprot_out, f"{full_prefix}{suffix}")
+
+
+def _build_header(args, has_interproscan: bool, has_bbh: bool, has_pairwise: bool = False) -> str:
+    """Build the output file header."""
+    header = "old_gene\told_transcript\tnew_gene\tnew_transcript\ttranscript_pair_class_code\told_multi_transcript\tnew_multi_transcript\texact_match\tgene_pair_class_code\told2newCount\tnew2oldCount"
+
+    if args.run_diamond:
+        header += "\tpident\tqcovhsp\tscovhsp\tidentical_aa\tmismatched_aa\tindels_aa\taligned_aa"
+    if has_bbh:
+        header += "\tis_bbh\tbbh_avg_pident\tbbh_avg_coverage"
+    if has_pairwise:
+        header += "\tpairwise_identity\tpairwise_coverage_old\tpairwise_coverage_new\tpairwise_aligned_length"
+    if args.liftoff_gff:
+        header += "\textra_copy_number"
+    if has_interproscan:
+        header += "\tnew_total_ipr_domain_length\told_total_ipr_domain_length"
+
+    return header
+
+
+def _write_output_file(
+    output_file: str,
+    header: str,
+    data: dict,
+    args,
+    has_interproscan: bool,
+    has_bbh: bool,
+    has_pairwise: bool,
+    filter_class_types: Optional[Set[str]]
+) -> Tuple[int, int]:
+    """Write the output file and return filter statistics."""
+    filtered_count = 0
+    total_count = 0
+
+    with open(output_file, 'w') as f:
+        f.write(header + "\n")
+        for entries in data.values():
+            for e in entries:
+                total_count += 1
+
+                # Apply filters
+                if args.filter_exact_match and e.get('exact_match', 0) != 1:
+                    filtered_count += 1
+                    continue
+                if args.filter_exclusive_1to1 and (e.get('old_multi_new', 0) != 0 or e.get('new_multi_old', 0) != 0):
+                    filtered_count += 1
+                    continue
+                if filter_class_types and e.get('class_type_gene', 'pru') not in filter_class_types:
+                    filtered_count += 1
+                    continue
+
+                # Build output line
+                base = f"{e['old_gene']}\t{e['old_transcript']}\t{e['new_gene']}\t{e['new_transcript']}\t{e['class_code']}\t{e['old_multi_transcript']}\t{e['new_multi_transcript']}\t{e['exact_match']}\t{e['gene_pair_class_code']}\t{e['old2newCount']}\t{e['new2oldCount']}"
+
+                diamond_line = ""
+                if args.run_diamond:
+                    pident = e.get('pident', 0)
+                    qcovhsp = e.get('qcovhsp', 0)
+                    scovhsp = e.get('scovhsp', 0)
+                    diamond_line = f"\t{pident:.1f}\t{qcovhsp:.1f}\t{scovhsp:.1f}\t{e.get('identical_aa', 0)}\t{e.get('mismatched_aa', 0)}\t{e.get('indels_aa', 0)}\t{e.get('aligned_aa', 0)}"
+
+                bbh_line = ""
+                if has_bbh:
+                    is_bbh = e.get('is_bbh', 0)
+                    bbh_avg_pident = e.get('bbh_avg_pident')
+                    bbh_avg_coverage = e.get('bbh_avg_coverage')
+                    bbh_avg_pident_str = f"{bbh_avg_pident:.1f}" if bbh_avg_pident is not None else 'NA'
+                    bbh_avg_coverage_str = f"{bbh_avg_coverage:.1f}" if bbh_avg_coverage is not None else 'NA'
+                    bbh_line = f"\t{is_bbh}\t{bbh_avg_pident_str}\t{bbh_avg_coverage_str}"
+
+                pairwise_line = ""
+                if has_pairwise:
+                    pw_identity = e.get('pairwise_identity')
+                    pw_cov_old = e.get('pairwise_coverage_old')
+                    pw_cov_new = e.get('pairwise_coverage_new')
+                    pw_aligned_len = e.get('pairwise_aligned_length')
+                    pw_identity_str = f"{pw_identity:.2f}" if pw_identity is not None else 'NA'
+                    pw_cov_old_str = f"{pw_cov_old:.2f}" if pw_cov_old is not None else 'NA'
+                    pw_cov_new_str = f"{pw_cov_new:.2f}" if pw_cov_new is not None else 'NA'
+                    pw_aligned_len_str = str(pw_aligned_len) if pw_aligned_len is not None else 'NA'
+                    pairwise_line = f"\t{pw_identity_str}\t{pw_cov_old_str}\t{pw_cov_new_str}\t{pw_aligned_len_str}"
+
+                extra_copy_line = ""
+                if args.liftoff_gff:
+                    extra_copy_line = f"\t{e.get('extra_copy_number', 0)}"
+
+                interproscan_line = ""
+                if has_interproscan:
+                    new_val = e.get('new_gene_total_iprdom_len', 0)
+                    old_val = e.get('old_gene_total_iprdom_len', 0)
+                    new_val = 'NA' if new_val == 0 else new_val
+                    old_val = 'NA' if old_val == 0 else old_val
+                    interproscan_line = f"\t{new_val}\t{old_val}"
+
+                f.write(f"{base}{diamond_line}{bbh_line}{pairwise_line}{extra_copy_line}{interproscan_line}\n")
+
+    return filtered_count, total_count
+
+
+# =============================================================================
+# Gene-Level Aggregation and Scenario Integration
+# =============================================================================
+
+def aggregate_to_gene_level(
+    transcript_level_file: str,
+    output_dir: str,
+    old_faa: Optional[str] = None,
+    new_faa: Optional[str] = None,
+    old_gff: Optional[str] = None,
+    new_gff: Optional[str] = None
+) -> str:
+    """
+    Aggregate transcript-level output to gene-level and add scenario columns.
+
+    Creates a gene-level output where:
+    - Each row is a unique old_gene:new_gene pair
+    - Transcripts are comma-separated in old_transcripts and new_transcripts columns
+    - scenario and mapping_type columns are added based on exclusive scenario detection
+
+    Args:
+        transcript_level_file: Path to transcript-level TSV output
+        output_dir: Output directory
+        old_faa: Path to old annotation protein FASTA (for unmapped detection)
+        new_faa: Path to new annotation protein FASTA (for unmapped detection)
+        old_gff: Path to old annotation GFF3 (for unmapped detection)
+        new_gff: Path to new annotation GFF3 (for unmapped detection)
+
+    Returns:
+        Path to the gene-level output file
+    """
+    print(f"\n{'='*60}", file=sys.stderr)
+    print("Aggregating to gene-level with scenario detection", file=sys.stderr)
+    print(f"{'='*60}", file=sys.stderr)
+
+    # Read transcript-level output
+    print(f"Reading transcript-level output: {transcript_level_file}", file=sys.stderr)
+    df = pd.read_csv(transcript_level_file, sep='\t')
+    print(f"  Loaded {len(df)} transcript-level entries", file=sys.stderr)
+
+    # =========================================================================
+    # Step 1: Aggregate to gene-level
+    # =========================================================================
+    print(f"\nAggregating to gene-level...", file=sys.stderr)
+
+    # Define aggregation rules for each column
+    def agg_first(x):
+        return x.iloc[0]
+
+    def agg_comma_join(x):
+        return ','.join(sorted(set(str(v) for v in x if pd.notna(v))))
+
+    def agg_max(x):
+        return x.max()
+
+    def agg_mean(x):
+        vals = x.dropna()
+        return vals.mean() if len(vals) > 0 else None
+
+    # Group by gene pair
+    gene_pairs = df.groupby(['old_gene', 'new_gene']).agg({
+        'old_transcript': agg_comma_join,
+        'new_transcript': agg_comma_join,
+        'transcript_pair_class_code': agg_comma_join,  # Combine all class codes
+        'old_multi_transcript': agg_max,
+        'new_multi_transcript': agg_max,
+        'exact_match': agg_max,
+        'gene_pair_class_code': agg_first,
+        'old2newCount': agg_first,
+        'new2oldCount': agg_first,
+    }).reset_index()
+
+    # Rename transcript columns
+    gene_pairs = gene_pairs.rename(columns={
+        'old_transcript': 'old_transcripts',
+        'new_transcript': 'new_transcripts'
+    })
+
+    # Add transcript counts
+    gene_pairs['old_transcript_count'] = gene_pairs['old_transcripts'].apply(
+        lambda x: len(x.split(',')) if x else 0
+    )
+    gene_pairs['new_transcript_count'] = gene_pairs['new_transcripts'].apply(
+        lambda x: len(x.split(',')) if x else 0
+    )
+
+    # Handle optional columns if present
+    optional_cols = ['pident', 'qcovhsp', 'scovhsp', 'is_bbh', 'bbh_avg_pident',
+                     'bbh_avg_coverage', 'pairwise_identity', 'pairwise_coverage_old',
+                     'pairwise_coverage_new', 'pairwise_aligned_length',
+                     'new_total_ipr_domain_length', 'old_total_ipr_domain_length',
+                     'extra_copy_number']
+
+    for col in optional_cols:
+        if col in df.columns:
+            gene_agg = df.groupby(['old_gene', 'new_gene'])[col].agg(agg_mean).reset_index()
+            gene_pairs = gene_pairs.merge(gene_agg, on=['old_gene', 'new_gene'], how='left')
+
+    print(f"  Created {len(gene_pairs)} gene-level pairs", file=sys.stderr)
+
+    # =========================================================================
+    # Step 2: Detect scenarios (exclusive)
+    # =========================================================================
+    print(f"\nDetecting exclusive scenarios...", file=sys.stderr)
+
+    # Get CDI genes first (for exclusivity)
+    cdi_old_genes, cdi_new_genes = get_cdi_genes(gene_pairs)
+    print(f"  CDI genes: {len(cdi_old_genes)} old, {len(cdi_new_genes)} new", file=sys.stderr)
+
+    # Initialize scenario columns
+    gene_pairs['scenario'] = ''
+    gene_pairs['mapping_type'] = ''
+
+    # Detect E (1:1)
+    old_counts = gene_pairs.groupby('old_gene')['new_gene'].nunique()
+    new_counts = gene_pairs.groupby('new_gene')['old_gene'].nunique()
+    olds_1to1 = set(old_counts[old_counts == 1].index)
+    news_1to1 = set(new_counts[new_counts == 1].index)
+
+    mask_E = (gene_pairs['old_gene'].isin(olds_1to1)) & (gene_pairs['new_gene'].isin(news_1to1))
+    gene_pairs.loc[mask_E, 'scenario'] = 'E'
+    gene_pairs.loc[mask_E, 'mapping_type'] = '1to1'
+    print(f"  E (1to1): {mask_E.sum()} pairs", file=sys.stderr)
+
+    # Detect A (1to2N, exactly 2 new genes, NOT in CDI)
+    olds_1to2N = set(old_counts[old_counts == 2].index) - cdi_old_genes
+    mask_A = (gene_pairs['old_gene'].isin(olds_1to2N)) & (gene_pairs['scenario'] == '')
+    gene_pairs.loc[mask_A, 'scenario'] = 'A'
+    gene_pairs.loc[mask_A, 'mapping_type'] = '1to2N'
+    print(f"  A (1to2N): {mask_A.sum()} pairs", file=sys.stderr)
+
+    # Detect J (1to2N+, 3+ new genes, NOT in CDI)
+    olds_1to2Nplus = set(old_counts[old_counts >= 3].index) - cdi_old_genes
+    mask_J = (gene_pairs['old_gene'].isin(olds_1to2Nplus)) & (gene_pairs['scenario'] == '')
+    gene_pairs.loc[mask_J, 'scenario'] = 'J'
+    gene_pairs.loc[mask_J, 'mapping_type'] = '1to2N+'
+    print(f"  J (1to2N+): {mask_J.sum()} pairs", file=sys.stderr)
+
+    # Detect B (Nto1, NOT in CDI)
+    news_Nto1 = set(new_counts[new_counts > 1].index) - cdi_new_genes
+    mask_B = (gene_pairs['new_gene'].isin(news_Nto1)) & (gene_pairs['scenario'] == '')
+    gene_pairs.loc[mask_B, 'scenario'] = 'B'
+    gene_pairs.loc[mask_B, 'mapping_type'] = 'Nto1'
+    print(f"  B (Nto1): {mask_B.sum()} pairs", file=sys.stderr)
+
+    # Detect CDI (remaining pairs with multi-mapping on both sides)
+    mask_CDI = (gene_pairs['old_gene'].isin(cdi_old_genes)) & (gene_pairs['new_gene'].isin(cdi_new_genes))
+    gene_pairs.loc[mask_CDI & (gene_pairs['scenario'] == ''), 'scenario'] = 'CDI'
+    gene_pairs.loc[mask_CDI & (gene_pairs['mapping_type'] == ''), 'mapping_type'] = 'complex'
+    print(f"  CDI (complex): {(gene_pairs['scenario'] == 'CDI').sum()} pairs", file=sys.stderr)
+
+    # =========================================================================
+    # Step 3: Write gene-level output
+    # =========================================================================
+    output_basename = Path(transcript_level_file).stem
+    gene_level_file = os.path.join(output_dir, f"{output_basename}_gene_level.tsv")
+
+    # Reorder columns to put scenario and mapping_type early
+    cols = gene_pairs.columns.tolist()
+    priority_cols = ['old_gene', 'old_transcripts', 'old_transcript_count',
+                     'new_gene', 'new_transcripts', 'new_transcript_count',
+                     'scenario', 'mapping_type']
+    other_cols = [c for c in cols if c not in priority_cols]
+    gene_pairs = gene_pairs[priority_cols + other_cols]
+
+    gene_pairs.to_csv(gene_level_file, sep='\t', index=False)
+    print(f"\nGene-level output: {gene_level_file}", file=sys.stderr)
+    print(f"  Total gene pairs: {len(gene_pairs)}", file=sys.stderr)
+
+    # Print scenario summary
+    print(f"\nScenario summary:", file=sys.stderr)
+    scenario_counts = gene_pairs['scenario'].value_counts()
+    for scenario, count in scenario_counts.items():
+        if scenario:
+            print(f"  {scenario}: {count}", file=sys.stderr)
+
+    return gene_level_file
+
+
+def export_to_excel(output_dir: str, main_output_file: str, output_prefix: str,
+                    old_ipr_basename: Optional[str] = None,
+                    new_ipr_basename: Optional[str] = None) -> str:
+    """
+    Export all TSV output files to a single Excel workbook.
+
+    Args:
+        output_dir: Directory containing the output files
+        main_output_file: Path to the main transcript-level output file
+        output_prefix: Prefix for the Excel output filename (e.g., 'FocTst')
+        old_ipr_basename: Basename of old annotation InterProScan file (for sheet assignment)
+        new_ipr_basename: Basename of new annotation InterProScan file (for sheet assignment)
+
+    Returns:
+        Path to the generated Excel file
+    """
+    from glob import glob
+
+    if not os.path.exists(main_output_file):
+        print(f"Warning: Main output file not found for Excel export: {main_output_file}", file=sys.stderr)
+        return None
+
+    # Get the basename from the main output file
+    main_basename = Path(main_output_file).stem  # e.g., liftoff_gffcomp_mapping_FocTst_=_c_e_j_k_m_n_diamond_blastp
+
+    # Define sheet mappings: (file_suffix_or_pattern, sheet_name)
+    sheet_mappings = [
+        (f"{main_basename}.tsv", "transcript_level"),
+        (f"{main_basename}_gene_level.tsv", "gene_level"),
+        (f"{main_basename}_old_to_multiple_new.tsv", "old_to_multi_new"),
+        (f"{main_basename}_old_to_multiple_new_detailed.tsv", "old_to_multi_new_detail"),
+        (f"{main_basename}_new_to_multiple_old.tsv", "new_to_multi_old"),
+        (f"{main_basename}_new_to_multiple_old_detailed.tsv", "new_to_multi_old_detail"),
+        (f"{main_basename}_multiple_mappings_summary.txt", "summary"),
+    ]
+
+    # Find domain distribution files
+    domain_dist_files = glob(os.path.join(output_dir, "*_domain_distribution.tsv"))
+    ipr_length_files = glob(os.path.join(output_dir, "*_total_ipr_length.tsv"))
+
+    # Find BBH results
+    bbh_pattern = os.path.join(output_dir, "compareprot_out", "*_bbh_results.tsv")
+    bbh_files = glob(bbh_pattern)
+
+    # Excel output file - use same basename as main output
+    excel_file = os.path.join(output_dir, f"{main_basename}.xlsx")
+
+    print(f"\nExporting results to Excel: {excel_file}", file=sys.stderr)
+
+    def _determine_old_or_new(basename: str, old_basename: Optional[str], new_basename: Optional[str]) -> str:
+        """Determine if a file belongs to old or new annotation using tracked basenames."""
+        if old_basename and old_basename in basename:
+            return "old"
+        if new_basename and new_basename in basename:
+            return "new"
+        # Fallback: cannot determine, return None to use positional assignment
+        return None
+
+    try:
+        with pd.ExcelWriter(excel_file, engine='openpyxl') as writer:
+            sheets_written = 0
+
+            # Write main mapping sheets
+            for filename, sheet_name in sheet_mappings:
+                filepath = os.path.join(output_dir, filename)
+                if os.path.exists(filepath):
+                    try:
+                        # Handle txt files (summary) differently
+                        if filepath.endswith('.txt'):
+                            with open(filepath, 'r') as f:
+                                content = f.read()
+                            # Convert text content to DataFrame
+                            df = pd.DataFrame({'summary': content.split('\n')})
+                        else:
+                            df = pd.read_csv(filepath, sep='\t')
+                        df.to_excel(writer, sheet_name=sheet_name, index=False)
+                        sheets_written += 1
+                        print(f"  Added sheet: {sheet_name}", file=sys.stderr)
+                    except Exception as e:
+                        print(f"  Warning: Could not add {sheet_name}: {e}", file=sys.stderr)
+
+            # Write domain distribution sheets (old and new)
+            # Use positional assignment: first file = old, second = new (by sorted order)
+            sorted_domain_files = sorted(domain_dist_files)
+            for idx, domain_file in enumerate(sorted_domain_files):
+                basename = Path(domain_file).stem
+                # Try to match against tracked basenames first
+                assignment = _determine_old_or_new(basename, old_ipr_basename, new_ipr_basename)
+                if assignment:
+                    sheet_name = f"{assignment}_domain_dist"
+                else:
+                    # Fallback: use positional assignment (first=old, second=new)
+                    sheet_name = "old_domain_dist" if idx == 0 else "new_domain_dist"
+                try:
+                    df = pd.read_csv(domain_file, sep='\t')
+                    df.to_excel(writer, sheet_name=sheet_name, index=False)
+                    sheets_written += 1
+                    print(f"  Added sheet: {sheet_name}", file=sys.stderr)
+                except Exception as e:
+                    print(f"  Warning: Could not add {sheet_name}: {e}", file=sys.stderr)
+
+            # Combine and write IPR length sheets
+            if ipr_length_files:
+                combined_ipr = []
+                sorted_ipr_files = sorted(ipr_length_files)
+                for idx, ipr_file in enumerate(sorted_ipr_files):
+                    basename = Path(ipr_file).stem
+                    # Try to match against tracked basenames first
+                    assignment = _determine_old_or_new(basename, old_ipr_basename, new_ipr_basename)
+                    if assignment:
+                        source = assignment
+                    else:
+                        # Fallback: use positional assignment (first=old, second=new)
+                        source = "old" if idx == 0 else "new"
+                    try:
+                        df = pd.read_csv(ipr_file, sep='\t')
+                        df.insert(0, 'source', source)
+                        combined_ipr.append(df)
+                    except Exception as e:
+                        print(f"  Warning: Could not read {ipr_file}: {e}", file=sys.stderr)
+
+                if combined_ipr:
+                    combined_df = pd.concat(combined_ipr, ignore_index=True)
+                    combined_df.to_excel(writer, sheet_name="ipr_length", index=False)
+                    sheets_written += 1
+                    print(f"  Added sheet: ipr_length (combined old/new)", file=sys.stderr)
+
+            # Write BBH results
+            for bbh_file in bbh_files:
+                try:
+                    df = pd.read_csv(bbh_file, sep='\t')
+                    df.to_excel(writer, sheet_name="bbh_results", index=False)
+                    sheets_written += 1
+                    print(f"  Added sheet: bbh_results", file=sys.stderr)
+                except Exception as e:
+                    print(f"  Warning: Could not add bbh_results: {e}", file=sys.stderr)
+
+            print(f"\nExcel export complete: {sheets_written} sheets written", file=sys.stderr)
+
+    except ImportError:
+        print("Warning: openpyxl not installed. Install with: pip install openpyxl", file=sys.stderr)
+        return None
+    except Exception as e:
+        print(f"Warning: Excel export failed: {e}", file=sys.stderr)
+        return None
+
+    return excel_file
+
+
+def main():
+    """Main entry point for PAVprot pipeline."""
+    # =========================================================================
+    # Step 1: Parse arguments and validate inputs
+    # =========================================================================
+    parser = create_argument_parser()
+    args = parser.parse_args()
+
+    # Handle --list option
+    if args.list:
+        print("\n" + "="*70)
+        print("Available Plot Types:")
+        print("="*70)
+        print("  scenarios  - Scenario distribution plots")
+        print("  bbh        - BBH (Bidirectional Best Hit) scatter plot")
+        print("  ipr        - IPR domain length scatter by class type")
+        print("  advanced   - Advanced IPR analysis (log-log, quadrant, detailed)")
+        print("  1to1       - IPR 1:1 ortholog pair comparison")
+        print("  psauron    - Psauron score distributions")
+        print("  quality    - Quality scores (new vs old annotation)")
+        print("\nUsage:")
+        print("  python pavprot.py --gff-comp file.txt --gff old.gff,new.gff --plot scenarios ipr")
+        print("  python pavprot.py --plot-only --dataset pavprot_out/ --plot all")
+        print("="*70 + "\n")
+        return
+
+    # Handle --plot-only mode (plotting from existing dataset)
+    if args.plot_only:
+        print("\n[Plot-Only Mode] Generating plots from existing dataset...", file=sys.stderr)
+        from plot import generate_plots
+
+        # Use --dataset if provided, otherwise use --output-dir
+        dataset_dir = Path(args.dataset) if args.dataset else Path(args.output_dir)
+        if not dataset_dir.exists():
+            print(f"ERROR: Dataset directory not found: {dataset_dir}", file=sys.stderr)
+            sys.exit(1)
+
+        # Find gene-level file
+        gene_file = None
+        for f in dataset_dir.glob("*gene_level*.tsv"):
+            gene_file = str(f)
+            break
+
+        if not gene_file:
+            print(f"ERROR: No gene_level*.tsv found in {dataset_dir}", file=sys.stderr)
+            sys.exit(1)
+
+        plot_types = args.plot if args.plot else None
+        try:
+            generate_plots(
+                output_dir=str(dataset_dir),
+                plot_types=plot_types,
+                gene_level_file=gene_file,
+                figure_dpi=150
+            )
+            print(f"Plots generated in: {dataset_dir}", file=sys.stderr)
+            return
+        except Exception as e:
+            print(f"ERROR: Plot generation failed: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    # For normal mode, --gff-comp is required
+    if not args.gff_comp:
+        parser.error("--gff-comp is required (or use --list or --plot-only)")
+
+    # Validate inputs and get file lists
+    gff_list, interproscan_files = validate_inputs(args, parser)
+
+    # =========================================================================
+    # Step 2: Parse tracking file and apply class code filter
+    # =========================================================================
+    old_gff_for_tracking = gff_list[0] if gff_list else None
+    filter_set = set(args.class_code) if args.class_code else None
+    full, filtered = PAVprot.parse_tracking(args.gff_comp, old_gff_for_tracking, filter_set)
+    data = filtered if filtered else full
+
+    # Load mRNA→protein ID mapping from new GFF (for DIAMOND/pairwise enrichment)
+    new_rna_to_protein: Dict[str, str] = {}
+    if len(gff_list) >= 2:
+        new_gff_path = gff_list[1]
+        print(f"Loading mRNA→protein ID mapping from {new_gff_path}...", file=sys.stderr)
+        new_rna_to_protein, _ = PAVprot.load_gff(new_gff_path)
+        print(f"  Loaded {len(new_rna_to_protein)} mRNA→protein mappings", file=sys.stderr)
+
+    # =========================================================================
+    # Step 3: Run DIAMOND BLASTP if requested
+    # =========================================================================
+    has_bbh = False
+    if args.run_diamond:
+        if not args.old_faa or not args.new_faa:
+            print("Error: --run-diamond requires --prot with 2 comma-separated files (old.faa,new.faa)", file=sys.stderr)
+            sys.exit(1)
+
+        pavprot_out = os.path.join(os.getcwd(), args.output_dir)
+        compareprot_out = os.path.join(pavprot_out, 'compareprot_out')
+        input_seq_dir = os.path.join(compareprot_out, 'input_seq_dir')
+        os.makedirs(input_seq_dir, exist_ok=True)
+
+        old_faa_path = os.path.join(input_seq_dir, "old_all.faa")
+        new_faa_path = os.path.join(input_seq_dir, "new_all.faa")
+
+        with open(old_faa_path, 'w') as f:
+            for h, s in PAVprot.fasta2dict(args.old_faa, is_new=False):
+                f.write(f">{h}\n{s}\n")
+        with open(new_faa_path, 'w') as f:
+            for h, s in PAVprot.fasta2dict(args.new_faa, is_new=True):
+                f.write(f">{h}\n{s}\n")
+
+        diamond = DiamondRunner(threads=args.diamond_threads, output_prefix=args.output_prefix, output_dir=args.output_dir)
+
+        if args.run_bbh:
+            # Run bidirectional DIAMOND for BBH analysis
+            fwd_diamond, rev_diamond = diamond.run_bidirectional(old_faa_path, new_faa_path)
+            data = diamond.enrich_blastp(data, fwd_diamond, new_rna_to_protein)
+
+            # Run BBH analysis
+            print(f"\nRunning Bidirectional Best Hit analysis...", file=sys.stderr)
+            bbh_analyzer = BidirectionalBestHits()
+            bbh_analyzer.load_forward(fwd_diamond)
+            bbh_analyzer.load_reverse(rev_diamond)
+            bbh_df = bbh_analyzer.find_bbh(
+                min_pident=args.bbh_min_pident,
+                min_coverage=args.bbh_min_coverage
+            )
+
+            # Save BBH results
+            bbh_output = os.path.join(compareprot_out, f"{args.output_prefix}_bbh_results.tsv")
+            if not bbh_df.empty:
+                bbh_analyzer.save_results(bbh_output)
+                has_bbh = True
+
+                # Enrich pavprot data with BBH info
+                data = enrich_pavprot_with_bbh(data, bbh_df, rna_to_protein=new_rna_to_protein)
+            else:
+                print("  Warning: No BBH pairs found", file=sys.stderr)
+        else:
+            # Run forward-only DIAMOND (original behavior)
+            diamond_tsv_gz = diamond.diamond_blastp(old_faa_path, new_faa_path)
+            data = diamond.enrich_blastp(data, diamond_tsv_gz, new_rna_to_protein)
+
+    # =========================================================================
+    # Step 4: Compute all metrics in a single pass
+    # =========================================================================
+    data = PAVprot.compute_all_metrics(data)
+
+    # Apply extra copy number from Liftoff GFF
+    if args.liftoff_gff:
+        data = PAVprot.filter_extra_copy_transcripts(data, args.liftoff_gff)
+
+    # =========================================================================
+    # Step 5: Process InterProScan integration
+    # =========================================================================
+    pavprot_out = os.path.join(os.getcwd(), args.output_dir)
+    os.makedirs(pavprot_out, exist_ok=True)
+
+    data, has_interproscan, _, _ = process_interproscan_integration(
+        args, data, interproscan_files, gff_list, pavprot_out
+    )
+
+    # =========================================================================
+    # Step 5b: Run Biopython pairwise alignment if requested
+    # =========================================================================
+    has_pairwise = False
+    if args.run_pairwise:
+        if not args.old_faa or not args.new_faa:
+            print("Error: --run-pairwise requires --prot with 2 comma-separated files (old.faa,new.faa)", file=sys.stderr)
+            sys.exit(1)
+
+        print(f"\nRunning Biopython pairwise alignment...", file=sys.stderr)
+        data = enrich_pairwise_alignment(data, args.old_faa, args.new_faa, new_rna_to_protein)
+        has_pairwise = True
+
+    # =========================================================================
+    # Step 6: Write results
+    # =========================================================================
+    output_file = write_results(args, data, has_interproscan, has_bbh, has_pairwise, interproscan_files, filter_set)
+
+    # =========================================================================
+    # Step 7: Run one-to-many mapping detection
+    # =========================================================================
+    print(f"\nDetecting one-to-many and many-to-one gene mappings...", file=sys.stderr)
+    try:
+        output_basename = Path(output_file).stem
+        detect_multiple_mappings(output_file, output_prefix=output_basename)
+    except Exception as e:
+        print(f"Warning: One-to-many mapping detection failed: {e}", file=sys.stderr)
+
+    # =========================================================================
+    # Step 8: Gene-level aggregation with scenario detection
+    # =========================================================================
+    pavprot_out = os.path.join(os.getcwd(), args.output_dir)
+
+    # Get GFF files for unmapped gene detection
+    old_gff, new_gff = None, None
+    if args.gff:
+        gff_files = [f.strip() for f in args.gff.split(',')]
+        if len(gff_files) >= 1:
+            old_gff = gff_files[0]
+        if len(gff_files) >= 2:
+            new_gff = gff_files[1]
+
+    try:
+        gene_level_file = aggregate_to_gene_level(
+            transcript_level_file=output_file,
+            output_dir=pavprot_out,
+            old_faa=args.old_faa,
+            new_faa=args.new_faa,
+            old_gff=old_gff,
+            new_gff=new_gff
+        )
+        print(f"\n{'='*60}", file=sys.stderr)
+        print(f"Pipeline complete!", file=sys.stderr)
+        print(f"  Transcript-level: {output_file}", file=sys.stderr)
+        print(f"  Gene-level:       {gene_level_file}", file=sys.stderr)
+        print(f"{'='*60}", file=sys.stderr)
+    except Exception as e:
+        print(f"Warning: Gene-level aggregation failed: {e}", file=sys.stderr)
+        import traceback
+        traceback.print_exc()
+
+    # =========================================================================
+    # Step 9: Export to Excel (if enabled)
+    # =========================================================================
+    if args.output_excel:
+        excel_file = export_to_excel(
+            output_dir=pavprot_out,
+            main_output_file=output_file,
+            output_prefix=args.output_prefix,
+            old_ipr_basename=getattr(args, 'old_ipr_basename', None),
+            new_ipr_basename=getattr(args, 'new_ipr_basename', None)
+        )
+        if excel_file:
+            print(f"  Excel export:     {excel_file}", file=sys.stderr)
+
+    # =========================================================================
+    # Step 9b: Copy ProteinX and Psauron files to output directory
+    # =========================================================================
+    if args.proteinx_files:
+        import shutil
+        proteinx_out_dir = os.path.join(pavprot_out, 'proteinx')
+        os.makedirs(proteinx_out_dir, exist_ok=True)
+
+        for i, proteinx_file in enumerate(args.proteinx_files):
+            if os.path.exists(proteinx_file):
+                dst = os.path.join(proteinx_out_dir, Path(proteinx_file).name)
+                shutil.copy2(proteinx_file, dst)
+                print(f"  Copied ProteinX [{i}]: {dst}", file=sys.stderr)
+
+    if args.psauron_files:
+        import shutil
+        psauron_out_dir = os.path.join(pavprot_out, 'psauron')
+        os.makedirs(psauron_out_dir, exist_ok=True)
+
+        for i, psauron_file in enumerate(args.psauron_files):
+            if os.path.exists(psauron_file):
+                dst = os.path.join(psauron_out_dir, Path(psauron_file).name)
+                shutil.copy2(psauron_file, dst)
+                print(f"  Copied Psauron [{i}]: {dst}", file=sys.stderr)
+
+    # =========================================================================
+    # Step 10: Generate plots (if --plot is specified)
+    # =========================================================================
+    if args.plot is not None:
+        from plot import generate_plots
+
+        # Determine plot types (empty list means all)
+        plot_types = args.plot if args.plot else None
+
+        # Find IPR files
+        old_ipr_file = None
+        new_ipr_file = None
+        ipr_files = list(Path(pavprot_out).glob('*_total_ipr_length.tsv'))
+        for f in ipr_files:
+            if getattr(args, 'old_ipr_basename', None) and args.old_ipr_basename in f.name:
+                old_ipr_file = str(f)
+            elif getattr(args, 'new_ipr_basename', None) and args.new_ipr_basename in f.name:
+                new_ipr_file = str(f)
+            elif not old_ipr_file:
+                old_ipr_file = str(f)
+            elif not new_ipr_file:
+                new_ipr_file = str(f)
+
+        # Find BBH file
+        bbh_file = None
+        bbh_files = list(Path(pavprot_out).glob('**/compareprot_out/*_bbh_results.tsv'))
+        if bbh_files:
+            bbh_file = str(bbh_files[0])
+
+        print(f"\n{'='*60}", file=sys.stderr)
+        print("Generating plots...", file=sys.stderr)
+        print(f"{'='*60}", file=sys.stderr)
+
+        try:
+            generated_files = generate_plots(
+                output_dir=pavprot_out,
+                plot_types=plot_types,
+                transcript_level_file=output_file,
+                gene_level_file=gene_level_file if 'gene_level_file' in dir() else None,
+                bbh_file=bbh_file,
+                old_ipr_file=old_ipr_file,
+                new_ipr_file=new_ipr_file,
+            )
+            if generated_files:
+                print(f"  Generated {len(generated_files)} plot(s):", file=sys.stderr)
+                for f in generated_files:
+                    print(f"    - {f}", file=sys.stderr)
+            else:
+                print("  No plots generated (missing data or dependencies)", file=sys.stderr)
+        except Exception as e:
+            print(f"  Warning: Plot generation failed: {e}", file=sys.stderr)
+
+
+if __name__ == '__main__':
+    main()

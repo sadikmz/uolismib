@@ -19,7 +19,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import stats
 from pathlib import Path
-from typing import List, Optional
 
 # Configuration
 GENE_LEVEL_ALL = Path("output/figures_out/120126_all_out/gene_level_with_psauron.tsv")
@@ -47,15 +46,15 @@ def plot_ipr_comparison(df: pd.DataFrame, output_path: Path, title: str,
     Generate IPR domain length comparison scatter plot.
 
     Args:
-        df: DataFrame with old_total_ipr_domain_length and new_total_ipr_domain_length
+        df: DataFrame with ref_total_ipr_domain_length and query_total_ipr_domain_length
         output_path: Path to save the figure
         title: Plot title
         color_by_class: If True, color points by class_type_gene
         log_scale: If True, use log-log scale
     """
-    # Column names (support both old/new and ref/query naming)
-    ref_col = 'new_total_ipr_domain_length' if 'new_total_ipr_domain_length' in df.columns else 'ref_total_ipr_domain_length'
-    qry_col = 'old_total_ipr_domain_length' if 'old_total_ipr_domain_length' in df.columns else 'query_total_ipr_domain_length'
+    # Column names
+    ref_col = 'ref_total_ipr_domain_length'
+    qry_col = 'query_total_ipr_domain_length'
 
     # Filter to rows with valid IPR data
     if ref_col not in df.columns or qry_col not in df.columns:
@@ -139,25 +138,13 @@ def plot_ipr_comparison(df: pd.DataFrame, output_path: Path, title: str,
         scale_label = ""
 
     # Labels and title
-    ax.set_xlabel(f'New annotation total IPR domain length (aa){scale_label}', fontsize=11)
-    ax.set_ylabel(f'Old annotation total IPR domain length (aa){scale_label}', fontsize=11)
+    ax.set_xlabel(f'New annotation (NCBI RefSeq) total IPR domain length (aa){scale_label}', fontsize=11)
+    ax.set_ylabel(f'Old annotation (FungiDB v68) total IPR domain length (aa){scale_label}', fontsize=11)
     ax.set_title(f'{title}\n(Pearson r = {corr:.3f}, R² = {r_squared:.3f}, n = {len(valid):,})',
                 fontsize=12)
 
     # Legend
     ax.legend(loc='upper left', fontsize=9)
-
-    # Add GFFcompare class code reference if showing by class type
-    if color_by_class and 'class_type_gene' in valid.columns:
-        class_code_info = (
-            "GFFcompare Class Types:\n"
-            "  exact (a/=): Exact exon structure match\n"
-            "  split (j/c): Intron overlap/contained\n"
-            "  novel (n/k): Novel isoform/not in ref"
-        )
-        ax.text(0.98, 0.05, class_code_info, transform=ax.transAxes,
-                fontsize=8, verticalalignment='bottom', horizontalalignment='left',
-                bbox=dict(boxstyle='round', facecolor='lightyellow', alpha=0.7))
 
     plt.tight_layout()
     fig.savefig(output_path, dpi=FIGURE_DPI, bbox_inches='tight')
@@ -200,7 +187,7 @@ def main():
             results['all_class'] = plot_ipr_comparison(
                 df_e_all,
                 OUTPUT_DIR / "ipr_1to1_all_by_class_type.png",
-                "1:1 gene mapping IPR Domain Comparison (All Data)",
+                "1:1 Ortholog IPR Domain Comparison (All Data)",
                 color_by_class=True
             )
 
@@ -210,7 +197,7 @@ def main():
             results['all_no_class'] = plot_ipr_comparison(
                 df_e_all,
                 OUTPUT_DIR / "ipr_1to1_all_no_class.png",
-                "1:1 gene mapping IPR Domain Comparison (All Data)",
+                "1:1 Ortholog IPR Domain Comparison (All Data)",
                 color_by_class=False
             )
 
@@ -220,7 +207,7 @@ def main():
             results['all_class_log'] = plot_ipr_comparison(
                 df_e_all,
                 OUTPUT_DIR / "ipr_1to1_all_by_class_type_log.png",
-                "1:1 gene mapping IPR Domain Comparison (All Data)",
+                "1:1 Ortholog IPR Domain Comparison (All Data)",
                 color_by_class=True,
                 log_scale=True
             )
@@ -230,7 +217,7 @@ def main():
             results['all_no_class_log'] = plot_ipr_comparison(
                 df_e_all,
                 OUTPUT_DIR / "ipr_1to1_all_no_class_log.png",
-                "1:1 gene mapping IPR Domain Comparison (All Data)",
+                "1:1 Ortholog IPR Domain Comparison (All Data)",
                 color_by_class=False,
                 log_scale=True
             )
@@ -255,7 +242,7 @@ def main():
             results['filtered_class'] = plot_ipr_comparison(
                 df_e_filtered,
                 OUTPUT_DIR / "ipr_1to1_emckmnje1_by_class_type.png",
-                "1:1 gene mapping IPR Domain Comparison (emckmnje=1 Filtered)",
+                "1:1 Ortholog IPR Domain Comparison (emckmnje=1 Filtered)",
                 color_by_class=True
             )
 
@@ -265,7 +252,7 @@ def main():
             results['filtered_no_class'] = plot_ipr_comparison(
                 df_e_filtered,
                 OUTPUT_DIR / "ipr_1to1_emckmnje1_no_class.png",
-                "1:1 gene mapping IPR Domain Comparison (emckmnje=1 Filtered)",
+                "1:1 Ortholog IPR Domain Comparison (emckmnje=1 Filtered)",
                 color_by_class=False
             )
 
@@ -275,7 +262,7 @@ def main():
             results['filtered_class_log'] = plot_ipr_comparison(
                 df_e_filtered,
                 OUTPUT_DIR / "ipr_1to1_emckmnje1_by_class_type_log.png",
-                "1:1 gene mapping IPR Domain Comparison (emckmnje=1 Filtered)",
+                "1:1 Ortholog IPR Domain Comparison (emckmnje=1 Filtered)",
                 color_by_class=True,
                 log_scale=True
             )
@@ -285,7 +272,7 @@ def main():
             results['filtered_no_class_log'] = plot_ipr_comparison(
                 df_e_filtered,
                 OUTPUT_DIR / "ipr_1to1_emckmnje1_no_class_log.png",
-                "1:1 gene mapping IPR Domain Comparison (emckmnje=1 Filtered)",
+                "1:1 Ortholog IPR Domain Comparison (emckmnje=1 Filtered)",
                 color_by_class=False,
                 log_scale=True
             )
@@ -302,66 +289,6 @@ def main():
 
     print("\nIPR 1:1 Comparison Plots Complete!")
     print("=" * 60)
-
-
-def generate_1to1_plots(
-    gene_level_file: str,
-    output_dir: Path,
-    config: dict = None
-) -> List[Path]:
-    """
-    Generate 1:1 IPR comparison plots for CLI integration.
-
-    Args:
-        gene_level_file: Path to gene-level TSV with scenario and IPR columns
-        output_dir: Directory to save plots
-        config: Optional configuration (figure_dpi, etc.)
-
-    Returns:
-        List of generated plot file paths
-    """
-    generated_files = []
-    config = config or {'figure_dpi': FIGURE_DPI}
-
-    if not Path(gene_level_file).exists():
-        print(f"  [ERROR] File not found: {gene_level_file}")
-        return generated_files
-
-    print(f"  Loading: {gene_level_file}")
-    df = pd.read_csv(gene_level_file, sep='\t')
-    print(f"    Total gene pairs: {len(df):,}")
-
-    # Filter to scenario E (1:1)
-    df_e = df[df['scenario'] == 'E'].copy()
-    print(f"    Scenario E (1:1) pairs: {len(df_e):,}")
-
-    if len(df_e) == 0:
-        print("  [WARN] No 1:1 gene pairs found")
-        return generated_files
-
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    # Generate 4 variants: with/without class, linear/log
-    variants = [
-        ('ipr_1to1_by_class_type.png', True, False),
-        ('ipr_1to1_no_class.png', False, False),
-        ('ipr_1to1_by_class_type_log.png', True, True),
-        ('ipr_1to1_no_class_log.png', False, True),
-    ]
-
-    for filename, color_by_class, log_scale in variants:
-        result = plot_ipr_comparison(
-            df_e,
-            output_dir / filename,
-            "1:1 gene mapping IPR Domain Comparison",
-            color_by_class=color_by_class,
-            log_scale=log_scale
-        )
-        if result:
-            generated_files.append(output_dir / filename)
-
-    return generated_files
 
 
 if __name__ == "__main__":

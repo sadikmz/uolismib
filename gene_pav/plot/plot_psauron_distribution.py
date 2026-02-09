@@ -15,7 +15,6 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from pathlib import Path
-from typing import List
 
 # Configuration
 GENE_LEVEL_ALL = Path("output/figures_out/120126_all_out/gene_level_with_psauron.tsv")
@@ -24,11 +23,8 @@ OUTPUT_DIR = Path("output/figures_out/120126_all_out")
 FIGURE_DPI = 300
 
 # Column name mapping (ref=NCBI=New, qry=FungiDB=Old)
-# Support both old naming (ref/qry) and new naming (new/old)
 REF_PSAURON_COL = 'ref_psauron_score_mean'
 QRY_PSAURON_COL = 'qry_psauron_score_mean'
-ALT_REF_PSAURON_COL = 'new_psauron_score_mean'
-ALT_QRY_PSAURON_COL = 'old_psauron_score_mean'
 
 
 def generate_psauron_comparison_plot(
@@ -79,8 +75,8 @@ def generate_psauron_comparison_plot(
     width = 0.35
 
     ax1 = axes[0]
-    bars1 = ax1.bar(x - width/2, ref_pct, width, label='New Annotation', color='steelblue')
-    bars2 = ax1.bar(x + width/2, qry_pct, width, label='Old Annotation', color='coral')
+    bars1 = ax1.bar(x - width/2, ref_pct, width, label='New (NCBI RefSeq)', color='steelblue')
+    bars2 = ax1.bar(x + width/2, qry_pct, width, label='Old (FungiDB v68)', color='coral')
 
     ax1.set_xlabel('Psauron Quality Level')
     ax1.set_ylabel('Percentage of Genes (%)')
@@ -102,8 +98,8 @@ def generate_psauron_comparison_plot(
 
     # ===== Plot 2: Histogram overlay =====
     ax2 = axes[1]
-    ax2.hist(ref_psauron, bins=50, alpha=0.5, label=f'New Annotation (n={len(ref_psauron):,})', color='steelblue', density=True)
-    ax2.hist(qry_psauron, bins=50, alpha=0.5, label=f'Old Annotation (n={len(qry_psauron):,})', color='coral', density=True)
+    ax2.hist(ref_psauron, bins=50, alpha=0.5, label=f'New (NCBI) (n={len(ref_psauron):,})', color='steelblue', density=True)
+    ax2.hist(qry_psauron, bins=50, alpha=0.5, label=f'Old (FungiDB) (n={len(qry_psauron):,})', color='coral', density=True)
 
     # Add threshold lines
     ax2.axvline(x=0.5, color='red', linestyle='--', alpha=0.5, label='Low quality threshold')
@@ -198,71 +194,6 @@ def main():
     print("\n" + "=" * 60)
     print("Psauron Distribution Plots Complete!")
     print("=" * 60)
-
-
-def generate_psauron_plots(
-    gene_level_file: str,
-    output_dir: Path,
-    filter_desc: str = "Gene Pairs",
-    config: dict = None
-) -> List[Path]:
-    """
-    Generate Psauron distribution plots for CLI integration.
-
-    Args:
-        gene_level_file: Path to gene-level TSV with Psauron columns
-        output_dir: Directory to save plots
-        filter_desc: Description for plot title
-        config: Optional configuration (figure_dpi, etc.)
-
-    Returns:
-        List of generated plot file paths
-    """
-    generated_files = []
-    config = config or {'figure_dpi': FIGURE_DPI}
-
-    if not Path(gene_level_file).exists():
-        print(f"  [ERROR] File not found: {gene_level_file}")
-        return generated_files
-
-    print(f"  Loading: {gene_level_file}")
-    df = pd.read_csv(gene_level_file, sep='\t')
-    print(f"    Loaded {len(df):,} gene pairs")
-
-    # Check for Psauron columns (support both naming conventions)
-    ref_col = REF_PSAURON_COL if REF_PSAURON_COL in df.columns else ALT_REF_PSAURON_COL
-    qry_col = QRY_PSAURON_COL if QRY_PSAURON_COL in df.columns else ALT_QRY_PSAURON_COL
-
-    if ref_col not in df.columns or qry_col not in df.columns:
-        print("  [ERROR] Psauron columns not found in dataset")
-        print(f"    Looking for: {REF_PSAURON_COL} or {ALT_REF_PSAURON_COL}")
-        print(f"    Looking for: {QRY_PSAURON_COL} or {ALT_QRY_PSAURON_COL}")
-        return generated_files
-
-    # Temporarily rename columns if using alternative names
-    if ref_col != REF_PSAURON_COL:
-        df = df.rename(columns={ref_col: REF_PSAURON_COL, qry_col: QRY_PSAURON_COL})
-
-    # Filter to rows with valid Psauron scores
-    df_valid = df.dropna(subset=[REF_PSAURON_COL, QRY_PSAURON_COL])
-    print(f"    Valid Psauron pairs: {len(df_valid):,}")
-
-    if len(df_valid) == 0:
-        print("  [WARN] No valid Psauron data found")
-        return generated_files
-
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    output_path = output_dir / "psauron_comparison.png"
-    generate_psauron_comparison_plot(
-        df_valid,
-        output_path,
-        filter_desc=f"{filter_desc} (n={len(df_valid):,})"
-    )
-    generated_files.append(output_path)
-
-    return generated_files
 
 
 if __name__ == "__main__":
