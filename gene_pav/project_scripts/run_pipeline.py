@@ -1403,36 +1403,62 @@ class PipelineRunner:
         else:
             print("  [INFO] No gene pairs with both psauron scores - skipping comparison plot")
 
-        # ===== Psauron by Mapping Type & Class Type (from plot module) =====
-        print("  Generating psauron_by_mapping_type.png and psauron_by_class_type.png...")
-        try:
-            import sys
-            sys.path.insert(0, str(Path(__file__).parent / ".." / "plot"))
-            from plot_oldvsnew_psauron_plddt import generate_quality_score_plots
-            gene_level_file = self.config.get("gene_level_enriched_file",
-                                              self.output_dir / "gene_level_with_psauron.tsv")
-            if Path(gene_level_file).exists():
-                # Detect which scoring columns are available
-                import pandas as pd
-                df_check = pd.read_csv(gene_level_file, sep='\t', nrows=1)
+        # ===== Psauron by Mapping Type =====
+        if 'mapping_type' in df.columns:
+            fig_mt, axes_mt = plt.subplots(1, 2, figsize=(14, 5))
+            mapping_types = ['1to1', '1to2N', '1to2N+', 'Nto1', 'complex']
+            mapping_colors = {
+                '1to1': '#1f77b4', '1to2N': '#ff7f0e', '1to2N+': '#2ca02c',
+                'Nto1': '#d62728', 'complex': '#9467bd'
+            }
 
-                # Find score column pairs (first and second, positionally)
-                score_cols = [c for c in df_check.columns if 'psauron_score_mean' in c]
-                if len(score_cols) >= 2:
-                    # Use first two scoring columns found, in order
-                    score_pair = (score_cols[0], score_cols[1])
-                    generate_quality_score_plots(
-                        str(gene_level_file),
-                        self.output_dir,
-                        score_columns=score_pair,
-                        config=self.config
-                    )
-                else:
-                    print(f"  [INFO] Not enough psauron score columns found ({len(score_cols)}), skipping plots")
-            else:
-                print(f"  [WARN] Gene-level file not found: {gene_level_file}")
-        except Exception as e:
-            print(f"  [ERROR] Failed to generate quality score plots: {e}")
+            for ax, col, title in [(axes_mt[0], ref_col, 'New (NCBI)'),
+                                    (axes_mt[1], qry_col, 'Old (FungiDB)')]:
+                data_by_type = df.groupby('mapping_type')[col].apply(list)
+                for mtype in mapping_types:
+                    if mtype in data_by_type.index:
+                        data = pd.Series(data_by_type[mtype]).dropna()
+                        if len(data) > 0:
+                            ax.hist(data, bins=30, alpha=0.5, density=True,
+                                   label=f'{mapping_type_to_colon(mtype)} (n={len(data)})',
+                                   color=mapping_colors.get(mtype, 'gray'))
+                ax.set_xlabel('Psauron Score')
+                ax.set_ylabel('Density')
+                ax.set_title(f'{title} - Psauron by Mapping Type')
+                ax.legend(fontsize=8)
+
+            plt.tight_layout()
+            mt_path = self.output_dir / "psauron_by_mapping_type.png"
+            fig_mt.savefig(mt_path, dpi=self.config["figure_dpi"], bbox_inches='tight')
+            plt.close(fig_mt)
+            print(f"  [DONE] Saved: {mt_path}")
+
+        # ===== Psauron by Class Type =====
+        if 'class_type_gene' in df.columns:
+            fig_ct, axes_ct = plt.subplots(1, 2, figsize=(14, 5))
+            top_classes = df['class_type_gene'].value_counts().head(8).index.tolist()
+            class_colors = plt.cm.tab10(np.linspace(0, 1, len(top_classes)))
+
+            for ax, col, title in [(axes_ct[0], ref_col, 'New (NCBI)'),
+                                    (axes_ct[1], qry_col, 'Old (FungiDB)')]:
+                data_by_class = df.groupby('class_type_gene')[col].apply(list)
+                for i, ctype in enumerate(top_classes):
+                    if ctype in data_by_class.index:
+                        data = pd.Series(data_by_class[ctype]).dropna()
+                        if len(data) > 0:
+                            ax.hist(data, bins=25, alpha=0.5, density=True,
+                                   label=f'{ctype} (n={len(data)})',
+                                   color=class_colors[i % len(class_colors)])
+                ax.set_xlabel('Psauron Score')
+                ax.set_ylabel('Density')
+                ax.set_title(f'{title} - Psauron by Class Type')
+                ax.legend(fontsize=7, loc='upper right')
+
+            plt.tight_layout()
+            ct_path = self.output_dir / "psauron_by_class_type.png"
+            fig_ct.savefig(ct_path, dpi=self.config["figure_dpi"], bbox_inches='tight')
+            plt.close(fig_ct)
+            print(f"  [DONE] Saved: {ct_path}")
 
         # ===== Psauron by Mapping Type x Class Type =====
         if 'mapping_type' in df.columns and 'class_type_gene' in df.columns and len(plot_df) > 0:

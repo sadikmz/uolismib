@@ -396,69 +396,35 @@ def plot_psauron_scatter(
     """
     config = config or {'figure_dpi': 150}
 
-    # Check data availability
-    ref_valid = df[ref_col].notna().sum()
-    qry_valid = df[qry_col].notna().sum()
-
-    # If only one column has data, create distribution plot
-    if ref_valid == 0 and qry_valid == 0:
-        print("  [ERROR] No valid Psauron data in either column")
+    # Filter valid data
+    valid = df.dropna(subset=[ref_col, qry_col])
+    if len(valid) == 0:
+        print("  [ERROR] No valid Psauron data")
         return None
 
-    if ref_valid == 0 or qry_valid == 0:
-        # Partial data - create histogram distribution
-        available_col = qry_col if qry_valid > 0 else ref_col
-        available_data = df[available_col].dropna()
+    fig, ax = plt.subplots(figsize=(10, 8))
 
-        fig, ax = plt.subplots(figsize=(10, 6))
-
-        if color_by and color_by in df.columns:
-            # Distribution by category
-            categories = df[color_by].value_counts().head(6).index.tolist()
-            colors = plt.cm.tab10(np.linspace(0, 1, len(categories)))
-            for i, cat in enumerate(categories):
-                subset = df[df[color_by] == cat][available_col].dropna()
-                if len(subset) > 0:
-                    ax.hist(subset, bins=30, alpha=0.5, label=f'{cat} (n={len(subset)})',
-                           color=colors[i])
-            ax.legend(fontsize=8)
-        else:
-            ax.hist(available_data, bins=50, alpha=0.7, color='#1f77b4', edgecolor='black')
-
-        ax.set_xlabel(f'{available_col.replace("_mean", "")} Score')
-        ax.set_ylabel('Frequency')
-        ax.set_title(f'Psauron Score Distribution (n={len(available_data)} pairs)')
-        ax.set_xlim(0, 1.05)
+    if color_by and color_by in valid.columns:
+        categories = valid[color_by].value_counts().head(6).index.tolist()
+        for i, cat in enumerate(categories):
+            subset = valid[valid[color_by] == cat]
+            ax.scatter(subset[ref_col], subset[qry_col],
+                      alpha=0.4, s=20, color=plt.cm.tab10(i/10),
+                      label=f'{cat} (n={len(subset)})')
+        ax.legend(fontsize=8, loc='upper left')
     else:
-        # Both columns have data - scatter plot
-        valid = df.dropna(subset=[ref_col, qry_col])
-        if len(valid) == 0:
-            print("  [ERROR] No gene pairs with both scores")
-            return None
+        ax.scatter(valid[ref_col], valid[qry_col],
+                  alpha=0.3, s=15, c='#1f77b4')
 
-        fig, ax = plt.subplots(figsize=(10, 8))
+    # Diagonal and regression
+    ax.plot([0, 1], [0, 1], 'k--', alpha=0.3, label='y=x')
+    add_regression_line(ax, valid[ref_col].values, valid[qry_col].values, color='red')
 
-        if color_by and color_by in valid.columns:
-            categories = valid[color_by].value_counts().head(6).index.tolist()
-            for i, cat in enumerate(categories):
-                subset = valid[valid[color_by] == cat]
-                ax.scatter(subset[ref_col], subset[qry_col],
-                          alpha=0.4, s=20, color=plt.cm.tab10(i/10),
-                          label=f'{cat} (n={len(subset)})')
-            ax.legend(fontsize=8, loc='upper left')
-        else:
-            ax.scatter(valid[ref_col], valid[qry_col],
-                      alpha=0.3, s=15, c='#1f77b4')
-
-        # Diagonal and regression
-        ax.plot([0, 1], [0, 1], 'k--', alpha=0.3, label='y=x')
-        add_regression_line(ax, valid[ref_col].values, valid[qry_col].values, color='red')
-
-        ax.set_xlabel('New Annotation Psauron Score')
-        ax.set_ylabel('Old Annotation Psauron Score')
-        ax.set_title(f'Psauron Score Comparison (n={len(valid)} gene pairs)')
-        ax.set_xlim(0, 1.05)
-        ax.set_ylim(0, 1.05)
+    ax.set_xlabel('New Annotation Psauron Score')
+    ax.set_ylabel('Old Annotation Psauron Score')
+    ax.set_title(f'Psauron Score Distribution (n={len(valid)} gene pairs)')
+    ax.set_xlim(0, 1.05)
+    ax.set_ylim(0, 1.05)
 
     plt.tight_layout()
     fig.savefig(output_path, dpi=config.get('figure_dpi', 150), bbox_inches='tight')
