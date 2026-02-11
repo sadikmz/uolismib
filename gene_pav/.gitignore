@@ -74,3 +74,10 @@ test/output/
 # Always track docs folder
 !docs/
 !docs/**
+
+# venvs
+venv/
+.venv
+
+# Claude code config
+./.claude

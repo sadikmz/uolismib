@@ -316,6 +316,19 @@ pip install -r requirements.txt
 python gene_pav/src/pavprot.py --help
 ```
 
+## For deve
+```bash
+# install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# create venv gma (gene-mapping-assessment)
+ uv venv gma --python 3.15 
+source gma/bin/activate
+
+# Install requirements
+uv pip sync requirements.txt
+```
+
 ## Requirements
 
 ### Python Dependencies
