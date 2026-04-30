@@ -1,0 +1,5 @@
+Metric	Old (foc67_v68)	New (GCF_013085055.1)
+Total proteins analyzed	21911	14741
+With InterPro domains	18557	12605
+Without InterPro domains	3354	2136
+Percentage with domains	84.7%	85.5%
